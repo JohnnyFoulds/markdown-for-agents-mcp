@@ -71,20 +71,24 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
   if (name === "fetch_url") {
-    if (!args?.url) {
+    if (!args || typeof args !== "object" || !("url" in args) || !args.url) {
       throw new Error("Missing required argument: url");
     }
-    const result = await fetchUrl(args.url);
+    const result = await fetchUrl(args.url as string);
     return {
       content: [{ type: "text", text: result }],
     };
   }
 
   if (name === "fetch_urls") {
-    if (!args?.urls || !Array.isArray(args.urls)) {
+    if (!args || typeof args !== "object" || !("urls" in args)) {
       throw new Error("Missing required argument: urls (array)");
     }
-    const results = await fetchUrls(args.urls);
+    const urls = args.urls;
+    if (!Array.isArray(urls)) {
+      throw new Error("Missing required argument: urls (array)");
+    }
+    const results = await fetchUrls(urls as string[]);
     return {
       content: [{ type: "text", text: results }],
     };

@@ -107,6 +107,85 @@ fetch_urls(urls=[
 ---
 ```
 
+## CLI Usage
+
+You can also use this tool directly from the command line without the MCP protocol.
+
+### Installation
+
+```bash
+npm install -g markdown-for-agents-mcp
+```
+
+### Single URL
+
+Fetch a single URL and output markdown to stdout:
+
+```bash
+markdown-cli https://example.com
+```
+
+**Output:**
+```markdown
+# Example Domain
+
+This domain is for use in documentation examples without needing permission.
+
+[Learn more](https://iana.org/domains/example)
+
+---
+*Converted by markdown-for-agents-mcp*
+```
+
+### Multiple URLs
+
+Fetch multiple URLs using batch mode:
+
+```bash
+markdown-cli -b https://example.com https://example.org https://example.net
+```
+
+**Output:**
+```markdown
+## URL: https://example.com
+
+# Example Domain
+...
+
+---
+
+## URL: https://example.org
+
+# Example Domain
+...
+
+---
+```
+
+### Command Reference
+
+| Command | Description |
+|---------|-------------|
+| `markdown-cli <url>` | Fetch single URL and output markdown |
+| `markdown-cli -b <url1> <url2> ...` | Fetch multiple URLs in batch mode |
+| `markdown-cli --help` | Show help message |
+
+### Examples
+
+```bash
+# Single article
+markdown-cli https://example.com/blog/my-article
+
+# Research multiple sources
+markdown-cli -b \
+  https://example.com/api/docs \
+  https://example.com/guides/setup \
+  https://example.com/tutorials/getting-started
+
+# Save to file
+markdown-cli https://example.com > article.md
+```
+
 ## Architecture
 
 ```

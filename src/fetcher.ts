@@ -3,7 +3,7 @@
  * Handles JavaScript rendering and content extraction
  */
 
-import { chromium, Browser, Page } from "playwright";
+import { chromium, Page } from "playwright";
 
 interface FetchResult {
   url: string;
@@ -13,12 +13,12 @@ interface FetchResult {
 }
 
 class Fetcher {
-  private browser: Browser | null = null;
+  private browser: unknown | null = null;
   private readonly timeout = 30000;
 
   async initialize(): Promise<void> {
     if (!this.browser) {
-      this.browser = await chromium.launch({
+      const browser = await (chromium as any).launch({
         headless: true,
         args: [
           "--no-sandbox",
@@ -27,31 +27,46 @@ class Fetcher {
           "--disable-gpu",
         ],
       });
+
+      // Create a default context with user agent
+      const context = await browser.newContext({
+        userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      });
+
+      // Store the context as well
+      (browser as any).__defaultContext = context;
+      this.browser = browser;
     }
   }
 
   async close(): Promise<void> {
     if (this.browser) {
-      await this.browser.close();
+      const browser: any = this.browser;
+      if (browser.__defaultContext) {
+        await browser.__defaultContext.close();
+      }
+      await browser.close();
       this.browser = null;
     }
   }
 
   async fetch(url: string): Promise<string> {
-    await this.initialize();
-
-    const browser = this.browser;
-    if (!browser) {
-      throw new Error("Browser not initialized");
-    }
-
-    const page = await browser.newPage();
+    const browser: any = await (chromium as any).launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+      ],
+    });
 
     try {
-      // Set realistic user agent
-      await page.setUserAgent(
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-      );
+      const context = await browser.newContext({
+        userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      });
+
+      const page = await context.newPage();
 
       // Navigate to URL with timeout
       await page.goto(url, {
@@ -83,7 +98,7 @@ class Fetcher {
         ];
 
         elementsToRemove.forEach((selector) => {
-          document.querySelectorAll(selector).forEach((el) => el.remove());
+          document.querySelectorAll(selector).forEach((el: Element) => el.remove());
         });
 
         // Find main content
@@ -103,7 +118,7 @@ class Fetcher {
 
       return content;
     } finally {
-      await page.close();
+      await browser.close();
     }
   }
 
@@ -128,6 +143,7 @@ class Fetcher {
       }
     }
 
+    await this.close();
     return results;
   }
 }
