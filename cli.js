@@ -6,6 +6,7 @@
 
 import { fetchUrl } from './dist/tools/fetchUrl.js';
 import { fetchUrls } from './dist/tools/fetchUrls.js';
+import { fetcher } from './dist/fetcher.js';
 
 const args = process.argv.slice(2);
 
@@ -51,6 +52,9 @@ async function main() {
   } catch (error) {
     console.error(`Error: ${error.message}`);
     process.exit(1);
+  } finally {
+    // Close browser to allow process to exit
+    await fetcher.close();
   }
 }
 
