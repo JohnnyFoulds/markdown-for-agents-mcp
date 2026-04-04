@@ -1,8 +1,11 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
+import { fetchUrls } from './fetchUrls.js';
+import { fetcher } from '../fetcher.js';
+import type { FetchResult } from '../fetcher.js';
 
-const mockFetcher = { fetchMultiple: vi.fn() };
-
-vi.mock('../fetcher.js', () => ({ fetcher: mockFetcher }));
+vi.mock('../fetcher.js', () => ({
+  fetcher: { fetchMultiple: vi.fn() },
+}));
 
 describe('fetchUrls', () => {
   beforeEach(() => {
@@ -11,7 +14,6 @@ describe('fetchUrls', () => {
 
   describe('successful fetches', () => {
     test('fetches multiple URLs and formats output', async () => {
-      const { fetchUrls } = await import('./fetchUrls.js');
       const mockResults = [
         {
           url: 'https://example.com/1',
@@ -25,12 +27,12 @@ describe('fetchUrls', () => {
         },
       ];
 
-      mockFetcher.fetchMultiple.mockResolvedValue(mockResults);
+      vi.mocked(fetcher.fetchMultiple).mockResolvedValue(mockResults);
 
       const urls = ['https://example.com/1', 'https://example.com/2'];
       const result = await fetchUrls(urls);
 
-      expect(mockFetcher.fetchMultiple).toHaveBeenCalledWith(urls);
+      expect(fetcher.fetchMultiple).toHaveBeenCalledWith(urls);
       expect(result).toContain('## URL: https://example.com/1');
       expect(result).toContain('# Article 1');
       expect(result).toContain('## URL: https://example.com/2');
@@ -38,7 +40,6 @@ describe('fetchUrls', () => {
     });
 
     test('separates results with horizontal rules', async () => {
-      const { fetchUrls } = await import('./fetchUrls.js');
       const mockResults = [
         {
           url: 'https://example.com/1',
@@ -52,7 +53,7 @@ describe('fetchUrls', () => {
         },
       ];
 
-      mockFetcher.fetchMultiple.mockResolvedValue(mockResults);
+      vi.mocked(fetcher.fetchMultiple).mockResolvedValue(mockResults);
 
       const result = await fetchUrls(['https://example.com/1', 'https://example.com/2']);
 
@@ -60,7 +61,6 @@ describe('fetchUrls', () => {
     });
 
     test('handles single URL', async () => {
-      const { fetchUrls } = await import('./fetchUrls.js');
       const mockResults = [
         {
           url: 'https://example.com',
@@ -69,7 +69,7 @@ describe('fetchUrls', () => {
         },
       ];
 
-      mockFetcher.fetchMultiple.mockResolvedValue(mockResults);
+      vi.mocked(fetcher.fetchMultiple).mockResolvedValue(mockResults);
 
       const result = await fetchUrls(['https://example.com']);
 
@@ -80,8 +80,7 @@ describe('fetchUrls', () => {
 
   describe('error handling', () => {
     test('handles failed fetches', async () => {
-      const { fetchUrls } = await import('./fetchUrls.js');
-      const mockResults = [
+      const mockResults: FetchResult[] = [
         {
           url: 'https://example.com/success',
           success: true,
@@ -90,11 +89,12 @@ describe('fetchUrls', () => {
         {
           url: 'https://example.com/fail',
           success: false,
+          markdown: '',
           error: 'Network error',
         },
       ];
 
-      mockFetcher.fetchMultiple.mockResolvedValue(mockResults);
+      vi.mocked(fetcher.fetchMultiple).mockResolvedValue(mockResults);
 
       const result = await fetchUrls([
         'https://example.com/success',
@@ -108,21 +108,22 @@ describe('fetchUrls', () => {
     });
 
     test('handles all failed fetches', async () => {
-      const { fetchUrls } = await import('./fetchUrls.js');
-      const mockResults = [
+      const mockResults: FetchResult[] = [
         {
           url: 'https://example.com/1',
           success: false,
+          markdown: '',
           error: 'Timeout',
         },
         {
           url: 'https://example.com/2',
           success: false,
+          markdown: '',
           error: 'Connection refused',
         },
       ];
 
-      mockFetcher.fetchMultiple.mockResolvedValue(mockResults);
+      vi.mocked(fetcher.fetchMultiple).mockResolvedValue(mockResults);
 
       const result = await fetchUrls([
         'https://example.com/1',
@@ -136,17 +137,15 @@ describe('fetchUrls', () => {
 
   describe('edge cases', () => {
     test('handles empty array', async () => {
-      const { fetchUrls } = await import('./fetchUrls.js');
-      mockFetcher.fetchMultiple.mockResolvedValue([]);
+      vi.mocked(fetcher.fetchMultiple).mockResolvedValue([]);
 
       const result = await fetchUrls([]);
 
-      expect(mockFetcher.fetchMultiple).toHaveBeenCalledWith([]);
+      expect(fetcher.fetchMultiple).toHaveBeenCalledWith([]);
       expect(result).toBe('');
     });
 
     test('handles URLs with special characters', async () => {
-      const { fetchUrls } = await import('./fetchUrls.js');
       const url = 'https://example.com/path?query=value#anchor';
       const mockResults = [
         {
@@ -156,7 +155,7 @@ describe('fetchUrls', () => {
         },
       ];
 
-      mockFetcher.fetchMultiple.mockResolvedValue(mockResults);
+      vi.mocked(fetcher.fetchMultiple).mockResolvedValue(mockResults);
 
       const result = await fetchUrls([url]);
 
@@ -166,7 +165,6 @@ describe('fetchUrls', () => {
 
   describe('output format', () => {
     test('output structure matches expected format', async () => {
-      const { fetchUrls } = await import('./fetchUrls.js');
       const mockResults = [
         {
           url: 'https://example.com',
@@ -175,7 +173,7 @@ describe('fetchUrls', () => {
         },
       ];
 
-      mockFetcher.fetchMultiple.mockResolvedValue(mockResults);
+      vi.mocked(fetcher.fetchMultiple).mockResolvedValue(mockResults);
 
       const result = await fetchUrls(['https://example.com']);
 

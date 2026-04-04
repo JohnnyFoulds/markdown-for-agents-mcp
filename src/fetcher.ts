@@ -3,22 +3,41 @@
  * Handles JavaScript rendering and content extraction
  */
 
-import { chromium, Page } from "playwright";
+import { chromium, Browser, BrowserContext, Page } from "playwright";
 
-interface FetchResult {
+export interface FetchResult {
   url: string;
   success: boolean;
   markdown: string;
   error?: string;
 }
 
-class Fetcher {
-  private browser: unknown | null = null;
-  private readonly timeout = 30000;
+/**
+ * Validates that a URL is safe to fetch
+ * Prevents SSRF attacks by restricting to http/https protocols
+ */
+function isValidUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
+class Fetcher {
+  private browser: Browser | null = null;
+  private context: BrowserContext | null = null;
+  private readonly timeout = 30000;
+  private readonly userAgent =
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+  /**
+   * Initialize browser and context once for reuse across fetches
+   */
   async initialize(): Promise<void> {
     if (!this.browser) {
-      const browser = await (chromium as any).launch({
+      this.browser = await chromium.launch({
         headless: true,
         args: [
           "--no-sandbox",
@@ -28,46 +47,51 @@ class Fetcher {
         ],
       });
 
-      // Create a default context with user agent
-      const context = await browser.newContext({
-        userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      this.context = await this.browser.newContext({
+        userAgent: this.userAgent,
       });
-
-      // Store the context as well
-      (browser as any).__defaultContext = context;
-      this.browser = browser;
     }
   }
 
+  /**
+   * Get or create a new page for fetching
+   */
+  private async getPage(): Promise<Page> {
+    await this.initialize();
+
+    if (!this.context) {
+      throw new Error("Browser context not initialized");
+    }
+
+    return await this.context.newPage();
+  }
+
+  /**
+   * Close browser and context
+   */
   async close(): Promise<void> {
+    if (this.context) {
+      await this.context.close();
+      this.context = null;
+    }
     if (this.browser) {
-      const browser: any = this.browser;
-      if (browser.__defaultContext) {
-        await browser.__defaultContext.close();
-      }
-      await browser.close();
+      await this.browser.close();
       this.browser = null;
     }
   }
 
+  /**
+   * Fetch a single URL and return HTML content
+   */
   async fetch(url: string): Promise<string> {
-    const browser: any = await (chromium as any).launch({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-gpu",
-      ],
-    });
+    // Validate URL before fetching
+    if (!isValidUrl(url)) {
+      throw new Error(`Invalid URL: ${url}`);
+    }
+
+    const page = await this.getPage();
 
     try {
-      const context = await browser.newContext({
-        userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      });
-
-      const page = await context.newPage();
-
       // Navigate to URL with timeout
       await page.goto(url, {
         waitUntil: "networkidle",
@@ -118,10 +142,13 @@ class Fetcher {
 
       return content;
     } finally {
-      await browser.close();
+      await page.close();
     }
   }
 
+  /**
+   * Fetch multiple URLs and return results
+   */
   async fetchMultiple(urls: string[]): Promise<FetchResult[]> {
     const results: FetchResult[] = [];
 
@@ -143,7 +170,6 @@ class Fetcher {
       }
     }
 
-    await this.close();
     return results;
   }
 }

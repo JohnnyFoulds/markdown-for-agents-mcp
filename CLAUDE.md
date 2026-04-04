@@ -11,19 +11,19 @@ An MCP (Model Context Protocol) server that fetches URLs with JavaScript renderi
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    MCP Server Layer                         │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────┐    │
-│  │ index.ts    │  │ fetchUrl.ts  │  │ fetchUrls.ts    │    │
-│  │ (entry)     │──│ (tool 1)     │──│ (tool 2)        │    │
-│  └─────────────┘  └──────────────┘  └─────────────────┘    │
+│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────┐     │
+│  │ index.ts    │  │ fetchUrl.ts  │  │ fetchUrls.ts    │     │
+│  │ (entry)     │──│ (tool 1)     │──│ (tool 2)        │     │
+│  └─────────────┘  └──────────────┘  └─────────────────┘     │
 └─────────────────────────────────────────────────────────────┘
                             │
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    Service Layer                            │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────┐    │
-│  │ fetcher.ts  │──│ converter.ts │──│  markdown       │    │
-│  │ (Playwright)│  │ (HTML→MD)    │  │  library        │    │
-│  └─────────────┘  └──────────────┘  └─────────────────┘    │
+│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────┐     │
+│  │ fetcher.ts  │──│ converter.ts │──│  markdown       │     │
+│  │ (Playwright)│  │ (HTML→MD)    │  │  library        │     │
+│  └─────────────┘  └──────────────┘  └─────────────────┘     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -152,3 +152,9 @@ npm run build
 - `@modelcontextprotocol/sdk` - MCP server framework
 - `playwright` - JavaScript rendering
 - `markdown-for-agents` - HTML to markdown conversion
+
+## Commit Guidelines
+
+- Conventional Commits (`type(scope): subject`).
+- Non-trivial commits must include a body with one bullet per logical change.
+- No AI co-authorship lines.
