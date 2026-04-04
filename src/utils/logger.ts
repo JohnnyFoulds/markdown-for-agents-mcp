@@ -2,6 +2,8 @@
  * Logger utility for fetch performance metrics
  */
 
+import { getConfig } from '../config.js';
+
 /**
  * Log levels for structured logging
  */
@@ -13,19 +15,27 @@ export enum LogLevel {
 }
 
 /**
- * Get the current log level from environment or default to INFO
+ * Get the current log level from config
  */
 function getLogLevel(): LogLevel {
-  const level = process.env.LOG_LEVEL?.toUpperCase();
-  const resolved = (LogLevel as Record<string, unknown>)[level || 'INFO'] as LogLevel | undefined;
-  return resolved ?? LogLevel.INFO;
+  try {
+    const config = getConfig();
+    return LogLevel[config.LOG_LEVEL] || LogLevel.INFO;
+  } catch {
+    return LogLevel.INFO;
+  }
 }
 
 /**
- * Get the log format from environment ('text' or 'json')
+ * Get the log format from config ('text' or 'json')
  */
 function getLogFormat(): 'text' | 'json' {
-  return (process.env.LOG_FORMAT === 'json' ? 'json' : 'text') as 'text' | 'json';
+  try {
+    const config = getConfig();
+    return (config.LOG_FORMAT === 'json' ? 'json' : 'text') as 'text' | 'json';
+  } catch {
+    return 'text';
+  }
 }
 
 /**

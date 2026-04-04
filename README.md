@@ -23,9 +23,36 @@ npm install -g markdown-for-agents-mcp
 
 The package includes Playwright and will automatically install Chromium browser on first run.
 
-## Usage with Claude Code
+## Configuration
 
-### Configuration
+### Environment Variables
+
+Configure the server using environment variables. Create a `.env` file or set them in your shell:
+
+```bash
+# Fetch settings
+FETCH_TIMEOUT_MS=30000              # Timeout for fetch requests (ms)
+MAX_CONCURRENT_FETCHES=5            # Maximum parallel fetches
+STABILIZATION_DELAY_MS=2000         # Wait for JS rendering (ms)
+MAX_REDIRECTS=10                    # Max redirect hops
+MAX_CONTENT_LENGTH=100000           # Max content size (chars)
+
+# Logging
+LOG_LEVEL=INFO                      # DEBUG, INFO, WARN, ERROR
+LOG_FORMAT=text                     # text or json
+
+# Cache
+CACHE_MAX_BYTES=52428800            # Max cache size (50MB)
+CACHE_TTL_MS=900000                 # Cache TTL (15 minutes)
+
+# Security
+USE_ALLOWLIST_MODE=false            # Only allow whitelisted domains
+BLOCKLIST_DOMAINS=                  # Comma-separated blocked domains
+```
+
+See `.env.example` for all options with descriptions.
+
+### MCP Configuration
 
 Add to your `~/.claude/config.json`:
 
@@ -250,6 +277,15 @@ npm run typecheck    # Type checking only
 npm test             # Run test suite
 ```
 
+### Configuration
+
+Copy `.env.example` to `.env` and customize:
+
+```bash
+cp .env.example .env
+# Edit .env with your settings
+```
+
 ### Running Locally
 
 ```bash
@@ -258,6 +294,20 @@ npm run build
 
 # Run MCP server
 node dist/index.js
+```
+
+### Debugging
+
+Enable debug logging:
+
+```bash
+LOG_LEVEL=DEBUG node dist/index.js
+```
+
+Or use JSON format:
+
+```bash
+LOG_LEVEL=DEBUG LOG_FORMAT=json node dist/index.js
 ```
 
 ## Troubleshooting
