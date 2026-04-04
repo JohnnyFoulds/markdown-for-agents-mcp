@@ -20,7 +20,10 @@ export enum LogLevel {
 function getLogLevel(): LogLevel {
   try {
     const config = getConfig();
-    return LogLevel[config.LOG_LEVEL] || LogLevel.INFO;
+    const levelKey = config.LOG_LEVEL as keyof typeof LogLevel;
+    const levelValue = LogLevel[levelKey];
+    // Handle numeric enum where 0 (DEBUG) is falsy
+    return typeof levelValue === 'number' ? levelValue : LogLevel.INFO;
   } catch {
     return LogLevel.INFO;
   }
@@ -116,7 +119,7 @@ export class Logger {
    */
   static log(level: LogLevel, message: string, data?: object, requestId?: string): void {
     const logLevel = getLogLevel();
-    if (level > logLevel) return;
+    if (level < logLevel) return;
 
     const format = getLogFormat();
     const entry = format === 'json'

@@ -2,7 +2,7 @@
  * MCP Server unit tests
  */
 
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { initializeConfig, resetConfig, validateConfig } from './config.js';
 import { Logger } from './utils/logger.js';
 
@@ -58,16 +58,14 @@ describe('MCP Server Configuration', () => {
 
     it('should reject invalid LOG_LEVEL', () => {
       resetConfig();
-      initializeConfig({ LOG_LEVEL: 'INVALID' });
 
-      expect(() => validateConfig()).toThrow();
+      expect(() => initializeConfig({ LOG_LEVEL: 'INVALID' })).toThrow('Invalid LOG_LEVEL');
     });
 
     it('should reject invalid LOG_FORMAT', () => {
       resetConfig();
-      initializeConfig({ LOG_FORMAT: 'invalid' });
 
-      expect(() => validateConfig()).toThrow();
+      expect(() => initializeConfig({ LOG_FORMAT: 'invalid' })).toThrow('Invalid LOG_FORMAT');
     });
   });
 
@@ -105,14 +103,12 @@ describe('MCP Server Configuration', () => {
 
     it('should provide clear error messages for invalid config', () => {
       resetConfig();
-      initializeConfig({ LOG_LEVEL: 'INVALID' });
 
       try {
-        validateConfig();
+        initializeConfig({ LOG_LEVEL: 'INVALID' });
         expect(true).toBe(false); // Should not reach here
       } catch (error: any) {
-        expect(error.message).toContain('Invalid configuration');
-        expect(error.message).toContain('LOG_LEVEL');
+        expect(error.message).toContain('Invalid LOG_LEVEL');
       }
     });
   });
@@ -122,7 +118,7 @@ describe('MCP Server Configuration', () => {
       resetConfig();
       initializeConfig({ LOG_LEVEL: 'DEBUG' });
 
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       Logger.debug('debug message');
       expect(consoleSpy).toHaveBeenCalled();
       consoleSpy.mockRestore();
@@ -132,7 +128,7 @@ describe('MCP Server Configuration', () => {
       resetConfig();
       initializeConfig({ LOG_FORMAT: 'json' });
 
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       Logger.info('test message');
 
       const call = consoleSpy.mock.calls[0]?.[0] as string;

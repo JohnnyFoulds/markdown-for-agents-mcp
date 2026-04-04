@@ -14,15 +14,19 @@ const configSchema = z.object({
   MAX_CONTENT_LENGTH: z.string().default('100000').transform(Number),
 
   // Logging
-  LOG_LEVEL: z.enum(['DEBUG', 'INFO', 'WARN', 'ERROR']).default('INFO'),
-  LOG_FORMAT: z.enum(['text', 'json']).default('text'),
+  LOG_LEVEL: z.string().default('INFO').refine(val => ['DEBUG', 'INFO', 'WARN', 'ERROR'].includes(val), {
+    message: 'Invalid LOG_LEVEL',
+  }),
+  LOG_FORMAT: z.string().default('text').refine(val => ['text', 'json'].includes(val), {
+    message: 'Invalid LOG_FORMAT',
+  }),
 
   // Cache
   CACHE_MAX_BYTES: z.string().default('52428800').transform(Number), // 50MB
   CACHE_TTL_MS: z.string().default('900000').transform(Number), // 15 minutes
 
   // Security
-  USE_ALLOWLIST_MODE: z.boolean().default(false),
+  USE_ALLOWLIST_MODE: z.string().transform(val => val === 'true').default('false'),
   BLOCKLIST_DOMAINS: z.string().optional(),
   BLOCKLIST_URL_PATTERNS: z.string().optional(),
 });
