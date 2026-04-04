@@ -1,10 +1,15 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest';
+import { fetchUrl } from './fetchUrl.js';
+import { fetcher } from '../fetcher.js';
+import { converter } from '../converter.js';
 
-const mockFetcher = { fetch: vi.fn() };
-const mockConverter = { convertWithMetadata: vi.fn() };
+vi.mock('../fetcher.js', () => ({
+  fetcher: { fetch: vi.fn() },
+}));
 
-vi.mock('../fetcher.js', () => ({ fetcher: mockFetcher }));
-vi.mock('../converter.js', () => ({ converter: mockConverter }));
+vi.mock('../converter.js', () => ({
+  converter: { convertWithMetadata: vi.fn() },
+}));
 
 describe('fetchUrl', () => {
   beforeEach(() => {
@@ -13,29 +18,24 @@ describe('fetchUrl', () => {
 
   describe('successful fetch', () => {
     test('fetches URL and converts to markdown', async () => {
-      const { fetchUrl } = await import('./fetchUrl.js');
       const mockHtml = '<h1>Test Article</h1><p>Content here</p>';
       const mockMarkdown = '# Test Article\n\nContent here\n\n---\n*Converted*';
       const url = 'https://example.com/article';
 
-      mockFetcher.fetch.mockResolvedValue(mockHtml);
-      mockConverter.convertWithMetadata.mockReturnValue(mockMarkdown);
+      vi.mocked(fetcher.fetch).mockResolvedValue(mockHtml);
+      vi.mocked(converter.convertWithMetadata).mockReturnValue(mockMarkdown);
 
       const result = await fetchUrl(url);
 
-      expect(mockFetcher.fetch).toHaveBeenCalledWith(url);
-      expect(mockConverter.convertWithMetadata).toHaveBeenCalledWith(
-        mockHtml,
-        url
-      );
+      expect(fetcher.fetch).toHaveBeenCalledWith(url);
+      expect(converter.convertWithMetadata).toHaveBeenCalledWith(mockHtml, url);
       expect(result).toBe(mockMarkdown);
     });
 
     test('includes URL in metadata', async () => {
-      const { fetchUrl } = await import('./fetchUrl.js');
       const url = 'https://example.com/page';
-      mockFetcher.fetch.mockResolvedValue('<p>Content</p>');
-      mockConverter.convertWithMetadata.mockReturnValue(
+      vi.mocked(fetcher.fetch).mockResolvedValue('<p>Content</p>');
+      vi.mocked(converter.convertWithMetadata).mockReturnValue(
         '# https://example.com/page\n\nContent\n\n---'
       );
 
@@ -47,11 +47,10 @@ describe('fetchUrl', () => {
 
   describe('error handling', () => {
     test('returns error message when fetch fails', async () => {
-      const { fetchUrl } = await import('./fetchUrl.js');
       const url = 'https://example.com';
       const fetchError = new Error('Network timeout');
 
-      mockFetcher.fetch.mockRejectedValue(fetchError);
+      vi.mocked(fetcher.fetch).mockRejectedValue(fetchError);
 
       const result = await fetchUrl(url);
 
@@ -61,10 +60,9 @@ describe('fetchUrl', () => {
     });
 
     test('handles non-Error exceptions', async () => {
-      const { fetchUrl } = await import('./fetchUrl.js');
       const url = 'https://example.com';
 
-      mockFetcher.fetch.mockRejectedValue('String error');
+      vi.mocked(fetcher.fetch).mockRejectedValue('String error');
 
       const result = await fetchUrl(url);
 
@@ -73,10 +71,9 @@ describe('fetchUrl', () => {
     });
 
     test('handles null/undefined errors', async () => {
-      const { fetchUrl } = await import('./fetchUrl.js');
       const url = 'https://example.com';
 
-      mockFetcher.fetch.mockRejectedValue(null);
+      vi.mocked(fetcher.fetch).mockRejectedValue(null);
 
       const result = await fetchUrl(url);
 
@@ -87,10 +84,9 @@ describe('fetchUrl', () => {
 
   describe('edge cases', () => {
     test('handles URL with special characters', async () => {
-      const { fetchUrl } = await import('./fetchUrl.js');
       const url = 'https://example.com/path?query=value&other=123#section';
-      mockFetcher.fetch.mockResolvedValue('<h1>Page</h1>');
-      mockConverter.convertWithMetadata.mockReturnValue(
+      vi.mocked(fetcher.fetch).mockResolvedValue('<h1>Page</h1>');
+      vi.mocked(converter.convertWithMetadata).mockReturnValue(
         `# ${url}\n\nPage\n\n---`
       );
 
@@ -100,10 +96,9 @@ describe('fetchUrl', () => {
     });
 
     test('handles very long URLs', async () => {
-      const { fetchUrl } = await import('./fetchUrl.js');
       const longUrl = 'https://example.com/' + 'a'.repeat(1000);
-      mockFetcher.fetch.mockResolvedValue('<p>Content</p>');
-      mockConverter.convertWithMetadata.mockReturnValue(`# ${longUrl}`);
+      vi.mocked(fetcher.fetch).mockResolvedValue('<p>Content</p>');
+      vi.mocked(converter.convertWithMetadata).mockReturnValue(`# ${longUrl}`);
 
       const result = await fetchUrl(longUrl);
 

@@ -1,25 +1,33 @@
-import { describe, test, expect, beforeEach, vi } from 'vitest';
+import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
+import { chromium } from 'playwright';
+import { fetcher } from './fetcher.js';
 
-const mockChromium = {
-  launch: vi.fn(),
-};
-
-vi.mock('playwright', () => ({
-  chromium: mockChromium,
-}));
+vi.mock('playwright', async () => {
+  const actual = await vi.importActual('playwright');
+  return {
+    ...actual,
+    chromium: {
+      launch: vi.fn(),
+    },
+  };
+});
 
 describe('fetcher', () => {
-  let fetcher: any;
+  let fetcherInstance: any;
+  const mockChromium = chromium as any;
 
   beforeEach(async () => {
     vi.clearAllMocks();
     vi.resetModules();
-
-    const mod = await import('./fetcher.js');
-    fetcher = mod.fetcher;
+    fetcherInstance = await import('./fetcher.js').then((m) => m.fetcher);
   });
 
-  describe('fetch', () => {
+  afterEach(async () => {
+    // Clean up browser state between tests
+    await fetcherInstance.close();
+  });
+
+   describe('fetch', () => {
     test('fetches HTML from URL', async () => {
       const mockPage = {
         goto: vi.fn().mockResolvedValue({ status: () => 200 }),
@@ -40,7 +48,8 @@ describe('fetcher', () => {
 
       mockChromium.launch.mockResolvedValue(mockBrowser);
 
-      const result = await fetcher.fetch('https://example.com');
+      await fetcherInstance.initialize();
+      const result = await fetcherInstance.fetch('https://example.com');
 
       expect(result).toBe('<h1>Test</h1>');
       expect(mockPage.goto).toHaveBeenCalledWith('https://example.com', {
@@ -69,7 +78,8 @@ describe('fetcher', () => {
 
       mockChromium.launch.mockResolvedValue(mockBrowser);
 
-      const result = await fetcher.fetch('https://example.com');
+      await fetcherInstance.initialize();
+      const result = await fetcherInstance.fetch('https://example.com');
 
       expect(result).toContain('Main Content');
     });
@@ -93,9 +103,19 @@ describe('fetcher', () => {
 
       mockChromium.launch.mockResolvedValue(mockBrowser);
 
-      await expect(fetcher.fetch('https://invalid-url.example')).rejects.toThrow(
+      await fetcherInstance.initialize();
+
+      await expect(fetcherInstance.fetch('https://invalid-url.example')).rejects.toThrow(
         'Network error'
       );
+    });
+
+    test('validates URL format', async () => {
+      await expect(fetcherInstance.fetch('not-a-valid-url')).rejects.toThrow('Invalid URL');
+    });
+
+    test('validates URL protocol', async () => {
+      await expect(fetcherInstance.fetch('ftp://example.com')).rejects.toThrow('Invalid URL');
     });
   });
 
@@ -120,8 +140,9 @@ describe('fetcher', () => {
 
       mockChromium.launch.mockResolvedValue(mockBrowser);
 
+      await fetcherInstance.initialize();
       const urls = ['https://example.com/1', 'https://example.com/2'];
-      const results = await fetcher.fetchMultiple(urls);
+      const results = await fetcherInstance.fetchMultiple(urls);
 
       expect(results).toHaveLength(2);
       expect(results[0].url).toBe('https://example.com/1');
@@ -158,8 +179,9 @@ describe('fetcher', () => {
 
       mockChromium.launch.mockResolvedValue(mockBrowser);
 
+      await fetcherInstance.initialize();
       const urls = ['https://example.com/success', 'https://example.com/fail'];
-      const results = await fetcher.fetchMultiple(urls);
+      const results = await fetcherInstance.fetchMultiple(urls);
 
       expect(results).toHaveLength(2);
       expect(results[0].success).toBe(true);
@@ -187,7 +209,8 @@ describe('fetcher', () => {
 
       mockChromium.launch.mockResolvedValue(mockBrowser);
 
-      const results = await fetcher.fetchMultiple(['https://example.com']);
+      await fetcherInstance.initialize();
+      const results = await fetcherInstance.fetchMultiple(['https://example.com']);
 
       expect(results[0].success).toBe(true);
       expect(results[0].markdown).toContain('Article content');
@@ -212,7 +235,8 @@ describe('fetcher', () => {
 
       mockChromium.launch.mockResolvedValue(mockBrowser);
 
-      const results = await fetcher.fetchMultiple(['https://example.com']);
+      await fetcherInstance.initialize();
+      const results = await fetcherInstance.fetchMultiple(['https://example.com']);
 
       expect(results[0].success).toBe(false);
       expect(results[0].markdown).toBe('');
