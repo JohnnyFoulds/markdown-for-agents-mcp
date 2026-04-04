@@ -24,7 +24,11 @@ describe('fetcher', () => {
 
   afterEach(async () => {
     // Clean up browser state between tests
-    await fetcherInstance.close();
+    try {
+      await fetcherInstance.close();
+    } catch {
+      // Ignore cleanup errors in tests
+    }
   });
 
    describe('fetch', () => {

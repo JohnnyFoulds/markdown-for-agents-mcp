@@ -44,9 +44,9 @@ async function main() {
   try {
     let result;
     if (isBatch || urls.length > 1) {
-      result = await fetchUrls(urls);
+      result = await fetchUrls({ urls });
     } else {
-      result = await fetchUrl(urls[0]);
+      result = await fetchUrl({ url: urls[0] });
     }
     console.log(result);
   } catch (error) {

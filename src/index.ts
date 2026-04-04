@@ -41,6 +41,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "string",
               description: "The URL to fetch and convert to markdown",
             },
+            timeout: {
+              type: "number",
+              description: "Request timeout in milliseconds (default: 30000)",
+            },
           },
           required: ["url"],
         },
@@ -58,6 +62,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               items: { type: "string" },
               description: "Array of URLs to fetch and convert",
             },
+            timeout: {
+              type: "number",
+              description: "Request timeout in milliseconds (default: 30000)",
+            },
           },
           required: ["urls"],
         },
@@ -74,7 +82,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (!args || typeof args !== "object" || !("url" in args) || !args.url) {
       throw new Error("Missing required argument: url");
     }
-    const result = await fetchUrl(String(args.url));
+    const timeoutArg = args.timeout;
+    const timeout =
+      timeoutArg !== undefined && typeof timeoutArg === "number"
+        ? timeoutArg
+        : undefined;
+    const result = await fetchUrl({ url: String(args.url), timeout });
     return {
       content: [{ type: "text", text: result }],
     };
@@ -88,7 +101,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (!Array.isArray(urls)) {
       throw new Error("Missing required argument: urls (array)");
     }
-    const results = await fetchUrls(urls.map((u) => String(u)));
+    const timeoutArg = args.timeout;
+    const timeout =
+      timeoutArg !== undefined && typeof timeoutArg === "number"
+        ? timeoutArg
+        : undefined;
+    const results = await fetchUrls({
+      urls: urls.map((u) => String(u)),
+      timeout,
+    });
     return {
       content: [{ type: "text", text: results }],
     };
