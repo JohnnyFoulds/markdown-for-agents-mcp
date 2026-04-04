@@ -19,6 +19,7 @@ const MAX_CONTENT_LENGTH = 100000; // 100K characters truncation limit
 const DEFAULT_TIMEOUT = parseInt(process.env.FETCH_TIMEOUT_MS ?? '30000', 10);
 const DEFAULT_STABILIZATION_DELAY = parseInt(process.env.STABILIZATION_DELAY_MS ?? '2000', 10);
 const MAX_REDIRECTS = 10;
+const MAX_CONCURRENT_FETCHES = parseInt(process.env.MAX_CONCURRENT_FETCHES ?? '5', 10);
 
 // URL cache: 50MB limit, 15 minute TTL
 const urlCache = new LRUCache<string>({
@@ -31,6 +32,7 @@ export interface FetchResult {
   success: boolean;
   markdown: string;
   error?: string;
+  requestId?: string;
 }
 
 /**
@@ -65,6 +67,9 @@ class Fetcher {
 
       this.context = await this.browser.newContext({
         userAgent: this.userAgent,
+        extraHTTPHeaders: {
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
       });
     }
   }
@@ -123,7 +128,7 @@ class Fetcher {
   /**
    * Fetch a single URL and return HTML content
    */
-  async fetch(url: string, timeout?: number): Promise<string> {
+  async fetch(url: string, timeout?: number, requestId?: string): Promise<string> {
     const requestTimeout = timeout ?? this.timeout;
     const startTime = Date.now();
 
@@ -137,14 +142,14 @@ class Fetcher {
     const cached = urlCache.get(url);
     if (cached) {
       const hostname = new URL(url).hostname;
-      Logger.logCacheHit(hostname, Buffer.byteLength(cached, 'utf8'));
+      Logger.logCacheHit(hostname, Buffer.byteLength(cached, 'utf8'), requestId);
       const stats = urlCache.getStats();
       Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
       return cached;
     }
 
     const hostname = new URL(url).hostname;
-    Logger.logCacheMiss(hostname);
+    Logger.logCacheMiss(hostname, requestId);
 
     let currentUrl = url;
     let redirectCount = 0;
@@ -260,14 +265,14 @@ class Fetcher {
       }
 
       const duration = Date.now() - startTime;
-      Logger.logFetch({ url, duration, success: true });
+      Logger.logFetch({ url, duration, success: true, requestId });
 
       return html;
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
 
-      Logger.logFetch({ url, duration, success: false, error: errorMessage });
+      Logger.logFetch({ url, duration, success: false, error: errorMessage, requestId });
 
       // Re-throw specific errors
       if (error instanceof DomainBlockedError ||
@@ -286,27 +291,42 @@ class Fetcher {
   }
 
   /**
-   * Fetch multiple URLs and return results
+   * Fetch multiple URLs with concurrency limiting and return results
    */
   async fetchMultiple(urls: string[], timeout?: number): Promise<FetchResult[]> {
     const results: FetchResult[] = [];
+    const batches: string[][] = [];
 
-    for (const url of urls) {
-      try {
-        const html = await this.fetch(url, timeout);
-        results.push({
-          url,
-          success: true,
-          markdown: html,
-        });
-      } catch (error) {
-        results.push({
-          url,
-          success: false,
-          markdown: "",
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
+    // Split URLs into batches respecting MAX_CONCURRENT_FETCHES
+    for (let i = 0; i < urls.length; i += MAX_CONCURRENT_FETCHES) {
+      batches.push(urls.slice(i, i + MAX_CONCURRENT_FETCHES));
+    }
+
+    // Process batches sequentially, with concurrent fetches within each batch
+    for (const batch of batches) {
+      const batchPromises = batch.map(async (url) => {
+        try {
+          const requestId = Logger.generateRequestId();
+          const html = await this.fetch(url, timeout, requestId);
+          return {
+            url,
+            success: true,
+            markdown: html,
+            requestId,
+          } as FetchResult;
+        } catch (error) {
+          return {
+            url,
+            success: false,
+            markdown: "",
+            error: error instanceof Error ? error.message : "Unknown error",
+            requestId: Logger.generateRequestId(),
+          } as FetchResult;
+        }
+      });
+
+      const batchResults = await Promise.all(batchPromises);
+      results.push(...batchResults);
     }
 
     return results;

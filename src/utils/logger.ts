@@ -2,11 +2,74 @@
  * Logger utility for fetch performance metrics
  */
 
+/**
+ * Log levels for structured logging
+ */
+export enum LogLevel {
+  DEBUG = 0,
+  INFO = 1,
+  WARN = 2,
+  ERROR = 3,
+}
+
+/**
+ * Get the current log level from environment or default to INFO
+ */
+function getLogLevel(): LogLevel {
+  const level = process.env.LOG_LEVEL?.toUpperCase();
+  const resolved = (LogLevel as Record<string, unknown>)[level || 'INFO'] as LogLevel | undefined;
+  return resolved ?? LogLevel.INFO;
+}
+
+/**
+ * Get the log format from environment ('text' or 'json')
+ */
+function getLogFormat(): 'text' | 'json' {
+  return (process.env.LOG_FORMAT === 'json' ? 'json' : 'text') as 'text' | 'json';
+}
+
+/**
+ * Format a log entry for text output
+ */
+function formatTextEntry(level: LogLevel, message: string, data?: object, requestId?: string): string {
+  const timestamp = new Date().toISOString();
+  const levelName = LogLevel[level];
+  const prefix = `[${timestamp}] [${levelName}]`;
+
+  if (requestId) {
+    return `${prefix} [${requestId}] ${message}`;
+  }
+
+  return `${prefix} ${message}`;
+}
+
+/**
+ * Format a log entry for JSON output
+ */
+function formatJsonEntry(level: LogLevel, message: string, data?: object, requestId?: string): string {
+  const entry: Record<string, unknown> = {
+    timestamp: new Date().toISOString(),
+    level: LogLevel[level],
+    message,
+  };
+
+  if (requestId) {
+    entry.requestId = requestId;
+  }
+
+  if (data) {
+    entry.data = data;
+  }
+
+  return JSON.stringify(entry);
+}
+
 export interface FetchMetrics {
   url: string;
   duration: number;
   success: boolean;
   error?: string;
+  requestId?: string;
 }
 
 interface DomainMetrics {
@@ -38,6 +101,59 @@ export class Logger {
     maxBytes: 0,
   };
 
+  /**
+   * Log a message at the specified level
+   */
+  static log(level: LogLevel, message: string, data?: object, requestId?: string): void {
+    const logLevel = getLogLevel();
+    if (level > logLevel) return;
+
+    const format = getLogFormat();
+    const entry = format === 'json'
+      ? formatJsonEntry(level, message, data, requestId)
+      : formatTextEntry(level, message, data, requestId);
+
+    console.error(entry);
+  }
+
+  /**
+   * Log at DEBUG level
+   */
+  static debug(message: string, data?: object, requestId?: string): void {
+    this.log(LogLevel.DEBUG, message, data, requestId);
+  }
+
+  /**
+   * Log at INFO level
+   */
+  static info(message: string, data?: object, requestId?: string): void {
+    this.log(LogLevel.INFO, message, data, requestId);
+  }
+
+  /**
+   * Log at WARN level
+   */
+  static warn(message: string, data?: object, requestId?: string): void {
+    this.log(LogLevel.WARN, message, data, requestId);
+  }
+
+  /**
+   * Log at ERROR level
+   */
+  static error(message: string, data?: object, requestId?: string): void {
+    this.log(LogLevel.ERROR, message, data, requestId);
+  }
+
+  /**
+   * Generate a unique request ID for tracing
+   */
+  static generateRequestId(): string {
+    return crypto.randomUUID();
+  }
+
+  /**
+   * Log a fetch operation with metrics
+   */
   static logFetch(metrics: FetchMetrics): void {
     this.metrics.push(metrics);
 
@@ -49,13 +165,19 @@ export class Logger {
       // Ignore URL parsing errors
     }
 
-    if (process.env.DEBUG === 'true') {
-      const status = metrics.success ? 'success' : `failed: ${metrics.error}`;
-      console.error(`[Fetch] ${metrics.url} - ${metrics.duration}ms - ${status}`);
-    }
+    const level = metrics.success ? LogLevel.DEBUG : LogLevel.ERROR;
+    const requestId = metrics.requestId;
+    const status = metrics.success
+      ? `success (${metrics.duration}ms)`
+      : `failed: ${metrics.error}`;
+
+    this.log(level, `[Fetch] ${metrics.url} - ${status}`, undefined, requestId);
   }
 
-  static logCacheHit(hostname: string, size: number): void {
+  /**
+   * Log a cache hit
+   */
+  static logCacheHit(hostname: string, size: number, requestId?: string): void {
     this.cacheMetrics.hits++;
     this.updateDomainMetrics(hostname, {
       url: hostname,
@@ -64,12 +186,13 @@ export class Logger {
     });
     this.domainMetrics.get(hostname)!.cacheHits++;
 
-    if (process.env.DEBUG === 'true') {
-      console.error(`[Cache] HIT ${hostname} - ${size} bytes`);
-    }
+    this.log(LogLevel.DEBUG, `[Cache] HIT ${hostname} - ${size} bytes`, { size }, requestId);
   }
 
-  static logCacheMiss(hostname: string): void {
+  /**
+   * Log a cache miss
+   */
+  static logCacheMiss(hostname: string, requestId?: string): void {
     this.cacheMetrics.misses++;
     this.updateDomainMetrics(hostname, {
       url: hostname,
@@ -78,29 +201,42 @@ export class Logger {
     });
     this.domainMetrics.get(hostname)!.cacheMisses++;
 
-    if (process.env.DEBUG === 'true') {
-      console.error(`[Cache] MISS ${hostname}`);
-    }
+    this.log(LogLevel.DEBUG, `[Cache] MISS ${hostname}`, undefined, requestId);
   }
 
+  /**
+   * Update cache statistics
+   */
   static updateCacheStats(size: number, bytes: number, maxBytes: number): void {
     this.cacheMetrics.currentSize = size;
     this.cacheMetrics.totalBytes = bytes;
     this.cacheMetrics.maxBytes = maxBytes;
   }
 
+  /**
+   * Get all fetch metrics
+   */
   static getMetrics(): FetchMetrics[] {
     return this.metrics;
   }
 
+  /**
+   * Get domain metrics
+   */
   static getDomainMetrics(): Map<string, DomainMetrics> {
     return this.domainMetrics;
   }
 
+  /**
+   * Get cache metrics
+   */
   static getCacheMetrics(): CacheMetrics {
     return this.cacheMetrics;
   }
 
+  /**
+   * Clear all metrics
+   */
   static clearMetrics(): void {
     this.metrics = [];
     this.domainMetrics.clear();
@@ -113,6 +249,9 @@ export class Logger {
     };
   }
 
+  /**
+   * Get a summary of fetch metrics
+   */
   static getSummary(): {
     totalFetches: number;
     successCount: number;
@@ -135,6 +274,34 @@ export class Logger {
       cacheHits: this.cacheMetrics.hits,
       cacheMisses: this.cacheMetrics.misses,
       cacheUtilization: Math.round((this.cacheMetrics.hits / (this.cacheMetrics.hits + this.cacheMetrics.misses)) * 100) || 0,
+    };
+  }
+
+  /**
+   * Get server health status
+   */
+  static getHealth(): {
+    status: 'healthy' | 'unhealthy';
+    cache: CacheMetrics;
+    metrics: {
+      totalFetches: number;
+      successCount: number;
+      errorCount: number;
+      avgDuration: number;
+      cacheUtilization: number;
+    };
+  } {
+    const summary = this.getSummary();
+    return {
+      status: summary.errorCount === 0 ? 'healthy' : 'unhealthy',
+      cache: this.cacheMetrics,
+      metrics: {
+        totalFetches: summary.totalFetches,
+        successCount: summary.successCount,
+        errorCount: summary.errorCount,
+        avgDuration: summary.avgDuration,
+        cacheUtilization: summary.cacheUtilization,
+      },
     };
   }
 
