@@ -25,9 +25,9 @@ describe('fetchUrl', () => {
       vi.mocked(fetcher.fetch).mockResolvedValue(mockHtml);
       vi.mocked(converter.convertWithMetadata).mockReturnValue(mockMarkdown);
 
-      const result = await fetchUrl(url);
+      const result = await fetchUrl({ url });
 
-      expect(fetcher.fetch).toHaveBeenCalledWith(url);
+      expect(fetcher.fetch).toHaveBeenCalledWith(url, undefined);
       expect(converter.convertWithMetadata).toHaveBeenCalledWith(mockHtml, url);
       expect(result).toBe(mockMarkdown);
     });
@@ -39,7 +39,7 @@ describe('fetchUrl', () => {
         '# https://example.com/page\n\nContent\n\n---'
       );
 
-      const result = await fetchUrl(url);
+      const result = await fetchUrl({ url });
 
       expect(result).toContain(url);
     });
@@ -52,7 +52,7 @@ describe('fetchUrl', () => {
 
       vi.mocked(fetcher.fetch).mockRejectedValue(fetchError);
 
-      const result = await fetchUrl(url);
+      const result = await fetchUrl({ url });
 
       expect(result).toContain('# Error fetching');
       expect(result).toContain(url);
@@ -64,7 +64,7 @@ describe('fetchUrl', () => {
 
       vi.mocked(fetcher.fetch).mockRejectedValue('String error');
 
-      const result = await fetchUrl(url);
+      const result = await fetchUrl({ url });
 
       expect(result).toContain('# Error fetching');
       expect(result).toContain('Unknown error');
@@ -75,7 +75,7 @@ describe('fetchUrl', () => {
 
       vi.mocked(fetcher.fetch).mockRejectedValue(null);
 
-      const result = await fetchUrl(url);
+      const result = await fetchUrl({ url });
 
       expect(result).toContain('# Error fetching');
       expect(result).toContain('Unknown error');
@@ -90,7 +90,7 @@ describe('fetchUrl', () => {
         `# ${url}\n\nPage\n\n---`
       );
 
-      const result = await fetchUrl(url);
+      const result = await fetchUrl({ url });
 
       expect(result).toContain(url);
     });
@@ -100,7 +100,7 @@ describe('fetchUrl', () => {
       vi.mocked(fetcher.fetch).mockResolvedValue('<p>Content</p>');
       vi.mocked(converter.convertWithMetadata).mockReturnValue(`# ${longUrl}`);
 
-      const result = await fetchUrl(longUrl);
+      const result = await fetchUrl({ url: longUrl });
 
       expect(result).toContain(longUrl);
     });

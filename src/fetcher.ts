@@ -4,6 +4,16 @@
  */
 
 import { chromium, Browser, BrowserContext, Page } from "playwright";
+import { Logger, FetchMetrics } from "./utils/logger.js";
+
+// Import Readability lazily to avoid issues in test environments
+function getReadability() {
+  try {
+    return require("readability");
+  } catch {
+    return null;
+  }
+}
 
 export interface FetchResult {
   url: string;
@@ -83,49 +93,48 @@ class Fetcher {
   /**
    * Fetch a single URL and return HTML content
    */
-  async fetch(url: string): Promise<string> {
+  async fetch(url: string, timeout?: number): Promise<string> {
     // Validate URL before fetching
     if (!isValidUrl(url)) {
       throw new Error(`Invalid URL: ${url}`);
     }
 
     const page = await this.getPage();
+    const requestTimeout = timeout ?? this.timeout;
+    const startTime = Date.now();
 
     try {
-      // Navigate to URL with timeout
+      // Navigate to URL with configurable timeout
       await page.goto(url, {
         waitUntil: "networkidle",
-        timeout: this.timeout,
+        timeout: requestTimeout,
       });
 
       // Wait for content to stabilize
       await page.waitForTimeout(2000);
 
-      // Extract main content using Readability-style approach
+      // Extract main content using Readability library (if available)
       const content = await page.evaluate(() => {
-        // Remove unnecessary elements
+        // Try to use Readability if available
+        const Readability = (globalThis as any).Readability ||
+          (typeof require !== 'undefined' ? require('readability') : null);
+
+        if (Readability && Readability.Readability) {
+          const article = new Readability.Readability(document).parse();
+          return article?.content || document.body.innerHTML;
+        }
+
+        // Fallback to original selector-based extraction
         const elementsToRemove = [
-          "nav",
-          "footer",
-          "header",
-          "[role='navigation']",
-          ".nav",
-          ".navbar",
-          ".sidebar",
-          ".ads",
-          ".advertisement",
-          "iframe",
-          "script",
-          "style",
-          "link",
-          "meta",
+          "nav", "footer", "header", "[role='navigation']",
+          ".nav", ".navbar", ".sidebar", ".ads", ".advertisement",
+          "iframe", "script", "style", "link", "meta"
         ];
 
         elementsToRemove.forEach((selector) => {
           document.querySelectorAll(selector).forEach((el: Element) => el.remove());
         });
 
-        // Find main content
         const mainContent =
           document.querySelector("main") ||
           document.querySelector("article") ||
@@ -133,14 +142,18 @@ class Fetcher {
           document.querySelector(".content") ||
           document.querySelector("body");
 
-        if (!mainContent) {
-          return document.body.innerHTML;
-        }
-
-        return mainContent.innerHTML;
+        return mainContent?.innerHTML || document.body.innerHTML;
       });
 
+      const duration = Date.now() - startTime;
+      Logger.logFetch({ url, duration, success: true });
+
       return content;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      Logger.logFetch({ url, duration, success: false, error: errorMessage });
+      throw error;
     } finally {
       await page.close();
     }
@@ -149,12 +162,12 @@ class Fetcher {
   /**
    * Fetch multiple URLs and return results
    */
-  async fetchMultiple(urls: string[]): Promise<FetchResult[]> {
+  async fetchMultiple(urls: string[], timeout?: number): Promise<FetchResult[]> {
     const results: FetchResult[] = [];
 
     for (const url of urls) {
       try {
-        const html = await this.fetch(url);
+        const html = await this.fetch(url, timeout);
         results.push({
           url,
           success: true,

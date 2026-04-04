@@ -30,9 +30,9 @@ describe('fetchUrls', () => {
       vi.mocked(fetcher.fetchMultiple).mockResolvedValue(mockResults);
 
       const urls = ['https://example.com/1', 'https://example.com/2'];
-      const result = await fetchUrls(urls);
+      const result = await fetchUrls({ urls });
 
-      expect(fetcher.fetchMultiple).toHaveBeenCalledWith(urls);
+      expect(fetcher.fetchMultiple).toHaveBeenCalledWith(urls, undefined);
       expect(result).toContain('## URL: https://example.com/1');
       expect(result).toContain('# Article 1');
       expect(result).toContain('## URL: https://example.com/2');
@@ -55,7 +55,7 @@ describe('fetchUrls', () => {
 
       vi.mocked(fetcher.fetchMultiple).mockResolvedValue(mockResults);
 
-      const result = await fetchUrls(['https://example.com/1', 'https://example.com/2']);
+      const result = await fetchUrls({ urls: ['https://example.com/1', 'https://example.com/2'] });
 
       expect(result).toContain('---');
     });
@@ -71,7 +71,7 @@ describe('fetchUrls', () => {
 
       vi.mocked(fetcher.fetchMultiple).mockResolvedValue(mockResults);
 
-      const result = await fetchUrls(['https://example.com']);
+      const result = await fetchUrls({ urls: ['https://example.com'] });
 
       expect(result).toContain('## URL: https://example.com');
       expect(result).toContain('# Single URL');
@@ -96,10 +96,12 @@ describe('fetchUrls', () => {
 
       vi.mocked(fetcher.fetchMultiple).mockResolvedValue(mockResults);
 
-      const result = await fetchUrls([
-        'https://example.com/success',
-        'https://example.com/fail',
-      ]);
+      const result = await fetchUrls({
+        urls: [
+          'https://example.com/success',
+          'https://example.com/fail',
+        ],
+      });
 
       expect(result).toContain('## URL: https://example.com/success');
       expect(result).toContain('Success content');
@@ -125,10 +127,12 @@ describe('fetchUrls', () => {
 
       vi.mocked(fetcher.fetchMultiple).mockResolvedValue(mockResults);
 
-      const result = await fetchUrls([
-        'https://example.com/1',
-        'https://example.com/2',
-      ]);
+      const result = await fetchUrls({
+        urls: [
+          'https://example.com/1',
+          'https://example.com/2',
+        ],
+      });
 
       expect(result).toContain('**Error:** Timeout');
       expect(result).toContain('**Error:** Connection refused');
@@ -139,9 +143,9 @@ describe('fetchUrls', () => {
     test('handles empty array', async () => {
       vi.mocked(fetcher.fetchMultiple).mockResolvedValue([]);
 
-      const result = await fetchUrls([]);
+      const result = await fetchUrls({ urls: [] });
 
-      expect(fetcher.fetchMultiple).toHaveBeenCalledWith([]);
+      expect(fetcher.fetchMultiple).toHaveBeenCalledWith([], undefined);
       expect(result).toBe('');
     });
 
@@ -157,7 +161,7 @@ describe('fetchUrls', () => {
 
       vi.mocked(fetcher.fetchMultiple).mockResolvedValue(mockResults);
 
-      const result = await fetchUrls([url]);
+      const result = await fetchUrls({ urls: [url] });
 
       expect(result).toContain(`## URL: ${url}`);
     });
@@ -175,7 +179,7 @@ describe('fetchUrls', () => {
 
       vi.mocked(fetcher.fetchMultiple).mockResolvedValue(mockResults);
 
-      const result = await fetchUrls(['https://example.com']);
+      const result = await fetchUrls({ urls: ['https://example.com'] });
 
       // Check structure
       expect(result).toMatch(/## URL: https:\/\/example\.com/);
