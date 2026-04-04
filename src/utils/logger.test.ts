@@ -2,7 +2,7 @@
  * Logger unit tests
  */
 
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Logger, LogLevel } from './logger.js';
 import { initializeConfig, resetConfig } from '../config.js';
 
@@ -23,49 +23,58 @@ describe('Logger', () => {
 
   describe('log levels', () => {
     it('should log at DEBUG level', () => {
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error');
       Logger.debug('test debug message', { key: 'value' });
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[DEBUG]'));
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('test debug message'));
+      expect(consoleSpy).toHaveBeenCalled();
+      const call = consoleSpy.mock.calls[0]?.[0] as string;
+      expect(call).toContain('[DEBUG]');
+      expect(call).toContain('test debug message');
       consoleSpy.mockRestore();
     });
 
     it('should log at INFO level', () => {
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error');
       Logger.info('test info message');
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[INFO]'));
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('test info message'));
+      expect(consoleSpy).toHaveBeenCalled();
+      const call = consoleSpy.mock.calls[0]?.[0] as string;
+      expect(call).toContain('[INFO]');
+      expect(call).toContain('test info message');
       consoleSpy.mockRestore();
     });
 
     it('should log at WARN level', () => {
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error');
       Logger.warn('test warn message', { warning: 'data' });
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[WARN]'));
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('test warn message'));
+      expect(consoleSpy).toHaveBeenCalled();
+      const call = consoleSpy.mock.calls[0]?.[0] as string;
+      expect(call).toContain('[WARN]');
+      expect(call).toContain('test warn message');
       consoleSpy.mockRestore();
     });
 
     it('should log at ERROR level', () => {
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error');
       Logger.error('test error message');
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('[ERROR]'));
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('test error message'));
+      expect(consoleSpy).toHaveBeenCalled();
+      const call = consoleSpy.mock.calls[0]?.[0] as string;
+      expect(call).toContain('[ERROR]');
+      expect(call).toContain('test error message');
       consoleSpy.mockRestore();
     });
   });
 
   describe('log format', () => {
     it('should format logs as text by default', () => {
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       initializeConfig({ LOG_FORMAT: 'text' });
       Logger.info('test message');
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringMatching(/\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\]/));
+      const call = consoleSpy.mock.calls[0]?.[0] as string;
+      expect(call).toMatch(/\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\]/);
       consoleSpy.mockRestore();
     });
 
     it('should format logs as JSON when configured', () => {
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       initializeConfig({ LOG_FORMAT: 'json' });
       Logger.info('test message', { key: 'value' });
       expect(consoleSpy.mock.calls[0]?.[0]).toBeDefined();
@@ -83,10 +92,11 @@ describe('Logger', () => {
 
   describe('request IDs', () => {
     it('should include request ID when provided', () => {
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       const requestId = Logger.generateRequestId();
       Logger.info('test message', undefined, requestId);
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining(requestId));
+      const call = consoleSpy.mock.calls[0]?.[0] as string;
+      expect(call).toContain(requestId);
       consoleSpy.mockRestore();
     });
 
@@ -99,7 +109,7 @@ describe('Logger', () => {
 
   describe('fetch metrics', () => {
     it('should log successful fetch', () => {
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       const requestId = Logger.generateRequestId();
       Logger.logFetch({
         url: 'https://example.com',
@@ -107,12 +117,13 @@ describe('Logger', () => {
         success: true,
         requestId,
       });
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('success (150ms)'));
+      const call = consoleSpy.mock.calls[0]?.[0] as string;
+      expect(call).toContain('success (150ms)');
       consoleSpy.mockRestore();
     });
 
     it('should log failed fetch', () => {
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error');
       const requestId = Logger.generateRequestId();
       Logger.logFetch({
         url: 'https://example.com',
@@ -121,7 +132,9 @@ describe('Logger', () => {
         error: 'Network error',
         requestId,
       });
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('failed: Network error'));
+      expect(consoleSpy).toHaveBeenCalled();
+      const call = consoleSpy.mock.calls[0]?.[0] as string;
+      expect(call).toContain('failed: Network error');
       consoleSpy.mockRestore();
     });
 
@@ -147,7 +160,7 @@ describe('Logger', () => {
 
   describe('cache metrics', () => {
     it('should track cache hits', () => {
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       Logger.logCacheHit('example.com', 1024);
       const cacheMetrics = Logger.getCacheMetrics();
       expect(cacheMetrics.hits).toBe(1);
@@ -155,7 +168,7 @@ describe('Logger', () => {
     });
 
     it('should track cache misses', () => {
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
       Logger.logCacheMiss('example.com');
       const cacheMetrics = Logger.getCacheMetrics();
       expect(cacheMetrics.misses).toBe(1);
