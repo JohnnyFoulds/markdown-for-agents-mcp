@@ -12,6 +12,37 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { fetchUrl } from "./tools/fetchUrl.js";
 import { fetchUrls } from "./tools/fetchUrls.js";
+import { fetcher } from "./fetcher.js";
+import { Logger } from "./utils/logger.js";
+
+// Graceful shutdown handling
+let isShuttingDown = false;
+
+async function gracefulShutdown(signal: string): Promise<void> {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+
+  Logger.info(`Received ${signal}, initiating graceful shutdown...`);
+
+  try {
+    // Wait a short moment for in-flight requests to complete
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Close the browser
+    await fetcher.close();
+
+    Logger.info("Graceful shutdown completed");
+    process.exit(0);
+  } catch (error) {
+    Logger.error(`Error during shutdown: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    process.exit(1);
+  }
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 const server = new Server(
   {
@@ -70,6 +101,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["urls"],
         },
       },
+      {
+        name: "health_check",
+        description:
+          "Check the health status of the MCP server. Returns server status, cache statistics, " +
+          "and fetch metrics to verify the server is operating correctly.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+        },
+      },
     ],
   };
 });
@@ -112,6 +153,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     });
     return {
       content: [{ type: "text", text: results }],
+    };
+  }
+
+  if (name === "health_check") {
+    const health = Logger.getHealth();
+    return {
+      content: [{ type: "text", text: JSON.stringify(health, null, 2) }],
     };
   }
 
