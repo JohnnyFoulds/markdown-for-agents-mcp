@@ -4,6 +4,8 @@
  * Can be configured via environment variables to use blacklist mode
  */
 
+import { getConfig } from '../config.js';
+
 /**
  * Default blocklist of domains to never fetch
  * These are well-known problematic domains
@@ -65,36 +67,50 @@ const DEFAULT_URL_PATTERNS = [
   /\/admin\/|\/wp-admin\/|\/cpanel\/|\/phpmyadmin/i,
 ];
 
-// Load custom blocklist from environment if provided
-const CUSTOM_BLOCKLIST = process.env.BLOCKLIST_DOMAINS
-  ? new Set(process.env.BLOCKLIST_DOMAINS.split(',').map(d => d.trim().toLowerCase() as string))
-  : new Set();
+function getBlocklistConfigFromConfig(): {
+  useAllowlistMode: boolean;
+  customDomains: string[];
+  customPatterns: RegExp[];
+} {
+  try {
+    const config = getConfig();
+    const customDomains = config.BLOCKLIST_DOMAINS
+      ? config.BLOCKLIST_DOMAINS.split(',').map(d => d.trim().toLowerCase())
+      : [];
+    const customPatterns = config.BLOCKLIST_URL_PATTERNS
+      ? config.BLOCKLIST_URL_PATTERNS.split(',').map(p => new RegExp(p.trim(), 'i'))
+      : [];
 
-const CUSTOM_URL_PATTERNS = process.env.BLOCKLIST_URL_PATTERNS
-  ? process.env.BLOCKLIST_URL_PATTERNS.split(',').map(p => new RegExp(p.trim(), 'i')) as RegExp[]
-  : [];
-
-const USE_ALLOWLIST_MODE = process.env.USE_ALLOWLIST_MODE === 'true';
-
-// Combine default and custom blocklists
-const BLOCKLIST = new Set([...DEFAULT_BLOCKLIST, ...CUSTOM_BLOCKLIST]);
-
-// Combine default and custom URL patterns
-const URL_PATTERNS = [...DEFAULT_URL_PATTERNS, ...CUSTOM_URL_PATTERNS];
+    return {
+      useAllowlistMode: config.USE_ALLOWLIST_MODE,
+      customDomains,
+      customPatterns,
+    };
+  } catch {
+    // Return defaults when config is not initialized (e.g., in tests)
+    return {
+      useAllowlistMode: false,
+      customDomains: [],
+      customPatterns: [],
+    };
+  }
+}
 
 /**
  * Check if a domain should be blocked
  */
 export function isDomainBlocked(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
+  const { customDomains } = getBlocklistConfigFromConfig();
+  const blocklist = new Set([...DEFAULT_BLOCKLIST, ...customDomains]);
 
   // Check exact match first
-  if (BLOCKLIST.has(normalized)) {
+  if (blocklist.has(normalized)) {
     return true;
   }
 
   // Check subdomain patterns (e.g., evil.doubleclick.net)
-  for (const blocked of BLOCKLIST) {
+  for (const blocked of blocklist) {
     if (normalized.endsWith('.' + blocked)) {
       return true;
     }
@@ -107,7 +123,10 @@ export function isDomainBlocked(hostname: string): boolean {
  * Check if a URL path should be blocked based on patterns
  */
 export function isPathBlocked(pathname: string): boolean {
-  for (const pattern of URL_PATTERNS) {
+  const { customPatterns } = getBlocklistConfigFromConfig();
+  const patterns = [...DEFAULT_URL_PATTERNS, ...customPatterns];
+
+  for (const pattern of patterns) {
     if (pattern.test(pathname)) {
       return true;
     }
@@ -151,9 +170,10 @@ export function getBlocklistConfig(): {
   customDomains: string[];
   patternCount: number;
 } {
+  const { useAllowlistMode, customDomains, customPatterns } = getBlocklistConfigFromConfig();
   return {
-    mode: USE_ALLOWLIST_MODE ? 'allowlist' : 'blocklist',
-    customDomains: Array.from(CUSTOM_BLOCKLIST) as string[],
-    patternCount: URL_PATTERNS.length,
+    mode: useAllowlistMode ? 'allowlist' : 'blocklist',
+    customDomains,
+    patternCount: customPatterns.length + DEFAULT_URL_PATTERNS.length,
   };
 }

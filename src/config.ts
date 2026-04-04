@@ -26,7 +26,7 @@ const configSchema = z.object({
   CACHE_TTL_MS: z.string().default('900000').transform(Number), // 15 minutes
 
   // Security
-  USE_ALLOWLIST_MODE: z.string().transform(val => val === 'true').default('false'),
+  USE_ALLOWLIST_MODE: z.string().default('false').transform(val => val === 'true'),
   BLOCKLIST_DOMAINS: z.string().optional(),
   BLOCKLIST_URL_PATTERNS: z.string().optional(),
 });
@@ -37,27 +37,14 @@ export type Config = z.infer<typeof configSchema>;
  * Validate and parse configuration from environment variables
  */
 export function validateConfig(): Config {
-  try {
-    return configSchema.parse(process.env);
-  } catch (error) {
-    const zodError = error as { errors: z.ZodIssue[] };
-    const issues = zodError.errors.map((e) =>
+  const result = configSchema.safeParse(process.env);
+  if (!result.success) {
+    const issues = result.error.issues.map((e) =>
       `  - ${e.path.join('.')}: ${e.message}`
     ).join('\n');
     throw new Error(`Invalid configuration:\n${issues}`);
   }
-}
-
-/**
- * Parse a single environment variable as a number
- */
-function parseNumber(value: string | undefined, defaultValue: number): number {
-  if (value === undefined) return defaultValue;
-  const parsed = Number(value);
-  if (isNaN(parsed)) {
-    throw new Error(`Invalid number: ${value}`);
-  }
-  return parsed;
+  return result.data;
 }
 
 /**

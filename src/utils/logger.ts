@@ -22,7 +22,7 @@ function getLogLevel(): LogLevel {
     const config = getConfig();
     const levelKey = config.LOG_LEVEL as keyof typeof LogLevel;
     const levelValue = LogLevel[levelKey];
-    // Handle numeric enum where 0 (DEBUG) is falsy
+    // For numeric enums, string key lookup returns the numeric value (e.g., LogLevel['DEBUG'] === 0)
     return typeof levelValue === 'number' ? levelValue : LogLevel.INFO;
   } catch {
     return LogLevel.INFO;
@@ -35,7 +35,7 @@ function getLogLevel(): LogLevel {
 function getLogFormat(): 'text' | 'json' {
   try {
     const config = getConfig();
-    return (config.LOG_FORMAT === 'json' ? 'json' : 'text') as 'text' | 'json';
+    return config.LOG_FORMAT === 'json' ? 'json' : 'text';
   } catch {
     return 'text';
   }
@@ -44,7 +44,7 @@ function getLogFormat(): 'text' | 'json' {
 /**
  * Format a log entry for text output
  */
-function formatTextEntry(level: LogLevel, message: string, data?: object, requestId?: string): string {
+function formatTextEntry(level: LogLevel, message: string, _data?: object, requestId?: string): string {
   const timestamp = new Date().toISOString();
   const levelName = LogLevel[level];
   const prefix = `[${timestamp}] [${levelName}]`;
