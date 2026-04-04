@@ -13,19 +13,29 @@ import {
   RedirectBlockedError,
   RedirectLoopError,
 } from "./utils/errors.js";
+import { getConfig } from "./config.js";
 
-// Constants
-const MAX_CONTENT_LENGTH = 100000; // 100K characters truncation limit
-const DEFAULT_TIMEOUT = parseInt(process.env.FETCH_TIMEOUT_MS ?? '30000', 10);
-const DEFAULT_STABILIZATION_DELAY = parseInt(process.env.STABILIZATION_DELAY_MS ?? '2000', 10);
-const MAX_REDIRECTS = 10;
-const MAX_CONCURRENT_FETCHES = parseInt(process.env.MAX_CONCURRENT_FETCHES ?? '5', 10);
-
-// URL cache: 50MB limit, 15 minute TTL
+// URL cache: configured via config module
 const urlCache = new LRUCache<string>({
   maxBytes: 50 * 1024 * 1024,
   ttl: 15 * 60 * 1000,
 });
+
+// Helper to get config with fallback for initialization order
+function getFetcherConfig() {
+  try {
+    return getConfig();
+  } catch {
+    // Fallback if config not initialized yet
+    return {
+      FETCH_TIMEOUT_MS: 30000,
+      MAX_CONCURRENT_FETCHES: 5,
+      STABILIZATION_DELAY_MS: 2000,
+      MAX_REDIRECTS: 10,
+      MAX_CONTENT_LENGTH: 100000,
+    };
+  }
+}
 
 export interface FetchResult {
   url: string;
@@ -47,8 +57,11 @@ function generateUserAgent(): string {
 class Fetcher {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
-  private readonly timeout = DEFAULT_TIMEOUT;
   private readonly userAgent = generateUserAgent();
+
+  private getConfig() {
+    return getFetcherConfig();
+  }
 
   /**
    * Initialize browser and context once for reuse across fetches
@@ -129,7 +142,7 @@ class Fetcher {
    * Fetch a single URL and return HTML content
    */
   async fetch(url: string, timeout?: number, requestId?: string): Promise<string> {
-    const requestTimeout = timeout ?? this.timeout;
+    const requestTimeout = timeout ?? this.getConfig().FETCH_TIMEOUT_MS;
     const startTime = Date.now();
 
     // Validate URL format and check blocklist
@@ -156,7 +169,7 @@ class Fetcher {
     let html = '';
 
     try {
-      while (redirectCount < MAX_REDIRECTS) {
+      while (redirectCount < this.getConfig().MAX_REDIRECTS) {
         const page = await this.getPage();
 
         try {
@@ -201,7 +214,7 @@ class Fetcher {
           }
 
           // Wait for content to stabilize
-          await page.waitForTimeout(DEFAULT_STABILIZATION_DELAY);
+          await page.waitForTimeout(this.getConfig().STABILIZATION_DELAY_MS);
 
           // Extract main content using Readability library (if available)
           html = await page.evaluate(() => {
@@ -244,15 +257,15 @@ class Fetcher {
         }
       }
 
-      if (redirectCount >= MAX_REDIRECTS) {
-        throw new RedirectLoopError(MAX_REDIRECTS);
+      if (redirectCount >= this.getConfig().MAX_REDIRECTS) {
+        throw new RedirectLoopError(this.getConfig().MAX_REDIRECTS);
       }
 
       // Truncate content if too large
-      if (html.length > MAX_CONTENT_LENGTH) {
+      if (html.length > this.getConfig().MAX_CONTENT_LENGTH) {
         const truncatedSize = html.length;
-        html = html.slice(0, MAX_CONTENT_LENGTH);
-        console.warn(`[Truncated] ${url}: ${truncatedSize} -> ${MAX_CONTENT_LENGTH} chars`);
+        html = html.slice(0, this.getConfig().MAX_CONTENT_LENGTH);
+        console.warn(`[Truncated] ${url}: ${truncatedSize} -> ${this.getConfig().MAX_CONTENT_LENGTH} chars`);
       }
 
       // Cache successful result
@@ -298,8 +311,8 @@ class Fetcher {
     const batches: string[][] = [];
 
     // Split URLs into batches respecting MAX_CONCURRENT_FETCHES
-    for (let i = 0; i < urls.length; i += MAX_CONCURRENT_FETCHES) {
-      batches.push(urls.slice(i, i + MAX_CONCURRENT_FETCHES));
+    for (let i = 0; i < urls.length; i += this.getConfig().MAX_CONCURRENT_FETCHES) {
+      batches.push(urls.slice(i, i + this.getConfig().MAX_CONCURRENT_FETCHES));
     }
 
     // Process batches sequentially, with concurrent fetches within each batch

@@ -14,6 +14,7 @@ import { fetchUrl } from "./tools/fetchUrl.js";
 import { fetchUrls } from "./tools/fetchUrls.js";
 import { fetcher } from "./fetcher.js";
 import { Logger } from "./utils/logger.js";
+import { validateAndInitializeConfig } from "./config.js";
 
 // Graceful shutdown handling
 let isShuttingDown = false;
@@ -167,6 +168,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 async function main() {
+  // Validate and initialize configuration at startup
+  try {
+    validateAndInitializeConfig();
+    Logger.info("Configuration validated successfully");
+  } catch (error) {
+    console.error("Configuration error:", error instanceof Error ? error.message : "Unknown error");
+    process.exit(1);
+  }
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("markdown-for-agents-mcp server running on stdio");
