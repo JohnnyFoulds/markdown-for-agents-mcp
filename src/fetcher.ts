@@ -82,7 +82,38 @@ class Fetcher {
         userAgent: this.userAgent,
         extraHTTPHeaders: {
           'Accept-Language': 'en-US,en;q=0.9',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'DNT': '1',
+          'Connection': 'keep-alive',
+          'Cache-Control': 'no-cache',
         },
+        viewport: { width: 1920, height: 1080 },
+        deviceScaleFactor: 1,
+        isMobile: false,
+        hasTouch: false,
+        javaScriptEnabled: true,
+        bypassCSP: true,
+        colorScheme: 'light',
+        reducedMotion: 'no-preference',
+      });
+
+      // Add permissions and disable automation flags
+      await this.context.addInitScript(() => {
+        // Override the navigator.webdriver property
+        Object.defineProperty(navigator, 'webdriver', {
+          get: () => false,
+        });
+
+        // Mock plugins to look like a real browser
+        Object.defineProperty(navigator, 'plugins', {
+          get: () => [1, 2, 3, 4, 5],
+        });
+
+        // Mock languages
+        Object.defineProperty(navigator, 'languages', {
+          get: () => ['en-US', 'en'],
+        });
       });
     }
   }

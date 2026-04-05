@@ -12,6 +12,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { fetchUrl } from "./tools/fetchUrl.js";
 import { fetchUrls } from "./tools/fetchUrls.js";
+import { webSearch } from "./tools/webSearch.js";
 import { fetcher } from "./fetcher.js";
 import { Logger } from "./utils/logger.js";
 import { validateAndInitializeConfig } from "./config.js";
@@ -112,6 +113,45 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {},
         },
       },
+      {
+        name: "web_search",
+        description:
+          "Search the web using DuckDuckGo and optionally fetch results to markdown. " +
+          "Returns structured search results with title, URL, and snippet. " +
+          "Supports domain filtering via allowedDomains and blockedDomains.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description: "The search query to perform",
+            },
+            maxResults: {
+              type: "number",
+              description: "Maximum number of search results to return (default: 10)",
+            },
+            allowedDomains: {
+              type: "array",
+              items: { type: "string" },
+              description: "Only include results from these domains",
+            },
+            blockedDomains: {
+              type: "array",
+              items: { type: "string" },
+              description: "Exclude results from these domains",
+            },
+            fetchResults: {
+              type: "boolean",
+              description: "Fetch and convert top results to markdown (hybrid mode)",
+            },
+            timeout: {
+              type: "number",
+              description: "Request timeout in milliseconds (default: 30000)",
+            },
+          },
+          required: ["query"],
+        },
+      },
     ],
   };
 });
@@ -161,6 +201,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const health = Logger.getHealth();
     return {
       content: [{ type: "text", text: JSON.stringify(health, null, 2) }],
+    };
+  }
+
+  if (name === "web_search") {
+    if (!args || typeof args !== "object" || !("query" in args) || !args.query) {
+      throw new Error("Missing required argument: query");
+    }
+    const result = await webSearch({
+      query: String(args.query),
+      maxResults:
+        args.maxResults !== undefined ? Number(args.maxResults) : undefined,
+      allowedDomains: Array.isArray(args.allowedDomains) ? args.allowedDomains : undefined,
+      blockedDomains: Array.isArray(args.blockedDomains) ? args.blockedDomains : undefined,
+      fetchResults: args.fetchResults !== undefined ? !!args.fetchResults : undefined,
+      timeout:
+        args.timeout !== undefined ? Number(args.timeout) : undefined,
+    });
+    return {
+      content: [{ type: "text", text: result }],
     };
   }
 

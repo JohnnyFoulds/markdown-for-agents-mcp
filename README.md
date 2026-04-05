@@ -12,6 +12,8 @@ This tool enables AI agents to fetch web content from JavaScript-heavy websites 
 - **Content Extraction**: Automatically identifies and extracts main article content
 - **Boilerplate Removal**: Strips navigation, ads, headers, footers, and other non-essential elements
 - **Token Efficiency**: Produces clean, LLM-friendly markdown output
+- **Web Search**: DuckDuckGo search with optional fetch-to-markdown for top results
+- **Domain Filtering**: Block or allow specific domains in both fetch and search operations
 - **Cross-Platform**: Works on macOS, Linux, and Windows
 - **Zero Configuration**: Auto-installs all dependencies on first run
 
@@ -48,6 +50,10 @@ CACHE_TTL_MS=900000                 # Cache TTL (15 minutes)
 # Security
 USE_ALLOWLIST_MODE=false            # Only allow whitelisted domains
 BLOCKLIST_DOMAINS=                  # Comma-separated blocked domains
+
+# Web Search
+WEB_SEARCH_MAX_RESULTS=10           # Maximum search results to return
+WEB_SEARCH_DEFAULT_TIMEOUT_MS=30000 # Default timeout for search (ms)
 ```
 
 See `.env.example` for all options with descriptions.
@@ -132,6 +138,60 @@ fetch_urls(urls=[
 ...
 
 ---
+```
+
+#### `web_search`
+
+Searches DuckDuckGo and optionally fetches top results to markdown. Returns structured search results with title, URL, and snippet, plus optional full page content.
+
+**Arguments:**
+- `query` (string, required): The search query
+- `maxResults` (number, optional): Maximum results to return (default: 10)
+- `allowedDomains` (string[], optional): Only include results from these domains
+- `blockedDomains` (string[], optional): Exclude results from these domains
+- `fetchResults` (boolean, optional): Fetch and convert top results to markdown
+- `timeout` (number, optional): Request timeout in milliseconds
+
+**Example:**
+```typescript
+web_search(
+  query="typescript tutorials",
+  maxResults=5,
+  allowedDomains=["typescriptlang.org", "github.com"]
+)
+```
+
+**Example with fetchResults:**
+```typescript
+web_search(
+  query="react hooks guide",
+  fetchResults=true,
+  maxResults=3
+)
+```
+
+**Output (structured):**
+```markdown
+# Web Search Results
+
+## Query: typescript tutorials
+**Found 5 results in 1234ms**
+
+### Results:
+
+1. [TypeScript Handbook](https://www.typescriptlang.org/docs/)
+   The TypeScript Handbook provides comprehensive documentation...
+
+2. [Best TypeScript Tutorials](https://github.com/danistefanovic/build-your-own-typescript)
+   Learn TypeScript by building your own compiler...
+
+---
+
+## Fetched Content:
+
+### https://www.typescriptlang.org/docs/
+# TypeScript Documentation
+Content from the page...
 ```
 
 ## CLI Usage
