@@ -29,6 +29,10 @@ const configSchema = z.object({
   USE_ALLOWLIST_MODE: z.string().default('false').transform(val => val === 'true'),
   BLOCKLIST_DOMAINS: z.string().optional(),
   BLOCKLIST_URL_PATTERNS: z.string().optional(),
+
+  // Web Search
+  WEB_SEARCH_MAX_RESULTS: z.string().default('10').transform(Number),
+  WEB_SEARCH_DEFAULT_TIMEOUT_MS: z.string().default('30000').transform(Number),
 });
 
 export type Config = z.infer<typeof configSchema>;
