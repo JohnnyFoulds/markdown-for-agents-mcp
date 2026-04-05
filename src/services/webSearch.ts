@@ -76,19 +76,21 @@ function passesBlockedList(
 }
 
 /**
+ * Extract error message from error object with fallback
+ */
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown error";
+}
+
+/**
  * Parse DuckDuckGo HTML search results into structured data
  * Uses the /html endpoint which returns static HTML
- *
- * The page structure uses:
- *   <a class="result__a" href="//duckduckgo.com/l/?uddg=<encoded-url>&...">TITLE</a>
- *   <a class="result__snippet" href="...">SNIPPET</a>
- * Both anchors share the same href (the duckduckgo.com redirect URL)
  */
 export function parseSearchResults(html: string): SearchResult[] {
   const results: SearchResult[] = [];
   const seen = new Set<string>();
 
-  // Build a map from href → snippet (snippets are separate anchors)
+  // Build a map from href → snippet (snippets are separate anchors in DDG HTML)
   const snippetMap = new Map<string, string>();
   const snippetRe = /<a[^>]+class="result__snippet"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
   let m: RegExpExecArray | null;
@@ -108,15 +110,13 @@ export function parseSearchResults(html: string): SearchResult[] {
 
     if (!rawHref) continue;
 
-    // Decode the real URL from the DDG redirect wrapper
+    // Decode the real URL from the DDG redirect wrapper (uddg param)
     let url: string;
 
-    // Extract uddg parameter from redirect URL
-    // HTML uses &amp; instead of & so we need to handle both
     const uddgMatch = rawHref.match(/[?&]uddg=([^&]+(?:amp;)?)/);
     if (uddgMatch && uddgMatch[1]) {
       try {
-        // Remove &amp; suffix if present before decoding
+        // Remove &amp; suffix if present before decoding (DDG encodes ampersands as &amp;)
         let decoded = uddgMatch[1].replace(/&amp;$/, '&');
         url = decodeURIComponent(decoded);
       } catch {
@@ -151,6 +151,7 @@ export function filterResults(
   blockedDomains?: string[]
 ): SearchResult[] {
   return results.filter((result) => {
+    // Use domain from result if available, otherwise extract from URL
     const domain = result.domain || extractDomain(result.url);
     return (
       passesAllowedList(domain, allowedDomains) &&
@@ -167,15 +168,14 @@ export function filterResults(
  * @returns Promise resolving to the HTML content
  * @throws {Error} If request times out or redirect limit exceeded
  */
-async function fetchHtml(
+export async function fetchHtml(
   url: string,
   timeout: number,
   redirectCount: number = 0
 ): Promise<string> {
-  const MAX_REDIRECTS = 10;
-
-  if (redirectCount >= MAX_REDIRECTS) {
-    throw new Error(`Redirect limit exceeded (${MAX_REDIRECTS} hops)`);
+  // Prevent infinite redirect loops
+  if (redirectCount >= getConfig().MAX_REDIRECTS) {
+    throw new Error(`Redirect limit exceeded (${getConfig().MAX_REDIRECTS} hops)`);
   }
 
   return new Promise((resolve, reject) => {
@@ -200,7 +200,7 @@ async function fetchHtml(
     const chunks: Buffer[] = [];
 
     const req = client.request(options, (res: http.IncomingMessage) => {
-      // Handle redirects with counter
+      // Handle redirects with counter - recursively call fetchHtml for 3xx responses
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume();
         fetchHtml(res.headers.location, timeout, redirectCount + 1).then(resolve).catch(reject);
@@ -214,7 +214,7 @@ async function fetchHtml(
       res.on('end', async () => {
         let data = Buffer.concat(chunks);
 
-        // Decompress content based on encoding
+        // Decompress content based on encoding (gzip, brotli, deflate)
         try {
           const encoding = res.headers['content-encoding'];
           const zlib = await import('zlib');
@@ -249,7 +249,8 @@ async function fetchHtml(
  * Uses plain HTTP to avoid Playwright bot detection
  */
 export async function duckDuckGoSearch(
-  options: SearchOptions
+  options: SearchOptions,
+  fetchHtmlImpl: (url: string, timeout: number) => Promise<string> = fetchHtml
 ): Promise<SearchResponse> {
   const startTime = Date.now();
   const {
@@ -268,8 +269,8 @@ export async function duckDuckGoSearch(
   const searchUrl = `https://html.duckduckgo.com/html/?q=${encodedQuery}`;
 
   try {
-    // Fetch search results page using plain HTTP
-    const html = await fetchHtml(searchUrl, searchTimeout);
+    // Fetch search results page using plain HTTP (injectable for testing)
+    const html = await fetchHtmlImpl(searchUrl, searchTimeout);
 
     // Check for bot-challenge page (DDG anomaly modal)
     if (html.includes('anomaly-modal') || html.includes('DDoS protection') || html.length < 2000) {
@@ -290,23 +291,22 @@ export async function duckDuckGoSearch(
     let markdownResults: { url: string; markdown: string }[] | undefined;
 
     // Fetch and convert top results if requested (hybrid mode)
+    // Use Promise.all for parallel fetching to avoid N+1 latency issues
     if (fetchResults && results.length > 0) {
-      markdownResults = [];
-      for (const result of results) {
-        try {
-          const html = await fetcher.fetch(result.url, searchTimeout);
-          const markdown = converter.convertWithMetadata(html, result.url);
-          markdownResults.push({ url: result.url, markdown });
-        } catch (error) {
-          // Continue with other results if one fails
-          const errorMessage =
-            error instanceof Error ? error.message : "Unknown error";
-          markdownResults.push({
-            url: result.url,
-            markdown: `# Error fetching ${result.url}\n\n${errorMessage}\n`,
-          });
-        }
-      }
+      markdownResults = await Promise.all(
+        results.map(async (result) => {
+          try {
+            const html = await fetcher.fetch(result.url, searchTimeout);
+            const markdown = converter.convertWithMetadata(html, result.url);
+            return { url: result.url, markdown };
+          } catch (error) {
+            return {
+              url: result.url,
+              markdown: `# Error fetching ${result.url}\n\n${getErrorMessage(error)}\n`,
+            };
+          }
+        })
+      );
     }
 
     const durationMs = Date.now() - startTime;
@@ -319,7 +319,6 @@ export async function duckDuckGoSearch(
     };
   } catch (error) {
     const durationMs = Date.now() - startTime;
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
 
     return {
       query,
@@ -328,7 +327,7 @@ export async function duckDuckGoSearch(
       markdownResults: [
         {
           url: searchUrl,
-          markdown: `# Search Error\n\nFailed to perform search: ${errorMessage}\n`,
+          markdown: `# Search Error\n\nFailed to perform search: ${getErrorMessage(error)}\n`,
         },
       ],
     };

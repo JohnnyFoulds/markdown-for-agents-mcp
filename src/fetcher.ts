@@ -15,13 +15,16 @@ import {
 } from "./utils/errors.js";
 import { getConfig } from "./config.js";
 
-// URL cache: configured via config module
+// URL cache: configured via config module (50MB max, 15min TTL)
 const urlCache = new LRUCache<string>({
   maxBytes: 50 * 1024 * 1024,
   ttl: 15 * 60 * 1000,
 });
 
-// Helper to get config with fallback for initialization order
+/**
+ * Get fetcher configuration with fallback for initialization order
+ * Used to handle cases where config is accessed before initialization
+ */
 function getFetcherConfig() {
   try {
     return getConfig();
@@ -47,6 +50,7 @@ export interface FetchResult {
 
 /**
  * Generates a generic user agent that blends in with regular browsers
+ * Randomizes Chrome version to avoid fingerprinting
  */
 function generateUserAgent(): string {
   const versions = ['120.0.0.0', '121.0.0.0', '122.0.0.0', '123.0.0.0'];
@@ -98,19 +102,15 @@ class Fetcher {
         reducedMotion: 'no-preference',
       });
 
-      // Add permissions and disable automation flags
       await this.context.addInitScript(() => {
-        // Override the navigator.webdriver property
         Object.defineProperty(navigator, 'webdriver', {
           get: () => false,
         });
 
-        // Mock plugins to look like a real browser
         Object.defineProperty(navigator, 'plugins', {
           get: () => [1, 2, 3, 4, 5],
         });
 
-        // Mock languages
         Object.defineProperty(navigator, 'languages', {
           get: () => ['en-US', 'en'],
         });
@@ -120,6 +120,7 @@ class Fetcher {
 
   /**
    * Get or create a new page for fetching
+   * Creates a fresh page for each fetch to isolate state
    */
   private async getPage(): Promise<Page> {
     await this.initialize();
@@ -147,6 +148,7 @@ class Fetcher {
 
   /**
    * Check if redirect is allowed (same host only)
+   * Blocks cross-origin redirects and blocked domains
    */
   private isPermittedRedirect(originalUrl: string, redirectUrl: string): boolean {
     try {
@@ -171,33 +173,35 @@ class Fetcher {
 
   /**
    * Fetch a single URL and return HTML content
+   * Handles redirects, caching, and content extraction
    */
   async fetch(url: string, timeout?: number, requestId?: string): Promise<string> {
-    const requestTimeout = timeout ?? this.getConfig().FETCH_TIMEOUT_MS;
-    const startTime = Date.now();
+  const requestTimeout = timeout ?? this.getConfig().FETCH_TIMEOUT_MS;
+  const startTime = Date.now();
 
-    // Validate URL format and check blocklist
-    const validation = validateUrl(url);
-    if (!validation.valid) {
-      throw new Error(validation.error);
-    }
+  // Validate URL format and check blocklist
+  const validation = validateUrl(url);
+  if (!validation.valid) {
+    throw new Error(validation.error);
+  }
 
-    // Try cache first
-    const cached = urlCache.get(url);
-    if (cached) {
-      const hostname = new URL(url).hostname;
-      Logger.logCacheHit(hostname, Buffer.byteLength(cached, 'utf8'), requestId);
-      const stats = urlCache.getStats();
-      Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
-      return cached;
-    }
+  // Extract hostname once for logging and caching
+  const hostname = new URL(url).hostname;
 
-    const hostname = new URL(url).hostname;
-    Logger.logCacheMiss(hostname, requestId);
+  // Try cache first (avoids redundant network requests)
+  const cached = urlCache.get(url);
+  if (cached) {
+    Logger.logCacheHit(hostname, Buffer.byteLength(cached, 'utf8'), requestId);
+    const stats = urlCache.getStats();
+    Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
+    return cached;
+  }
 
-    let currentUrl = url;
-    let redirectCount = 0;
-    let html = '';
+  Logger.logCacheMiss(hostname, requestId);
+
+  let currentUrl = url;
+  let redirectCount = 0;
+  let html = '';
 
     try {
       while (redirectCount < this.getConfig().MAX_REDIRECTS) {
@@ -216,7 +220,7 @@ class Fetcher {
 
           if (pageResponse) {
             status = pageResponse.status();
-            // Handle both function and property access for headers
+            // Handle both function and property access for headers (Playwright API variations)
             const headers = typeof pageResponse.headers === 'function'
               ? pageResponse.headers()
               : pageResponse.headers || {};
@@ -244,22 +248,16 @@ class Fetcher {
             continue;
           }
 
-          // Wait for content to stabilize
-          await page.waitForTimeout(this.getConfig().STABILIZATION_DELAY_MS);
-
-          // Extract main content using Readability library (if available)
           html = await page.evaluate(() => {
-            // Try to use Readability if available
-            const Readability = (globalThis as any).Readability ||
-              (typeof require !== 'undefined' ? require('readability') : null);
+  const Readability = (globalThis as any).Readability ||
+    (typeof require !== 'undefined' ? require('readability') : null);
 
-            if (Readability && Readability.Readability) {
-              const article = new Readability.Readability(document).parse();
-              return article?.content || document.body.innerHTML;
-            }
+  if (Readability && Readability.Readability) {
+    const article = new Readability.Readability(document).parse();
+    return article?.content || document.body.innerHTML;
+  }
 
-            // Fallback to original selector-based extraction
-            const elementsToRemove = [
+  const elementsToRemove = [
               "nav", "footer", "header", "[role='navigation']",
               ".nav", ".navbar", ".sidebar", ".ads", ".advertisement",
               "iframe", "script", "style", "link", "meta"
@@ -292,21 +290,19 @@ class Fetcher {
         throw new RedirectLoopError(this.getConfig().MAX_REDIRECTS);
       }
 
-      // Truncate content if too large
       if (html.length > this.getConfig().MAX_CONTENT_LENGTH) {
-        const truncatedSize = html.length;
-        html = html.slice(0, this.getConfig().MAX_CONTENT_LENGTH);
-        console.warn(`[Truncated] ${url}: ${truncatedSize} -> ${this.getConfig().MAX_CONTENT_LENGTH} chars`);
-      }
+  const truncatedSize = html.length;
+  html = html.slice(0, this.getConfig().MAX_CONTENT_LENGTH);
+  console.warn(`[Truncated] ${url}: ${truncatedSize} -> ${this.getConfig().MAX_CONTENT_LENGTH} chars`);
+}
 
-      // Cache successful result
-      try {
-        urlCache.set(url, html, Buffer.byteLength(html, 'utf8'));
-        const stats = urlCache.getStats();
-        Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
-      } catch {
-        // Cache full or error, continue without caching
-      }
+try {
+  urlCache.set(url, html, Buffer.byteLength(html, 'utf8'));
+  const stats = urlCache.getStats();
+  Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
+} catch {
+  // Cache full or error, continue without caching
+}
 
       const duration = Date.now() - startTime;
       Logger.logFetch({ url, duration, success: true, requestId });
@@ -318,15 +314,13 @@ class Fetcher {
 
       Logger.logFetch({ url, duration, success: false, error: errorMessage, requestId });
 
-      // Re-throw specific errors
       if (error instanceof DomainBlockedError ||
-          error instanceof RedirectBlockedError ||
-          error instanceof RedirectLoopError) {
-        throw error;
-      }
+    error instanceof RedirectBlockedError ||
+    error instanceof RedirectLoopError) {
+  throw error;
+}
 
-      // Wrap timeout errors
-      if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
+if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
         throw new FetchTimeoutError(url, requestTimeout);
       }
 
@@ -335,18 +329,20 @@ class Fetcher {
   }
 
   /**
-   * Fetch multiple URLs with concurrency limiting and return results
+   * Fetch multiple URLs in parallel batches
+   * Processes URLs in configurable batch sizes (default: 5 concurrent)
+   * Returns fetch results for each URL with success status and content
    */
   async fetchMultiple(urls: string[], timeout?: number): Promise<FetchResult[]> {
     const results: FetchResult[] = [];
     const batches: string[][] = [];
 
-    // Split URLs into batches respecting MAX_CONCURRENT_FETCHES
+    // Split URLs into batches for parallel processing
     for (let i = 0; i < urls.length; i += this.getConfig().MAX_CONCURRENT_FETCHES) {
       batches.push(urls.slice(i, i + this.getConfig().MAX_CONCURRENT_FETCHES));
     }
 
-    // Process batches sequentially, with concurrent fetches within each batch
+    // Process each batch concurrently
     for (const batch of batches) {
       const batchPromises = batch.map(async (url) => {
         try {
@@ -369,6 +365,7 @@ class Fetcher {
         }
       });
 
+      // Process all URLs in batch concurrently
       const batchResults = await Promise.all(batchPromises);
       results.push(...batchResults);
     }

@@ -17,7 +17,6 @@ import { fetcher } from "./fetcher.js";
 import { Logger } from "./utils/logger.js";
 import { validateAndInitializeConfig } from "./config.js";
 
-// Graceful shutdown handling
 let isShuttingDown = false;
 
 async function gracefulShutdown(signal: string): Promise<void> {
@@ -29,12 +28,8 @@ async function gracefulShutdown(signal: string): Promise<void> {
   Logger.info(`Received ${signal}, initiating graceful shutdown...`);
 
   try {
-    // Wait a short moment for in-flight requests to complete
     await new Promise(resolve => setTimeout(resolve, 100));
-
-    // Close the browser
     await fetcher.close();
-
     Logger.info("Graceful shutdown completed");
     process.exit(0);
   } catch (error) {
@@ -58,7 +53,6 @@ const server = new Server(
   }
 );
 
-// List available tools
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
@@ -156,7 +150,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
-// Handle tool calls
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
@@ -227,7 +220,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 async function main() {
-  // Validate and initialize configuration at startup
   try {
     validateAndInitializeConfig();
     Logger.info("Configuration validated successfully");
