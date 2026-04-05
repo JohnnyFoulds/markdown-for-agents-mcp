@@ -14,9 +14,6 @@ export enum LogLevel {
   ERROR = 3,
 }
 
-/**
- * Get the current log level from config
- */
 function getLogLevel(): LogLevel {
   try {
     const config = getConfig();
@@ -29,9 +26,6 @@ function getLogLevel(): LogLevel {
   }
 }
 
-/**
- * Get the log format from config ('text' or 'json')
- */
 function getLogFormat(): 'text' | 'json' {
   try {
     const config = getConfig();
@@ -41,9 +35,6 @@ function getLogFormat(): 'text' | 'json' {
   }
 }
 
-/**
- * Format a log entry for text output
- */
 function formatTextEntry(level: LogLevel, message: string, _data?: object, requestId?: string): string {
   const timestamp = new Date().toISOString();
   const levelName = LogLevel[level];
@@ -56,9 +47,6 @@ function formatTextEntry(level: LogLevel, message: string, _data?: object, reque
   return `${prefix} ${message}`;
 }
 
-/**
- * Format a log entry for JSON output
- */
 function formatJsonEntry(level: LogLevel, message: string, data?: object, requestId?: string): string {
   const entry: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
@@ -104,6 +92,7 @@ interface CacheMetrics {
 }
 
 export class Logger {
+  private static readonly MAX_METRICS = 1000;
   private static metrics: FetchMetrics[] = [];
   private static domainMetrics: Map<string, DomainMetrics> = new Map();
   private static cacheMetrics: CacheMetrics = {
@@ -114,9 +103,6 @@ export class Logger {
     maxBytes: 0,
   };
 
-  /**
-   * Log a message at the specified level
-   */
   static log(level: LogLevel, message: string, data?: object, requestId?: string): void {
     const logLevel = getLogLevel();
     if (level < logLevel) return;
@@ -129,37 +115,22 @@ export class Logger {
     console.error(entry);
   }
 
-  /**
-   * Log at DEBUG level
-   */
   static debug(message: string, data?: object, requestId?: string): void {
     this.log(LogLevel.DEBUG, message, data, requestId);
   }
 
-  /**
-   * Log at INFO level
-   */
   static info(message: string, data?: object, requestId?: string): void {
     this.log(LogLevel.INFO, message, data, requestId);
   }
 
-  /**
-   * Log at WARN level
-   */
   static warn(message: string, data?: object, requestId?: string): void {
     this.log(LogLevel.WARN, message, data, requestId);
   }
 
-  /**
-   * Log at ERROR level
-   */
   static error(message: string, data?: object, requestId?: string): void {
     this.log(LogLevel.ERROR, message, data, requestId);
   }
 
-  /**
-   * Generate a unique request ID for tracing
-   */
   static generateRequestId(): string {
     return crypto.randomUUID();
   }
@@ -168,28 +139,27 @@ export class Logger {
    * Log a fetch operation with metrics
    */
   static logFetch(metrics: FetchMetrics): void {
-    this.metrics.push(metrics);
+  if (this.metrics.length >= this.MAX_METRICS) {
+    this.metrics = this.metrics.slice(-Math.floor(this.MAX_METRICS / 2));
+  }
+  this.metrics.push(metrics);
 
-    // Track domain metrics
-    try {
-      const hostname = new URL(metrics.url).hostname;
-      this.updateDomainMetrics(hostname, metrics);
-    } catch {
-      // Ignore URL parsing errors
-    }
-
-    const level = metrics.success ? LogLevel.DEBUG : LogLevel.ERROR;
-    const requestId = metrics.requestId;
-    const status = metrics.success
-      ? `success (${metrics.duration}ms)`
-      : `failed: ${metrics.error}`;
-
-    this.log(level, `[Fetch] ${metrics.url} - ${status}`, undefined, requestId);
+  try {
+    const hostname = new URL(metrics.url).hostname;
+    this.updateDomainMetrics(hostname, metrics);
+  } catch {
+    // Ignore URL parsing errors
   }
 
-  /**
-   * Log a cache hit
-   */
+  const level = metrics.success ? LogLevel.DEBUG : LogLevel.ERROR;
+  const requestId = metrics.requestId;
+  const status = metrics.success
+    ? `success (${metrics.duration}ms)`
+    : `failed: ${metrics.error}`;
+
+  this.log(level, `[Fetch] ${metrics.url} - ${status}`, undefined, requestId);
+}
+
   static logCacheHit(hostname: string, size: number, requestId?: string): void {
     this.cacheMetrics.hits++;
     this.updateDomainMetrics(hostname, {
@@ -202,9 +172,6 @@ export class Logger {
     this.log(LogLevel.DEBUG, `[Cache] HIT ${hostname} - ${size} bytes`, { size }, requestId);
   }
 
-  /**
-   * Log a cache miss
-   */
   static logCacheMiss(hostname: string, requestId?: string): void {
     this.cacheMetrics.misses++;
     this.updateDomainMetrics(hostname, {
@@ -217,39 +184,24 @@ export class Logger {
     this.log(LogLevel.DEBUG, `[Cache] MISS ${hostname}`, undefined, requestId);
   }
 
-  /**
-   * Update cache statistics
-   */
   static updateCacheStats(size: number, bytes: number, maxBytes: number): void {
     this.cacheMetrics.currentSize = size;
     this.cacheMetrics.totalBytes = bytes;
     this.cacheMetrics.maxBytes = maxBytes;
   }
 
-  /**
-   * Get all fetch metrics
-   */
   static getMetrics(): FetchMetrics[] {
     return this.metrics;
   }
 
-  /**
-   * Get domain metrics
-   */
   static getDomainMetrics(): Map<string, DomainMetrics> {
     return this.domainMetrics;
   }
 
-  /**
-   * Get cache metrics
-   */
   static getCacheMetrics(): CacheMetrics {
     return this.cacheMetrics;
   }
 
-  /**
-   * Clear all metrics
-   */
   static clearMetrics(): void {
     this.metrics = [];
     this.domainMetrics.clear();
@@ -262,9 +214,6 @@ export class Logger {
     };
   }
 
-  /**
-   * Get a summary of fetch metrics
-   */
   static getSummary(): {
     totalFetches: number;
     successCount: number;
@@ -290,9 +239,6 @@ export class Logger {
     };
   }
 
-  /**
-   * Get server health status
-   */
   static getHealth(): {
     status: 'healthy' | 'unhealthy';
     cache: CacheMetrics;

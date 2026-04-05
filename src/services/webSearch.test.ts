@@ -26,17 +26,30 @@ beforeAll(() => {
 });
 
 describe('parseSearchResults', () => {
+  // Helper to create mock DDG HTML with proper uddg redirect format
+  const createMockDDGHtml = (results: Array<{ title: string; url: string; snippet: string }>) => {
+    const html = results.map(
+      (r) => `
+      <div class="result__body">
+        <p class="result__snippet">
+          <a class="result__snippet" href="/l/?uddg=${encodeURIComponent(r.url)}">${r.snippet}</a>
+        </p>
+        <ul class="result__links">
+          <li>
+            <a class="result__a" href="/l/?uddg=${encodeURIComponent(r.url)}">${r.title}</a>
+          </li>
+        </ul>
+      </div>
+    `
+    ).join('\n');
+    return `<!DOCTYPE html><html><head><title>Results</title></head><body><div id="web">${html}</div></body></html>`;
+  };
+
   test('parses valid DuckDuckGo search results', () => {
-    const html = `
-      <div class="result__body">
-        <a class="result__a" href="https://example.com">Example Title</a>
-        <span class="result__snippet">Example snippet text</span>
-      </div>
-      <div class="result__body">
-        <a class="result__a" href="https://other.com/other">Other Title</a>
-        <span class="result__snippet">Other snippet text</span>
-      </div>
-    `;
+    const html = createMockDDGHtml([
+      { title: 'Example Title', url: 'https://example.com', snippet: 'Example snippet text' },
+      { title: 'Other Title', url: 'https://other.com/other', snippet: 'Other snippet text' },
+    ]);
 
     const results = parseSearchResults(html);
 
@@ -56,11 +69,9 @@ describe('parseSearchResults', () => {
   });
 
   test('handles results without snippets', () => {
-    const html = `
-      <div class="result__body">
-        <a class="result__a" href="https://example.com">Title without snippet</a>
-      </div>
-    `;
+    const html = createMockDDGHtml([
+      { title: 'Title without snippet', url: 'https://example.com', snippet: '' },
+    ]);
 
     const results = parseSearchResults(html);
 
@@ -86,11 +97,9 @@ describe('parseSearchResults', () => {
   });
 
   test('handles ampersand encoding in URLs', () => {
-    const html = `
-      <div class="result__body">
-        <a class="result__a" href="https://example.com/path?a=1&amp;b=2">Title</a>
-      </div>
-    `;
+    const html = createMockDDGHtml([
+      { title: 'Title', url: 'https://example.com/path?a=1&b=2', snippet: 'Snippet' },
+    ]);
 
     const results = parseSearchResults(html);
 
@@ -149,98 +158,106 @@ describe('filterResults', () => {
 });
 
 describe('duckDuckGoSearch', () => {
+  // Suppress stderr warnings during tests
+  const stderrWrite = process.stderr.write;
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  });
+  afterEach(() => {
+    process.stderr.write = stderrWrite;
+    vi.restoreAllMocks();
   });
 
-  test('performs search and returns results', async () => {
-    const mockHtml = `
+  // Helper to create mock DDG HTML with proper uddg redirect format
+  const createMockDDGHtml = (results: Array<{ title: string; url: string; snippet: string }>) => {
+    const html = results.map(
+      (r) => `
       <div class="result__body">
-        <a class="result__a" href="https://example.com">Example</a>
-        <span class="result__snippet">Snippet</span>
+        <p class="result__snippet">
+          <a class="result__snippet" href="/l/?uddg=${encodeURIComponent(r.url)}">${r.snippet}</a>
+        </p>
+        <ul class="result__links">
+          <li>
+            <a class="result__a" href="/l/?uddg=${encodeURIComponent(r.url)}">${r.title}</a>
+          </li>
+        </ul>
       </div>
-    `;
+    `
+    ).join('\n');
+    return `<!DOCTYPE html><html><head><title>Results</title></head><body><div id="web">${html}</div></body></html>`;
+  };
 
-    vi.mocked(fetcher.fetch).mockResolvedValue(mockHtml);
+  test('performs search and returns results', async () => {
+    const mockSearchHtml = createMockDDGHtml([
+      { title: 'Example', url: 'https://example.com', snippet: 'Snippet' },
+    ]);
+    const mockPageHtml = '<html><body>Page content</body></html>';
 
-    const result = await duckDuckGoSearch({ query: 'test query', maxResults: 10 });
+    const mockFetchHtml = vi.fn().mockResolvedValue(mockSearchHtml);
+    vi.mocked(fetcher.fetch).mockResolvedValue(mockPageHtml);
 
-    expect(fetcher.fetch).toHaveBeenCalled();
+    const result = await duckDuckGoSearch({ query: 'test query', maxResults: 10 }, mockFetchHtml);
+
     expect(result.query).toBe('test query');
     expect(result.results.length).toBe(1);
     expect(result.results[0]?.title).toBe('Example');
+    expect(result.results[0]?.url).toBe('https://example.com');
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
   });
 
   test('respects maxResults limit', async () => {
-    const mockHtml = `
-      <div class="result__body">
-        <a class="result__a" href="https://example.com/1">Result 1</a>
-        <span class="result__snippet">Snippet 1</span>
-      </div>
-      <div class="result__body">
-        <a class="result__a" href="https://example.com/2">Result 2</a>
-        <span class="result__snippet">Snippet 2</span>
-      </div>
-      <div class="result__body">
-        <a class="result__a" href="https://example.com/3">Result 3</a>
-        <span class="result__snippet">Snippet 3</span>
-      </div>
-    `;
+    const mockSearchHtml = createMockDDGHtml([
+      { title: 'Result 1', url: 'https://example.com/1', snippet: 'Snippet 1' },
+      { title: 'Result 2', url: 'https://example.com/2', snippet: 'Snippet 2' },
+      { title: 'Result 3', url: 'https://example.com/3', snippet: 'Snippet 3' },
+    ]);
 
-    vi.mocked(fetcher.fetch).mockResolvedValue(mockHtml);
+    const mockFetchHtml = vi.fn().mockResolvedValue(mockSearchHtml);
 
-    const result = await duckDuckGoSearch({ query: 'test', maxResults: 2 });
+    const result = await duckDuckGoSearch({ query: 'test', maxResults: 2 }, mockFetchHtml);
 
     expect(result.results.length).toBe(2);
   });
 
   test('filters by allowedDomains', async () => {
-    const mockHtml = `
-      <div class="result__body">
-        <a class="result__a" href="https://allowed.com">Allowed</a>
-      </div>
-      <div class="result__body">
-        <a class="result__a" href="https://blocked.com">Blocked</a>
-      </div>
-    `;
+    const mockSearchHtml = createMockDDGHtml([
+      { title: 'Allowed', url: 'https://allowed.com', snippet: '' },
+      { title: 'Blocked', url: 'https://blocked.com', snippet: '' },
+    ]);
 
-    vi.mocked(fetcher.fetch).mockResolvedValue(mockHtml);
+    const mockFetchHtml = vi.fn().mockResolvedValue(mockSearchHtml);
 
-    const result = await duckDuckGoSearch({
-      query: 'test',
-      allowedDomains: ['allowed.com'],
-    });
+    const result = await duckDuckGoSearch(
+      { query: 'test', allowedDomains: ['allowed.com'] },
+      mockFetchHtml
+    );
 
     expect(result.results.length).toBe(1);
     expect(result.results[0]?.domain).toBe('allowed.com');
   });
 
   test('filters by blockedDomains', async () => {
-    const mockHtml = `
-      <div class="result__body">
-        <a class="result__a" href="https://allowed.com">Allowed</a>
-      </div>
-      <div class="result__body">
-        <a class="result__a" href="https://blocked.com">Blocked</a>
-      </div>
-    `;
+    const mockSearchHtml = createMockDDGHtml([
+      { title: 'Allowed', url: 'https://allowed.com', snippet: '' },
+      { title: 'Blocked', url: 'https://blocked.com', snippet: '' },
+    ]);
 
-    vi.mocked(fetcher.fetch).mockResolvedValue(mockHtml);
+    const mockFetchHtml = vi.fn().mockResolvedValue(mockSearchHtml);
 
-    const result = await duckDuckGoSearch({
-      query: 'test',
-      blockedDomains: ['blocked.com'],
-    });
+    const result = await duckDuckGoSearch(
+      { query: 'test', blockedDomains: ['blocked.com'] },
+      mockFetchHtml
+    );
 
     expect(result.results.length).toBe(1);
     expect(result.results[0]?.domain).toBe('allowed.com');
   });
 
   test('handles fetch errors gracefully', async () => {
-    vi.mocked(fetcher.fetch).mockRejectedValue(new Error('Network error'));
+    const mockFetchHtml = vi.fn().mockRejectedValue(new Error('Network error'));
 
-    const result = await duckDuckGoSearch({ query: 'test' });
+    const result = await duckDuckGoSearch({ query: 'test' }, mockFetchHtml);
 
     expect(result.query).toBe('test');
     expect(result.results.length).toBe(0);
@@ -249,24 +266,18 @@ describe('duckDuckGoSearch', () => {
   });
 
   test('fetches markdown results when fetchResults is true', async () => {
-    const mockSearchHtml = `
-      <div class="result__body">
-        <a class="result__a" href="https://example.com">Example</a>
-        <span class="result__snippet">Snippet</span>
-      </div>
-    `;
-
+    const mockSearchHtml = createMockDDGHtml([
+      { title: 'Example', url: 'https://example.com', snippet: 'Snippet' },
+    ]);
     const mockPageHtml = '<h1>Page Content</h1><p>More content</p>';
 
-    vi.mocked(fetcher.fetch)
-      .mockResolvedValueOnce(mockSearchHtml)
-      .mockResolvedValueOnce(mockPageHtml);
+    const mockFetchHtml = vi.fn().mockResolvedValue(mockSearchHtml);
+    vi.mocked(fetcher.fetch).mockResolvedValue(mockPageHtml);
 
-    const result = await duckDuckGoSearch({
-      query: 'test',
-      fetchResults: true,
-      maxResults: 1,
-    });
+    const result = await duckDuckGoSearch(
+      { query: 'test', fetchResults: true, maxResults: 1 },
+      mockFetchHtml
+    );
 
     expect(result.markdownResults).toBeDefined();
     expect(result.markdownResults?.length).toBe(1);
@@ -274,51 +285,40 @@ describe('duckDuckGoSearch', () => {
   });
 
   test('continues with other results if one fetch fails', async () => {
-    const mockSearchHtml = `
-      <div class="result__body">
-        <a class="result__a" href="https://example.com/1">Result 1</a>
-      </div>
-      <div class="result__body">
-        <a class="result__a" href="https://example.com/2">Result 2</a>
-      </div>
-    `;
-
+    const mockSearchHtml = createMockDDGHtml([
+      { title: 'Result 1', url: 'https://example.com/1', snippet: '' },
+      { title: 'Result 2', url: 'https://example.com/2', snippet: '' },
+    ]);
     const mockPageHtml = '<h1>Page Content</h1>';
 
+    const mockFetchHtml = vi.fn().mockResolvedValue(mockSearchHtml);
     vi.mocked(fetcher.fetch)
-      .mockResolvedValueOnce(mockSearchHtml)
       .mockResolvedValueOnce(mockPageHtml)
       .mockRejectedValueOnce(new Error('Network error'));
 
-    const result = await duckDuckGoSearch({
-      query: 'test',
-      fetchResults: true,
-      maxResults: 2,
-    });
+    const result = await duckDuckGoSearch(
+      { query: 'test', fetchResults: true, maxResults: 2 },
+      mockFetchHtml
+    );
 
     expect(result.markdownResults).toBeDefined();
     expect(result.markdownResults?.length).toBe(2);
-    // Check that the second result has an error message
     expect(result.markdownResults?.[1]?.markdown).toContain('Error fetching');
   });
 
   test('includes fetched content in response', async () => {
-    const mockSearchHtml = `
-      <div class="result__body">
-        <a class="result__a" href="https://example.com">Result</a>
-      </div>
-    `;
+    const mockSearchHtml = createMockDDGHtml([
+      { title: 'Result', url: 'https://example.com', snippet: '' },
+    ]);
     const mockPageHtml = '<h1>Test Content</h1>';
 
-    vi.mocked(fetcher.fetch)
-      .mockResolvedValueOnce(mockSearchHtml)
-      .mockResolvedValueOnce(mockPageHtml);
+    const mockFetchHtml = vi.fn().mockResolvedValue(mockSearchHtml);
+    vi.mocked(fetcher.fetch).mockResolvedValue(mockPageHtml);
 
-    const result = await duckDuckGoSearch({
-      query: 'test',
-      fetchResults: true,
-      maxResults: 1,
-    });
+    const result = await duckDuckGoSearch(
+      { query: 'test', fetchResults: true, maxResults: 1 },
+      mockFetchHtml
+    );
 
     expect(result.markdownResults?.[0]?.markdown).toContain('Test Content');
   });
