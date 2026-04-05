@@ -4,7 +4,7 @@ import { initializeConfig } from '../config.js';
 
 // Mock fetcher at the dependency level - duckDuckGoSearch uses fetcher for markdownResults
 vi.mock('../fetcher.js', () => ({
-  fetcher: { fetch: vi.fn() },
+  fetcher: { fetch: vi.fn(), fetchMultiple: vi.fn() },
 }));
 
 import { fetcher } from '../fetcher.js';
@@ -198,8 +198,10 @@ describe('duckDuckGoSearch Integration', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    // Mock fetcher for markdownResults (used when fetchResults: true)
-    vi.mocked(fetcher.fetch).mockResolvedValue('<html><body>content</body></html>');
+    // Mock fetcher.fetchMultiple for markdownResults (used when fetchResults: true)
+    vi.mocked(fetcher.fetchMultiple).mockResolvedValue([
+      { url: 'https://example.com', success: true, markdown: '<html><body>content</body></html>', requestId: 'r1' },
+    ]);
   });
 
   test('handles fetch errors gracefully', async () => {
@@ -229,8 +231,8 @@ describe('duckDuckGoSearch Integration', () => {
     expect(result.results[0]?.title).toBe('Test Result');
     expect(result.results[0]?.url).toBe('https://example.com');
 
-    // fetcher.fetch should be called for markdown conversion
-    expect(fetcher.fetch).toHaveBeenCalledWith('https://example.com', expect.any(Number));
+    // fetcher.fetchMultiple should be called for markdown conversion
+    expect(fetcher.fetchMultiple).toHaveBeenCalledWith(['https://example.com'], expect.any(Number));
     expect(result.markdownResults).toBeDefined();
     expect(result.markdownResults?.length).toBe(1);
   });

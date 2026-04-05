@@ -101,7 +101,16 @@ function getBlocklistConfigFromConfig(): {
  */
 export function isDomainBlocked(hostname: string): boolean {
   const normalized = hostname.toLowerCase();
-  const { customDomains } = getBlocklistConfigFromConfig();
+  const { useAllowlistMode, customDomains } = getBlocklistConfigFromConfig();
+
+  if (useAllowlistMode) {
+    // Allowlist mode: only allow domains explicitly listed in customDomains
+    return !customDomains.some(
+      (allowed) => normalized === allowed || normalized.endsWith('.' + allowed)
+    );
+  }
+
+  // Blocklist mode (default): block domains in DEFAULT_BLOCKLIST + customDomains
   const blocklist = new Set([...DEFAULT_BLOCKLIST, ...customDomains]);
 
   // Check exact match first

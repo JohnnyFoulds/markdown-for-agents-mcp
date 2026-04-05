@@ -4,6 +4,7 @@
  * MCP server for AI agents - fetch URLs and convert to clean markdown
  */
 
+import { createRequire } from "module";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -16,6 +17,8 @@ import { webSearch } from "./tools/webSearch.js";
 import { fetcher } from "./fetcher.js";
 import { Logger } from "./utils/logger.js";
 import { validateAndInitializeConfig } from "./config.js";
+
+const require = createRequire(import.meta.url);
 
 let isShuttingDown = false;
 
@@ -38,13 +41,25 @@ async function gracefulShutdown(signal: string): Promise<void> {
   }
 }
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => {
+  gracefulShutdown('SIGTERM').catch((err) => {
+    Logger.error(`Unhandled shutdown error: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  });
+});
+process.on('SIGINT', () => {
+  gracefulShutdown('SIGINT').catch((err) => {
+    Logger.error(`Unhandled shutdown error: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  });
+});
+
+const { version } = require("../package.json") as { version: string };
 
 const server = new Server(
   {
     name: "markdown-for-agents-mcp",
-    version: "0.1.0",
+    version,
   },
   {
     capabilities: {
@@ -162,10 +177,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       timeoutArg !== undefined && typeof timeoutArg === "number"
         ? timeoutArg
         : undefined;
-    const result = await fetchUrl({ url: String(args.url), timeout });
-    return {
-      content: [{ type: "text", text: result }],
-    };
+    try {
+      const result = await fetchUrl({ url: String(args.url), timeout });
+      return {
+        content: [{ type: "text", text: result }],
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      return {
+        content: [{ type: "text", text: `# Error\n\n${errorMessage}\n` }],
+        isError: true,
+      };
+    }
   }
 
   if (name === "fetch_urls") {
@@ -181,13 +204,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       timeoutArg !== undefined && typeof timeoutArg === "number"
         ? timeoutArg
         : undefined;
-    const results = await fetchUrls({
-      urls: urls.map((u) => String(u)),
-      timeout,
-    });
-    return {
-      content: [{ type: "text", text: results }],
-    };
+    try {
+      const results = await fetchUrls({
+        urls: urls.map((u) => String(u)),
+        timeout,
+      });
+      return {
+        content: [{ type: "text", text: results }],
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      return {
+        content: [{ type: "text", text: `# Error\n\n${errorMessage}\n` }],
+        isError: true,
+      };
+    }
   }
 
   if (name === "health_check") {
@@ -201,19 +232,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (!args || typeof args !== "object" || !("query" in args) || !args.query) {
       throw new Error("Missing required argument: query");
     }
-    const result = await webSearch({
-      query: String(args.query),
-      maxResults:
-        args.maxResults !== undefined ? Number(args.maxResults) : undefined,
-      allowedDomains: Array.isArray(args.allowedDomains) ? args.allowedDomains : undefined,
-      blockedDomains: Array.isArray(args.blockedDomains) ? args.blockedDomains : undefined,
-      fetchResults: args.fetchResults !== undefined ? !!args.fetchResults : undefined,
-      timeout:
-        args.timeout !== undefined ? Number(args.timeout) : undefined,
-    });
-    return {
-      content: [{ type: "text", text: result }],
-    };
+    try {
+      const result = await webSearch({
+        query: String(args.query),
+        maxResults:
+          args.maxResults !== undefined ? Number(args.maxResults) : undefined,
+        allowedDomains: Array.isArray(args.allowedDomains) ? args.allowedDomains : undefined,
+        blockedDomains: Array.isArray(args.blockedDomains) ? args.blockedDomains : undefined,
+        fetchResults: args.fetchResults !== undefined ? !!args.fetchResults : undefined,
+        timeout:
+          args.timeout !== undefined ? Number(args.timeout) : undefined,
+      });
+      return {
+        content: [{ type: "text", text: result }],
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      return {
+        content: [{ type: "text", text: `# Error\n\n${errorMessage}\n` }],
+        isError: true,
+      };
+    }
   }
 
   throw new Error(`Unknown tool: ${name}`);

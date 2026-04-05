@@ -291,22 +291,22 @@ export async function duckDuckGoSearch(
     let markdownResults: { url: string; markdown: string }[] | undefined;
 
     // Fetch and convert top results if requested (hybrid mode)
-    // Use Promise.all for parallel fetching to avoid N+1 latency issues
+    // Use fetchMultiple to respect MAX_CONCURRENT_FETCHES batching
     if (fetchResults && results.length > 0) {
-      markdownResults = await Promise.all(
-        results.map(async (result) => {
-          try {
-            const html = await fetcher.fetch(result.url, searchTimeout);
-            const markdown = converter.convertWithMetadata(html, result.url);
-            return { url: result.url, markdown };
-          } catch (error) {
-            return {
-              url: result.url,
-              markdown: `# Error fetching ${result.url}\n\n${getErrorMessage(error)}\n`,
-            };
-          }
-        })
-      );
+      const urls = results.map((r) => r.url);
+      const fetchedResults = await fetcher.fetchMultiple(urls, searchTimeout);
+      markdownResults = fetchedResults.map((r) => {
+        if (!r.success) {
+          return {
+            url: r.url,
+            markdown: `# Error fetching ${r.url}\n\n${r.error ?? 'Unknown error'}\n`,
+          };
+        }
+        return {
+          url: r.url,
+          markdown: converter.convertWithMetadata(r.markdown, r.url),
+        };
+      });
     }
 
     const durationMs = Date.now() - startTime;

@@ -14,19 +14,9 @@ export interface FetchUrlOptions {
 export async function fetchUrl(options: FetchUrlOptions): Promise<string> {
   const { url, timeout } = options;
 
-  try {
-    // Fetch HTML with JavaScript rendering
-    const html = await fetcher.fetch(url, timeout);
+  // Fetch HTML with JavaScript rendering
+  const html = await fetcher.fetch(url, timeout);
 
-    // Convert to markdown
-    const markdown = converter.convertWithMetadata(html, url);
-
-    return markdown;
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    return `# Error fetching ${url}
-
-Failed to fetch URL: ${errorMessage}
-`;
-  }
+  // Convert to markdown
+  return converter.convertWithMetadata(html, url);
 }

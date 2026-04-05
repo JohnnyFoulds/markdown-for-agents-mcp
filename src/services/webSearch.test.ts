@@ -4,7 +4,7 @@ import { fetcher } from '../fetcher.js';
 import { initializeConfig } from '../config.js';
 
 vi.mock('../fetcher.js', () => ({
-  fetcher: { fetch: vi.fn() },
+  fetcher: { fetch: vi.fn(), fetchMultiple: vi.fn() },
 }));
 
 // Initialize config before tests
@@ -192,10 +192,7 @@ describe('duckDuckGoSearch', () => {
     const mockSearchHtml = createMockDDGHtml([
       { title: 'Example', url: 'https://example.com', snippet: 'Snippet' },
     ]);
-    const mockPageHtml = '<html><body>Page content</body></html>';
-
     const mockFetchHtml = vi.fn().mockResolvedValue(mockSearchHtml);
-    vi.mocked(fetcher.fetch).mockResolvedValue(mockPageHtml);
 
     const result = await duckDuckGoSearch({ query: 'test query', maxResults: 10 }, mockFetchHtml);
 
@@ -272,7 +269,9 @@ describe('duckDuckGoSearch', () => {
     const mockPageHtml = '<h1>Page Content</h1><p>More content</p>';
 
     const mockFetchHtml = vi.fn().mockResolvedValue(mockSearchHtml);
-    vi.mocked(fetcher.fetch).mockResolvedValue(mockPageHtml);
+    vi.mocked(fetcher.fetchMultiple).mockResolvedValue([
+      { url: 'https://example.com', success: true, markdown: mockPageHtml, requestId: 'r1' },
+    ]);
 
     const result = await duckDuckGoSearch(
       { query: 'test', fetchResults: true, maxResults: 1 },
@@ -292,9 +291,10 @@ describe('duckDuckGoSearch', () => {
     const mockPageHtml = '<h1>Page Content</h1>';
 
     const mockFetchHtml = vi.fn().mockResolvedValue(mockSearchHtml);
-    vi.mocked(fetcher.fetch)
-      .mockResolvedValueOnce(mockPageHtml)
-      .mockRejectedValueOnce(new Error('Network error'));
+    vi.mocked(fetcher.fetchMultiple).mockResolvedValue([
+      { url: 'https://example.com/1', success: true, markdown: mockPageHtml, requestId: 'r1' },
+      { url: 'https://example.com/2', success: false, markdown: '', error: 'Network error', requestId: 'r2' },
+    ]);
 
     const result = await duckDuckGoSearch(
       { query: 'test', fetchResults: true, maxResults: 2 },
@@ -313,7 +313,9 @@ describe('duckDuckGoSearch', () => {
     const mockPageHtml = '<h1>Test Content</h1>';
 
     const mockFetchHtml = vi.fn().mockResolvedValue(mockSearchHtml);
-    vi.mocked(fetcher.fetch).mockResolvedValue(mockPageHtml);
+    vi.mocked(fetcher.fetchMultiple).mockResolvedValue([
+      { url: 'https://example.com', success: true, markdown: mockPageHtml, requestId: 'r1' },
+    ]);
 
     const result = await duckDuckGoSearch(
       { query: 'test', fetchResults: true, maxResults: 1 },

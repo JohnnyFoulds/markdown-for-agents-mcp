@@ -249,15 +249,7 @@ class Fetcher {
           }
 
           html = await page.evaluate(() => {
-  const Readability = (globalThis as any).Readability ||
-    (typeof require !== 'undefined' ? require('readability') : null);
-
-  if (Readability && Readability.Readability) {
-    const article = new Readability.Readability(document).parse();
-    return article?.content || document.body.innerHTML;
-  }
-
-  const elementsToRemove = [
+            const elementsToRemove = [
               "nav", "footer", "header", "[role='navigation']",
               ".nav", ".navbar", ".sidebar", ".ads", ".advertisement",
               "iframe", "script", "style", "link", "meta"
@@ -293,7 +285,7 @@ class Fetcher {
       if (html.length > this.getConfig().MAX_CONTENT_LENGTH) {
   const truncatedSize = html.length;
   html = html.slice(0, this.getConfig().MAX_CONTENT_LENGTH);
-  console.warn(`[Truncated] ${url}: ${truncatedSize} -> ${this.getConfig().MAX_CONTENT_LENGTH} chars`);
+  Logger.warn(`[Truncated] ${url}: ${truncatedSize} -> ${this.getConfig().MAX_CONTENT_LENGTH} chars`);
 }
 
 try {
