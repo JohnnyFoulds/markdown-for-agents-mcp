@@ -6,10 +6,17 @@
 import { fetcher } from "../fetcher.js";
 import { converter } from "../converter.js";
 
-export async function fetchUrl(url: string): Promise<string> {
+export interface FetchUrlOptions {
+  url: string;
+  timeout?: number;
+}
+
+export async function fetchUrl(options: FetchUrlOptions): Promise<string> {
+  const { url, timeout } = options;
+
   try {
     // Fetch HTML with JavaScript rendering
-    const html = await fetcher.fetch(url);
+    const html = await fetcher.fetch(url, timeout);
 
     // Convert to markdown
     const markdown = converter.convertWithMetadata(html, url);

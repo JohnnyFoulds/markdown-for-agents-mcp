@@ -3,19 +3,73 @@
  * Handles JavaScript rendering and content extraction
  */
 
-import { chromium, Browser, Page } from "playwright";
+import { chromium, Browser, BrowserContext, Page } from "playwright";
+import { Logger } from "./utils/logger.js";
+import { LRUCache } from "./utils/cache.js";
+import { validateUrl, isDomainBlocked } from "./utils/domainBlacklist.js";
+import {
+  DomainBlockedError,
+  FetchTimeoutError,
+  RedirectBlockedError,
+  RedirectLoopError,
+} from "./utils/errors.js";
+import { getConfig } from "./config.js";
 
-interface FetchResult {
+// URL cache: configured via config module (50MB max, 15min TTL)
+const urlCache = new LRUCache<string>({
+  maxBytes: 50 * 1024 * 1024,
+  ttl: 15 * 60 * 1000,
+});
+
+/**
+ * Get fetcher configuration with fallback for initialization order
+ * Used to handle cases where config is accessed before initialization
+ */
+function getFetcherConfig() {
+  try {
+    return getConfig();
+  } catch {
+    // Fallback if config not initialized yet
+    return {
+      FETCH_TIMEOUT_MS: 30000,
+      MAX_CONCURRENT_FETCHES: 5,
+      STABILIZATION_DELAY_MS: 2000,
+      MAX_REDIRECTS: 10,
+      MAX_CONTENT_LENGTH: 100000,
+    };
+  }
+}
+
+export interface FetchResult {
   url: string;
   success: boolean;
   markdown: string;
   error?: string;
+  requestId?: string;
+}
+
+/**
+ * Generates a generic user agent that blends in with regular browsers
+ * Randomizes Chrome version to avoid fingerprinting
+ */
+function generateUserAgent(): string {
+  const versions = ['120.0.0.0', '121.0.0.0', '122.0.0.0', '123.0.0.0'];
+  const version = versions[Math.floor(Math.random() * versions.length)];
+  return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version} Safari/537.36`;
 }
 
 class Fetcher {
   private browser: Browser | null = null;
-  private readonly timeout = 30000;
+  private context: BrowserContext | null = null;
+  private readonly userAgent = generateUserAgent();
 
+  private getConfig() {
+    return getFetcherConfig();
+  }
+
+  /**
+   * Initialize browser and context once for reuse across fetches
+   */
   async initialize(): Promise<void> {
     if (!this.browser) {
       this.browser = await chromium.launch({
@@ -27,105 +81,293 @@ class Fetcher {
           "--disable-gpu",
         ],
       });
+
+      this.context = await this.browser.newContext({
+        userAgent: this.userAgent,
+        extraHTTPHeaders: {
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'DNT': '1',
+          'Connection': 'keep-alive',
+          'Cache-Control': 'no-cache',
+        },
+        viewport: { width: 1920, height: 1080 },
+        deviceScaleFactor: 1,
+        isMobile: false,
+        hasTouch: false,
+        javaScriptEnabled: true,
+        bypassCSP: true,
+        colorScheme: 'light',
+        reducedMotion: 'no-preference',
+      });
+
+      await this.context.addInitScript(() => {
+        Object.defineProperty(navigator, 'webdriver', {
+          get: () => false,
+        });
+
+        Object.defineProperty(navigator, 'plugins', {
+          get: () => [1, 2, 3, 4, 5],
+        });
+
+        Object.defineProperty(navigator, 'languages', {
+          get: () => ['en-US', 'en'],
+        });
+      });
     }
   }
 
+  /**
+   * Get or create a new page for fetching
+   * Creates a fresh page for each fetch to isolate state
+   */
+  private async getPage(): Promise<Page> {
+    await this.initialize();
+
+    if (!this.context) {
+      throw new Error("Browser context not initialized");
+    }
+
+    return await this.context.newPage();
+  }
+
+  /**
+   * Close browser and context
+   */
   async close(): Promise<void> {
+    if (this.context) {
+      await this.context.close();
+      this.context = null;
+    }
     if (this.browser) {
       await this.browser.close();
       this.browser = null;
     }
   }
 
-  async fetch(url: string): Promise<string> {
-    await this.initialize();
-
-    const browser = this.browser;
-    if (!browser) {
-      throw new Error("Browser not initialized");
-    }
-
-    const page = await browser.newPage();
-
+  /**
+   * Check if redirect is allowed (same host only)
+   * Blocks cross-origin redirects and blocked domains
+   */
+  private isPermittedRedirect(originalUrl: string, redirectUrl: string): boolean {
     try {
-      // Set realistic user agent
-      await page.setUserAgent(
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-      );
+      const original = new URL(originalUrl);
+      const redirect = new URL(redirectUrl);
 
-      // Navigate to URL with timeout
-      await page.goto(url, {
-        waitUntil: "networkidle",
-        timeout: this.timeout,
-      });
+      // Block cross-origin redirects
+      if (original.hostname !== redirect.hostname) {
+        return false;
+      }
 
-      // Wait for content to stabilize
-      await page.waitForTimeout(2000);
+      // Block if redirect domain is on blocklist
+      if (isDomainBlocked(redirect.hostname)) {
+        return false;
+      }
 
-      // Extract main content using Readability-style approach
-      const content = await page.evaluate(() => {
-        // Remove unnecessary elements
-        const elementsToRemove = [
-          "nav",
-          "footer",
-          "header",
-          "[role='navigation']",
-          ".nav",
-          ".navbar",
-          ".sidebar",
-          ".ads",
-          ".advertisement",
-          "iframe",
-          "script",
-          "style",
-          "link",
-          "meta",
-        ];
-
-        elementsToRemove.forEach((selector) => {
-          document.querySelectorAll(selector).forEach((el) => el.remove());
-        });
-
-        // Find main content
-        const mainContent =
-          document.querySelector("main") ||
-          document.querySelector("article") ||
-          document.querySelector("#content") ||
-          document.querySelector(".content") ||
-          document.querySelector("body");
-
-        if (!mainContent) {
-          return document.body.innerHTML;
-        }
-
-        return mainContent.innerHTML;
-      });
-
-      return content;
-    } finally {
-      await page.close();
+      return true;
+    } catch {
+      return false;
     }
   }
 
-  async fetchMultiple(urls: string[]): Promise<FetchResult[]> {
-    const results: FetchResult[] = [];
+  /**
+   * Fetch a single URL and return HTML content
+   * Handles redirects, caching, and content extraction
+   */
+  async fetch(url: string, timeout?: number, requestId?: string): Promise<string> {
+  const requestTimeout = timeout ?? this.getConfig().FETCH_TIMEOUT_MS;
+  const startTime = Date.now();
 
-    for (const url of urls) {
-      try {
-        const html = await this.fetch(url);
-        results.push({
-          url,
-          success: true,
-          markdown: html,
-        });
-      } catch (error) {
-        results.push({
-          url,
-          success: false,
-          markdown: "",
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
+  // Validate URL format and check blocklist
+  const validation = validateUrl(url);
+  if (!validation.valid) {
+    throw new Error(validation.error);
+  }
+
+  // Extract hostname once for logging and caching
+  const hostname = new URL(url).hostname;
+
+  // Try cache first (avoids redundant network requests)
+  const cached = urlCache.get(url);
+  if (cached) {
+    Logger.logCacheHit(hostname, Buffer.byteLength(cached, 'utf8'), requestId);
+    const stats = urlCache.getStats();
+    Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
+    return cached;
+  }
+
+  Logger.logCacheMiss(hostname, requestId);
+
+  let currentUrl = url;
+  let redirectCount = 0;
+  let html = '';
+
+    try {
+      while (redirectCount < this.getConfig().MAX_REDIRECTS) {
+        const page = await this.getPage();
+
+        try {
+          // Navigate to URL with configurable timeout
+          const pageResponse = await page.goto(currentUrl, {
+            waitUntil: "networkidle",
+            timeout: requestTimeout,
+          });
+
+          // Get response status and location header
+          let status = 200;
+          let locationHeader = '';
+
+          if (pageResponse) {
+            status = pageResponse.status();
+            // Handle both function and property access for headers (Playwright API variations)
+            const headers = typeof pageResponse.headers === 'function'
+              ? pageResponse.headers()
+              : pageResponse.headers || {};
+            locationHeader = (headers as Record<string, string>).location || '';
+          }
+
+          // Handle 3xx redirects manually
+          if (status >= 300 && status < 400 && locationHeader) {
+            // Resolve relative redirect URLs
+            let redirectUrl: string;
+            try {
+              redirectUrl = new URL(locationHeader, currentUrl).href;
+            } catch {
+              throw new RedirectBlockedError(currentUrl, locationHeader);
+            }
+
+            // Check if redirect is permitted
+            if (!this.isPermittedRedirect(currentUrl, redirectUrl)) {
+              throw new RedirectBlockedError(currentUrl, redirectUrl);
+            }
+
+            redirectCount++;
+            await page.close();
+            currentUrl = redirectUrl;
+            continue;
+          }
+
+          html = await page.evaluate(() => {
+  const Readability = (globalThis as any).Readability ||
+    (typeof require !== 'undefined' ? require('readability') : null);
+
+  if (Readability && Readability.Readability) {
+    const article = new Readability.Readability(document).parse();
+    return article?.content || document.body.innerHTML;
+  }
+
+  const elementsToRemove = [
+              "nav", "footer", "header", "[role='navigation']",
+              ".nav", ".navbar", ".sidebar", ".ads", ".advertisement",
+              "iframe", "script", "style", "link", "meta"
+            ];
+
+            elementsToRemove.forEach((selector: string) => {
+              document.querySelectorAll(selector).forEach((el: Element) => el.remove());
+            });
+
+            const mainContent =
+              document.querySelector("main") ||
+              document.querySelector("article") ||
+              document.querySelector("#content") ||
+              document.querySelector(".content") ||
+              document.querySelector("body");
+
+            return mainContent?.innerHTML || document.body.innerHTML;
+          });
+
+          redirectCount = 0; // Reset redirect counter on success
+          await page.close();
+          break;
+        } catch (error) {
+          await page.close();
+          throw error;
+        }
       }
+
+      if (redirectCount >= this.getConfig().MAX_REDIRECTS) {
+        throw new RedirectLoopError(this.getConfig().MAX_REDIRECTS);
+      }
+
+      if (html.length > this.getConfig().MAX_CONTENT_LENGTH) {
+  const truncatedSize = html.length;
+  html = html.slice(0, this.getConfig().MAX_CONTENT_LENGTH);
+  console.warn(`[Truncated] ${url}: ${truncatedSize} -> ${this.getConfig().MAX_CONTENT_LENGTH} chars`);
+}
+
+try {
+  urlCache.set(url, html, Buffer.byteLength(html, 'utf8'));
+  const stats = urlCache.getStats();
+  Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
+} catch {
+  // Cache full or error, continue without caching
+}
+
+      const duration = Date.now() - startTime;
+      Logger.logFetch({ url, duration, success: true, requestId });
+
+      return html;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+
+      Logger.logFetch({ url, duration, success: false, error: errorMessage, requestId });
+
+      if (error instanceof DomainBlockedError ||
+    error instanceof RedirectBlockedError ||
+    error instanceof RedirectLoopError) {
+  throw error;
+}
+
+if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
+        throw new FetchTimeoutError(url, requestTimeout);
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Fetch multiple URLs in parallel batches
+   * Processes URLs in configurable batch sizes (default: 5 concurrent)
+   * Returns fetch results for each URL with success status and content
+   */
+  async fetchMultiple(urls: string[], timeout?: number): Promise<FetchResult[]> {
+    const results: FetchResult[] = [];
+    const batches: string[][] = [];
+
+    // Split URLs into batches for parallel processing
+    for (let i = 0; i < urls.length; i += this.getConfig().MAX_CONCURRENT_FETCHES) {
+      batches.push(urls.slice(i, i + this.getConfig().MAX_CONCURRENT_FETCHES));
+    }
+
+    // Process each batch concurrently
+    for (const batch of batches) {
+      const batchPromises = batch.map(async (url) => {
+        try {
+          const requestId = Logger.generateRequestId();
+          const html = await this.fetch(url, timeout, requestId);
+          return {
+            url,
+            success: true,
+            markdown: html,
+            requestId,
+          } as FetchResult;
+        } catch (error) {
+          return {
+            url,
+            success: false,
+            markdown: "",
+            error: error instanceof Error ? error.message : "Unknown error",
+            requestId: Logger.generateRequestId(),
+          } as FetchResult;
+        }
+      });
+
+      // Process all URLs in batch concurrently
+      const batchResults = await Promise.all(batchPromises);
+      results.push(...batchResults);
     }
 
     return results;

@@ -3,7 +3,7 @@
  * Uses markdown-for-agents for clean, token-efficient output
  */
 
-import { markdownify } from "markdown-for-agents";
+import { convert as markdownify } from "markdown-for-agents";
 
 interface ConvertOptions {
   stripImages?: boolean;
@@ -23,23 +23,14 @@ export class Converter {
 
   convert(html: string): string {
     const result = markdownify(html, {
-      // Strip images for token efficiency (AI agents don't need image content)
-      strip: this.options.stripImages ? ["img"] : [],
+      // Extract main content, stripping nav, footer, ads, etc.
+      extract: true,
 
       // Preserve links for reference
-      linkStyle: this.options.preserveLinks ? "inlined" : "none",
-
-      // Use bullet points for lists
-      bulletListMarker: "-",
-
-      // Remove unnecessary whitespace
-      trim: true,
-
-      // Convert headers to markdown headers
-      defaultHeaderLevel: 1,
+      linkStyle: this.options.preserveLinks ? "inlined" : "referenced",
     });
 
-    return result;
+    return typeof result === "string" ? result : result.markdown;
   }
 
   convertWithMetadata(html: string, url: string): string {

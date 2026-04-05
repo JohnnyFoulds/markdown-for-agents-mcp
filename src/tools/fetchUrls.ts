@@ -5,9 +5,15 @@
 
 import { fetcher } from "../fetcher.js";
 
-export async function fetchUrls(urls: string[]): Promise<string> {
+export interface FetchUrlsOptions {
+  urls: string[];
+  timeout?: number;
+}
+
+export async function fetchUrls(options: FetchUrlsOptions): Promise<string> {
+  const { urls, timeout } = options;
   try {
-    const results = await fetcher.fetchMultiple(urls);
+    const results = await fetcher.fetchMultiple(urls, timeout);
 
     const output: string[] = [];
 
