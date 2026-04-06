@@ -9,9 +9,10 @@ If you discover a security vulnerability in this project, please report it respo
 ## Security Features
 
 ### Input Validation
-- All URLs are validated using Zod schemas before processing
+- All URLs are validated by `validateUrl()` in `src/utils/domainBlacklist.ts` before processing
+- SSRF protection blocks private/loopback/RFC1918 addresses (127.x, 10.x, 192.168.x, 169.254.x, etc.)
 - URL format validation prevents injection attacks
-- Domain blocking prevents access to malicious sites
+- Domain blocking prevents access to known-bad sites
 
 ### Network Security
 - Configurable redirect limits (default: 10) to prevent redirect loops

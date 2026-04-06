@@ -16,7 +16,8 @@ import {
 import { getConfig } from "./config.js";
 
 // URL cache: configured via config module (50MB max, 15min TTL)
-const urlCache = new LRUCache<string>({
+// Exported for test visibility (cache-hit path testing)
+export const urlCache = new LRUCache<string>({
   maxBytes: 50 * 1024 * 1024,
   ttl: 15 * 60 * 1000,
 });
@@ -33,7 +34,6 @@ function getFetcherConfig() {
     return {
       FETCH_TIMEOUT_MS: 30000,
       MAX_CONCURRENT_FETCHES: 5,
-      STABILIZATION_DELAY_MS: 2000,
       MAX_REDIRECTS: 10,
       MAX_CONTENT_LENGTH: 100000,
     };
@@ -49,16 +49,16 @@ export interface FetchResult {
 }
 
 /**
- * Generates a generic user agent that blends in with regular browsers
- * Randomizes Chrome version to avoid fingerprinting
+ * Generates a generic user agent that blends in with regular browsers.
+ * Randomizes the Chrome version to reduce fingerprinting consistency.
  */
 function generateUserAgent(): string {
-  const versions = ['120.0.0.0', '121.0.0.0', '122.0.0.0', '123.0.0.0'];
+  const versions = ['132.0.0.0', '133.0.0.0', '134.0.0.0', '135.0.0.0'];
   const version = versions[Math.floor(Math.random() * versions.length)];
   return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version} Safari/537.36`;
 }
 
-class Fetcher {
+export class Fetcher {
   private browser: Browser | null = null;
   private context: BrowserContext | null = null;
   private readonly userAgent = generateUserAgent();
@@ -155,8 +155,13 @@ class Fetcher {
       const original = new URL(originalUrl);
       const redirect = new URL(redirectUrl);
 
-      // Block cross-origin redirects
+      // Block cross-origin redirects (hostname mismatch)
       if (original.hostname !== redirect.hostname) {
+        return false;
+      }
+
+      // Block redirects that change port (e.g. example.com → example.com:8080)
+      if (original.port !== redirect.port) {
         return false;
       }
 
@@ -172,39 +177,45 @@ class Fetcher {
   }
 
   /**
-   * Fetch a single URL and return HTML content
-   * Handles redirects, caching, and content extraction
+   * Fetch a single URL and return HTML content.
+   * Checks the LRU cache first; on a miss, renders the page with Playwright,
+   * handles same-origin redirects, truncates oversized content, and caches the result.
+   * @param url - The URL to fetch
+   * @param timeout - Optional request timeout in milliseconds (overrides config)
+   * @param requestId - Optional request ID for correlated logging
+   * @returns Resolved HTML string
    */
   async fetch(url: string, timeout?: number, requestId?: string): Promise<string> {
-  const requestTimeout = timeout ?? this.getConfig().FETCH_TIMEOUT_MS;
-  const startTime = Date.now();
+    const config = this.getConfig();
+    const requestTimeout = timeout ?? config.FETCH_TIMEOUT_MS;
+    const startTime = Date.now();
 
-  // Validate URL format and check blocklist
-  const validation = validateUrl(url);
-  if (!validation.valid) {
-    throw new Error(validation.error);
-  }
+    // Validate URL format and check blocklist
+    const validation = validateUrl(url);
+    if (!validation.valid) {
+      throw new Error(validation.error);
+    }
 
-  // Extract hostname once for logging and caching
-  const hostname = new URL(url).hostname;
+    // Extract hostname once for logging and caching
+    const hostname = new URL(url).hostname;
 
-  // Try cache first (avoids redundant network requests)
-  const cached = urlCache.get(url);
-  if (cached) {
-    Logger.logCacheHit(hostname, Buffer.byteLength(cached, 'utf8'), requestId);
-    const stats = urlCache.getStats();
-    Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
-    return cached;
-  }
+    // Try cache first (avoids redundant network requests)
+    const cached = urlCache.get(url);
+    if (cached) {
+      Logger.logCacheHit(hostname, Buffer.byteLength(cached, 'utf8'), requestId);
+      const stats = urlCache.getStats();
+      Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
+      return cached;
+    }
 
-  Logger.logCacheMiss(hostname, requestId);
+    Logger.logCacheMiss(hostname, requestId);
 
-  let currentUrl = url;
-  let redirectCount = 0;
-  let html = '';
+    let currentUrl = url;
+    let redirectCount = 0;
+    let html = '';
 
     try {
-      while (redirectCount < this.getConfig().MAX_REDIRECTS) {
+      while (redirectCount < config.MAX_REDIRECTS) {
         const page = await this.getPage();
 
         try {
@@ -220,11 +231,9 @@ class Fetcher {
 
           if (pageResponse) {
             status = pageResponse.status();
-            // Handle both function and property access for headers (Playwright API variations)
-            const headers = typeof pageResponse.headers === 'function'
-              ? pageResponse.headers()
-              : pageResponse.headers || {};
-            locationHeader = (headers as Record<string, string>).location || '';
+            // headers() is always a function in Playwright's Response API
+            const headers = pageResponse.headers();
+            locationHeader = headers['location'] || '';
           }
 
           // Handle 3xx redirects manually
@@ -237,7 +246,7 @@ class Fetcher {
               throw new RedirectBlockedError(currentUrl, locationHeader);
             }
 
-            // Check if redirect is permitted
+            // Check if redirect is permitted (same origin, same port, not blocked)
             if (!this.isPermittedRedirect(currentUrl, redirectUrl)) {
               throw new RedirectBlockedError(currentUrl, redirectUrl);
             }
@@ -269,7 +278,6 @@ class Fetcher {
             return mainContent?.innerHTML || document.body.innerHTML;
           });
 
-          redirectCount = 0; // Reset redirect counter on success
           await page.close();
           break;
         } catch (error) {
@@ -278,23 +286,24 @@ class Fetcher {
         }
       }
 
-      if (redirectCount >= this.getConfig().MAX_REDIRECTS) {
-        throw new RedirectLoopError(this.getConfig().MAX_REDIRECTS);
+      if (redirectCount >= config.MAX_REDIRECTS) {
+        throw new RedirectLoopError(config.MAX_REDIRECTS);
       }
 
-      if (html.length > this.getConfig().MAX_CONTENT_LENGTH) {
-  const truncatedSize = html.length;
-  html = html.slice(0, this.getConfig().MAX_CONTENT_LENGTH);
-  Logger.warn(`[Truncated] ${url}: ${truncatedSize} -> ${this.getConfig().MAX_CONTENT_LENGTH} chars`);
-}
+      if (html.length > config.MAX_CONTENT_LENGTH) {
+        const truncatedSize = html.length;
+        html = html.slice(0, config.MAX_CONTENT_LENGTH);
+        Logger.warn(`[Truncated] ${url}: ${truncatedSize} -> ${config.MAX_CONTENT_LENGTH} chars`);
+      }
 
-try {
-  urlCache.set(url, html, Buffer.byteLength(html, 'utf8'));
-  const stats = urlCache.getStats();
-  Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
-} catch {
-  // Cache full or error, continue without caching
-}
+      try {
+        urlCache.set(url, html, Buffer.byteLength(html, 'utf8'));
+        const stats = urlCache.getStats();
+        Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
+      } catch {
+        // Cache write failed (e.g. eviction race), continue without caching
+        Logger.warn(`[Cache] Failed to cache ${url}`);
+      }
 
       const duration = Date.now() - startTime;
       Logger.logFetch({ url, duration, success: true, requestId });
@@ -306,13 +315,15 @@ try {
 
       Logger.logFetch({ url, duration, success: false, error: errorMessage, requestId });
 
-      if (error instanceof DomainBlockedError ||
-    error instanceof RedirectBlockedError ||
-    error instanceof RedirectLoopError) {
-  throw error;
-}
+      if (
+        error instanceof DomainBlockedError ||
+        error instanceof RedirectBlockedError ||
+        error instanceof RedirectLoopError
+      ) {
+        throw error;
+      }
 
-if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
+      if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
         throw new FetchTimeoutError(url, requestTimeout);
       }
 
@@ -321,17 +332,20 @@ if (errorMessage.includes('timeout') || errorMessage.includes('Timeout')) {
   }
 
   /**
-   * Fetch multiple URLs in parallel batches
-   * Processes URLs in configurable batch sizes (default: 5 concurrent)
-   * Returns fetch results for each URL with success status and content
+   * Fetch multiple URLs in parallel batches.
+   * Splits URLs into batches of MAX_CONCURRENT_FETCHES and processes each batch concurrently.
+   * @param urls - Array of URLs to fetch
+   * @param timeout - Optional per-request timeout in milliseconds
+   * @returns Array of FetchResult objects, one per input URL
    */
   async fetchMultiple(urls: string[], timeout?: number): Promise<FetchResult[]> {
+    const config = this.getConfig();
     const results: FetchResult[] = [];
     const batches: string[][] = [];
 
     // Split URLs into batches for parallel processing
-    for (let i = 0; i < urls.length; i += this.getConfig().MAX_CONCURRENT_FETCHES) {
-      batches.push(urls.slice(i, i + this.getConfig().MAX_CONCURRENT_FETCHES));
+    for (let i = 0; i < urls.length; i += config.MAX_CONCURRENT_FETCHES) {
+      batches.push(urls.slice(i, i + config.MAX_CONCURRENT_FETCHES));
     }
 
     // Process each batch concurrently

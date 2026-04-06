@@ -75,7 +75,12 @@ async function main() {
     } else if (isBatch || urls.length > 1) {
       result = await fetchUrls({ urls });
     } else {
-      result = await fetchUrl({ url: urls[0] });
+      const url = urls[0];
+      if (!url) {
+        console.error('Error: no URL provided. Usage: markdown-cli <url>');
+        process.exit(1);
+      }
+      result = await fetchUrl({ url });
     }
     console.log(result);
   } catch (error) {

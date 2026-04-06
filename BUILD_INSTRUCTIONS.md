@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- **Node.js**: >= 18.0.0 (tested with Node 20 LTS)
+- **Node.js**: >= 20.0.0 (tested with Node 20 LTS and Node 22)
 - **npm**: >= 8.0.0
 - **Linux/MacOS** (Playwright requires specific system dependencies)
 
@@ -156,38 +156,17 @@ Configure your MCP client to use stdio transport:
 
 ### CLI Testing
 
-Test the server using the provided test client:
+Use the `markdown-cli` binary to test the server manually:
 
 ```bash
-node test-client.js
-```
+# Single URL fetch
+markdown-cli https://example.com
 
-This will:
-1. Connect to the MCP server
-2. List available tools (`fetch_url`, `fetch_urls`)
-3. Test `fetch_url` with https://example.com
-4. Test `fetch_urls` with multiple URLs
+# Batch fetch
+markdown-cli -b https://example.com https://example.org
 
-The test client uses the `@modelcontextprotocol/sdk` to communicate via stdio.
-
-Example output:
-```
-=== Testing markdown-for-agents-mcp ===
-Connected!
-
-=== Available Tools ===
-- fetch_url
-  Description: Fetch a URL with JavaScript rendering...
-- fetch_urls
-  Description: Fetch multiple URLs...
-
-=== Testing fetch_url ===
-Result:
-# https://example.com
-
-# Example Domain
-
-This domain is for use in documentation examples...
+# Search
+markdown-cli -s "typescript tutorials"
 ```
 
 ---
@@ -293,13 +272,13 @@ After installation, verify everything works:
 
 ```bash
 # 1. Check Node version
-node --version  # Should be >= 18.0.0
+node --version  # Should be >= 20.0.0
 
 # 2. Check npm version
 npm --version   # Should be >= 8.0.0
 
 # 3. Run tests
-npm test        # Should show 35 passing tests
+npm test        # Should show all tests passing
 
 # 4. Build the project
 npm run build   # Should complete without errors
@@ -397,7 +376,7 @@ markdown-mcp
 
 - [ ] `npm install` completes successfully
 - [ ] `npx playwright install chromium` completes successfully
-- [ ] `npm test` shows all 35 tests passing
+- [ ] `npm test` shows all tests passing
 - [ ] `npm run build` completes without errors
 - [ ] `npm run typecheck` shows no errors
 - [ ] `node dist/index.js` starts and outputs success message

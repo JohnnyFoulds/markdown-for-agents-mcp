@@ -60,11 +60,18 @@ jobs:
       - name: Verify build output
         run: |
           test -f dist/index.js
+          test -f dist/index.d.ts
           test -f dist/fetcher.js
           test -f dist/converter.js
           test -f dist/config.js
-          test -f dist/converter.js
-          test -f dist/index.d.ts
+          test -f dist/tools/fetchUrl.js
+          test -f dist/tools/fetchUrls.js
+          test -f dist/tools/webSearch.js
+          test -f dist/utils/cache.js
+          test -f dist/utils/domainBlacklist.js
+          test -f dist/utils/errors.js
+          test -f dist/utils/logger.js
+          test -f dist/services/webSearch.js
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:

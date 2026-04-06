@@ -70,7 +70,7 @@ Add the server to your MCP client configuration.
 
 ### Claude Desktop
 
-Edit `~/.claude/config.json`:
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
 ```json
 {
@@ -267,19 +267,18 @@ Returns current server status, cache metrics, and fetch statistics. Useful for m
 {
   "status": "healthy",
   "cache": {
-    "size": 12,
-    "totalBytes": 4194304,
-    "maxBytes": 52428800,
-    "utilization": 0.08,
     "hits": 47,
-    "misses": 15
+    "misses": 15,
+    "currentSize": 12,
+    "totalBytes": 4194304,
+    "maxBytes": 52428800
   },
-  "fetches": {
-    "total": 62,
-    "success": 59,
-    "error": 3,
-    "avgDurationMs": 1840,
-    "cacheHitRate": 0.76
+  "metrics": {
+    "totalFetches": 62,
+    "successCount": 59,
+    "errorCount": 3,
+    "avgDuration": 1840,
+    "cacheUtilization": 76
   }
 }
 ```
@@ -334,7 +333,6 @@ cp .env.example .env
 |----------|---------|-------------|
 | `FETCH_TIMEOUT_MS` | `30000` | Timeout per fetch request (ms) |
 | `MAX_CONCURRENT_FETCHES` | `5` | Max parallel fetches in batch operations |
-| `STABILIZATION_DELAY_MS` | `2000` | Additional wait after page load for JS rendering |
 | `MAX_REDIRECTS` | `10` | Max redirect hops before error |
 | `MAX_CONTENT_LENGTH` | `100000` | Max content size (chars) before truncation |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARN`, or `ERROR` |
@@ -344,7 +342,6 @@ cp .env.example .env
 | `USE_ALLOWLIST_MODE` | `false` | When `true`, only domains in `BLOCKLIST_DOMAINS` are allowed |
 | `BLOCKLIST_DOMAINS` | _(empty)_ | Comma-separated domains to block (or allow in allowlist mode) |
 | `BLOCKLIST_URL_PATTERNS` | _(empty)_ | Comma-separated regex patterns to block by URL path |
-| `WEB_SEARCH_MAX_RESULTS` | `10` | Max search results returned |
 | `WEB_SEARCH_DEFAULT_TIMEOUT_MS` | `30000` | Default timeout for search requests (ms) |
 
 All logs are written to `stderr` to keep `stdout` clean for the MCP protocol.

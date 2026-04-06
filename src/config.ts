@@ -9,7 +9,6 @@ const configSchema = z.object({
   // Fetch settings
   FETCH_TIMEOUT_MS: z.string().default('30000').transform(Number),
   MAX_CONCURRENT_FETCHES: z.string().default('5').transform(Number),
-  STABILIZATION_DELAY_MS: z.string().default('2000').transform(Number),
   MAX_REDIRECTS: z.string().default('10').transform(Number),
   MAX_CONTENT_LENGTH: z.string().default('100000').transform(Number),
 
@@ -31,7 +30,6 @@ const configSchema = z.object({
   BLOCKLIST_URL_PATTERNS: z.string().optional(),
 
   // Web Search
-  WEB_SEARCH_MAX_RESULTS: z.string().default('10').transform(Number),
   WEB_SEARCH_DEFAULT_TIMEOUT_MS: z.string().default('30000').transform(Number),
 });
 
@@ -74,16 +72,20 @@ export function initializeConfig(env: Record<string, string>): Config {
 }
 
 /**
- * Validate configuration and exit on error
+ * Validate configuration from process.env, store globally, and return it.
+ * Parses the environment exactly once.
  */
 export function validateAndInitializeConfig(): Config {
-  const config = validateConfig();
-  // Filter out undefined values from process.env
-  const envValues = Object.fromEntries(
-    Object.entries(process.env).filter(([, value]) => value !== undefined)
-  ) as Record<string, string>;
-  initializeConfig(envValues);
-  return config;
+  const result = configSchema.safeParse(process.env);
+  if (!result.success) {
+    const issues = result.error.issues.map((e) =>
+      `  - ${e.path.join('.')}: ${e.message}`
+    ).join('\n');
+    throw new Error(`Invalid configuration:\n${issues}`);
+  }
+  const globalWithConfig = globalThis as GlobalWithConfig;
+  globalWithConfig.__config = result.data;
+  return result.data;
 }
 
 // Store config in global for testing

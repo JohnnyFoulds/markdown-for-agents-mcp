@@ -104,7 +104,8 @@ describe('Domain Blacklist', () => {
     });
 
     it('should block tracking services', () => {
-      expect(isDomainBlocked('cloudflare.com')).toBe(true);
+      expect(isDomainBlocked('cloudflare.com')).toBe(false); // CDN, not a tracker
+      expect(isDomainBlocked('cloudflareinsights.com')).toBe(true);
       expect(isDomainBlocked('intercom.io')).toBe(true);
       expect(isDomainBlocked('hotjar.io')).toBe(true);
     });
