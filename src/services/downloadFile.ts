@@ -108,7 +108,7 @@ export async function downloadFile(
 
     const rawContentType = response.headers['content-type'];
     const contentType = (
-      Array.isArray(rawContentType) ? rawContentType[0] : rawContentType ?? ''
+      Array.isArray(rawContentType) ? (rawContentType[0] ?? '') : (rawContentType ?? '')
     ).toLowerCase();
 
     if (contentType.startsWith('text/html')) {
@@ -130,7 +130,7 @@ export async function downloadFile(
       throw new Error(`File too large: ${response.body.length} bytes (max ${maxBytes})`);
     }
 
-    const mimeType = contentType.split(';')[0].trim() || 'application/octet-stream';
+    const mimeType = (contentType.split(';')[0] ?? '').trim() || 'application/octet-stream';
     await fs.promises.writeFile(outputPath, response.body);
 
     const filename = path.basename(new URL(currentUrl).pathname) || 'download';
