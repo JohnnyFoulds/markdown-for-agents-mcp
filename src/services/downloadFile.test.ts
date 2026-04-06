@@ -262,6 +262,32 @@ describe('downloadFile', () => {
     if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
   });
 
+  test('rejects when Content-Length header exceeds MAX_CONTENT_LENGTH', async () => {
+    const outputPath = tempFile();
+    const mockGet: HttpGetFn = async () => ({
+      statusCode: 200,
+      headers: { 'content-type': 'application/pdf', 'content-length': '200000' },
+      body: BINARY_PAYLOAD,
+    });
+    // MAX_CONTENT_LENGTH is set to 100000 in beforeEach
+    await expect(
+      downloadFile('https://example.com/big.pdf', outputPath, { _httpGet: mockGet })
+    ).rejects.toThrow('File too large');
+  });
+
+  test('rejects when body size exceeds MAX_CONTENT_LENGTH (no Content-Length header)', async () => {
+    const outputPath = tempFile();
+    const bigBody = Buffer.alloc(200000);
+    const mockGet: HttpGetFn = async () => ({
+      statusCode: 200,
+      headers: { 'content-type': 'application/pdf' },
+      body: bigBody,
+    });
+    await expect(
+      downloadFile('https://example.com/big.pdf', outputPath, { _httpGet: mockGet })
+    ).rejects.toThrow('File too large');
+  });
+
   test('rejects connection errors', async () => {
     // Port 1 should never be open; _skipValidate so SSRF doesn't fire first
     await expect(
