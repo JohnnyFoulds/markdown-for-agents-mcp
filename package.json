@@ -32,6 +32,7 @@
     "playwright",
     "html-to-markdown"
   ],
+  "mcpName": "io.github.JohnnyFoulds/markdown-for-agents-mcp",
   "license": "MIT",
   "repository": {
     "type": "git",
