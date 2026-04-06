@@ -5,7 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-04-06
+
+### Changed
+- Upgraded `typescript` from 5.x to 6.0
+- Upgraded `eslint` from 9.x to 10.x
+- Upgraded `@types/node` from 20.x to 25.x
+- Upgraded `markdown-for-agents` from 1.0.0 to 1.3.4 (Node 22 support, bug fixes)
+
+### Fixed
+- TypeScript 6.0 compatibility: added `"types": ["node"]` to `tsconfig.json`
+- TypeScript 6.0 compatibility: replaced removed `Global` type with plain interface in `config.ts`
+
+---
+
+## [0.3.0] - 2026-04-06
+
+### Added
+- `download_file` MCP tool — downloads binary files (PDFs, images, ZIPs, etc.) from a URL to a local path
+- CLI `--download` / `-d` and `--output` / `-o` flags for downloading files
+- `MAX_DOWNLOAD_BYTES` config option (default 50 MB) — separate limit from HTML truncation
+- Mocked Playwright tests covering timeout, redirect, cache, and domain-blocking paths
+
+### Fixed
+- SSRF protection: block decimal-encoded IPs (e.g. `2130706433` = 127.0.0.1), IPv6 ULA (`fc00::/7`), and IPv6 unspecified (`::`)
+- ReDoS protection: user-supplied `BLOCKLIST_URL_PATTERNS` now validated before compilation
+- `download_file`: filename now derived from final URL after redirects (not the original)
+- `download_file`: off-by-one in redirect loop
+- `download_file`: uses `MAX_DOWNLOAD_BYTES` instead of `MAX_CONTENT_LENGTH`
+- `outputPath` validated as absolute path before use
+- `parseInt` missing radix in CLI argument parser
+- `navigator.plugins` mock corrected to empty array
+- Removed dead `validateConfig()` function from `config.ts`
+- CI: pinned `codecov/codecov-action` to commit SHA; added `downloadFile.js` to build verification
+
+### Changed
+- Test coverage improved from 79% to 92%+
 
 ---
 
