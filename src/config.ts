@@ -31,6 +31,9 @@ const configSchema = z.object({
 
   // Web Search
   WEB_SEARCH_DEFAULT_TIMEOUT_MS: z.string().default('30000').transform(Number),
+
+  // File Download
+  DOWNLOAD_TIMEOUT_MS: z.string().default('60000').transform(Number),
 });
 
 export type Config = z.infer<typeof configSchema>;

@@ -200,7 +200,10 @@ export function isPathBlocked(pathname: string): boolean {
 /**
  * Validate that a URL is safe to fetch
  */
-export function validateUrl(url: string): { valid: true } | { valid: false; error: string } {
+export function validateUrl(
+  url: string,
+  options?: { skipPathPatterns?: boolean }
+): { valid: true } | { valid: false; error: string } {
   try {
     const parsed = new URL(url);
 
@@ -219,8 +222,8 @@ export function validateUrl(url: string): { valid: true } | { valid: false; erro
       return { valid: false, error: `Domain blocked: ${parsed.hostname}` };
     }
 
-    // Check if path matches block patterns
-    if (isPathBlocked(parsed.pathname)) {
+    // Check if path matches block patterns (can be skipped for binary downloads)
+    if (!options?.skipPathPatterns && isPathBlocked(parsed.pathname)) {
       return { valid: false, error: `URL path blocked: ${parsed.pathname}` };
     }
 

@@ -14,6 +14,7 @@ import {
 import { fetchUrl } from "./tools/fetchUrl.js";
 import { fetchUrls } from "./tools/fetchUrls.js";
 import { webSearch } from "./tools/webSearch.js";
+import { downloadFileTool, downloadFileHandler } from "./tools/downloadFile.js";
 import { fetcher } from "./fetcher.js";
 import { Logger } from "./utils/logger.js";
 import { validateAndInitializeConfig } from "./config.js";
@@ -122,6 +123,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {},
         },
       },
+      downloadFileTool,
       {
         name: "web_search",
         description:
@@ -253,6 +255,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         isError: true,
       };
     }
+  }
+
+  if (name === "download_file") {
+    if (!args || typeof args !== "object" || !("url" in args) || !args.url) {
+      throw new Error("Missing required argument: url");
+    }
+    if (!("outputPath" in args) || !args.outputPath) {
+      throw new Error("Missing required argument: outputPath");
+    }
+    return downloadFileHandler({
+      url: String(args.url),
+      outputPath: String(args.outputPath),
+    });
   }
 
   throw new Error(`Unknown tool: ${name}`);
