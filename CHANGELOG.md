@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.2.0] - 2026-04-06
+
 ### Added
 - Centralized configuration module with Zod validation
 - Structured logging with configurable log levels (DEBUG, INFO, WARN, ERROR)
@@ -17,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - LRU cache with TTL and configurable size limits
 - Domain blocking and URL pattern filtering
 - Configurable redirect handling with loop detection
+- Web search tool via DuckDuckGo with optional fetch-to-markdown
+- CI/CD pipeline with Node.js matrix testing and npm publish workflow
 
 ### Changed
 - Replaced hardcoded constants with centralized configuration
