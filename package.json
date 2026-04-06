@@ -1,6 +1,6 @@
 {
   "name": "markdown-for-agents-mcp",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "type": "module",
   "description": "MCP server for AI agents - fetch URLs and convert to clean markdown with JavaScript rendering",
   "main": "dist/index.js",
