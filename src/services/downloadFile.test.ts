@@ -59,8 +59,7 @@ describe('downloadFile', () => {
       const result = await downloadFile(
         `http://127.0.0.1:${port}/report.pdf`,
         outputPath,
-        httpGet,
-        true // skip SSRF validation for test server
+        { _httpGet: httpGet, _skipValidate: true }
       );
       expect(result.savedPath).toBe(outputPath);
       expect(result.sizeBytes).toBe(BINARY_PAYLOAD.length);
@@ -87,8 +86,7 @@ describe('downloadFile', () => {
       const result = await downloadFile(
         `http://127.0.0.1:${port}/images/logo.png`,
         outputPath,
-        httpGet,
-        true
+        { _httpGet: httpGet, _skipValidate: true }
       );
       expect(result.filename).toBe('logo.png');
       expect(result.mimeType).toBe('image/png');
@@ -111,8 +109,7 @@ describe('downloadFile', () => {
       const result = await downloadFile(
         `http://127.0.0.1:${port}/`,
         outputPath,
-        httpGet,
-        true
+        { _httpGet: httpGet, _skipValidate: true }
       );
       expect(result.filename).toBe('download');
     } finally {
@@ -140,8 +137,7 @@ describe('downloadFile', () => {
       const result = await downloadFile(
         `http://127.0.0.1:${port}/original`,
         outputPath,
-        httpGet,
-        true
+        { _httpGet: httpGet, _skipValidate: true }
       );
       expect(result.sizeBytes).toBe(BINARY_PAYLOAD.length);
       expect(result.mimeType).toBe('application/zip');
@@ -163,7 +159,7 @@ describe('downloadFile', () => {
 
     try {
       await expect(
-        downloadFile(`http://127.0.0.1:${port}/loop`, outputPath, httpGet, true)
+        downloadFile(`http://127.0.0.1:${port}/loop`, outputPath, { _httpGet: httpGet, _skipValidate: true })
       ).rejects.toThrow('Redirect limit exceeded');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -181,7 +177,7 @@ describe('downloadFile', () => {
 
     try {
       await expect(
-        downloadFile(`http://127.0.0.1:${port}/page`, outputPath, httpGet, true)
+        downloadFile(`http://127.0.0.1:${port}/page`, outputPath, { _httpGet: httpGet, _skipValidate: true })
       ).rejects.toThrow('URL returned HTML');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -199,7 +195,7 @@ describe('downloadFile', () => {
 
     try {
       await expect(
-        downloadFile(`http://127.0.0.1:${port}/missing`, outputPath, httpGet, true)
+        downloadFile(`http://127.0.0.1:${port}/missing`, outputPath, { _httpGet: httpGet, _skipValidate: true })
       ).rejects.toThrow('HTTP 404');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -240,8 +236,7 @@ describe('downloadFile', () => {
       const result = await downloadFile(
         `http://127.0.0.1:${port}/download/report.pdf`,
         outputPath,
-        httpGet,
-        true
+        { _httpGet: httpGet, _skipValidate: true }
       );
       expect(result.sizeBytes).toBe(BINARY_PAYLOAD.length);
     } finally {
@@ -259,7 +254,7 @@ describe('downloadFile', () => {
     });
 
     // Public URL so validateUrl passes normally (no SSRF skip needed)
-    const result = await downloadFile('https://example.com/doc.pdf', outputPath, mockGet);
+    const result = await downloadFile('https://example.com/doc.pdf', outputPath, { _httpGet: mockGet });
     expect(result.mimeType).toBe('application/pdf');
     expect(result.sizeBytes).toBe(BINARY_PAYLOAD.length);
     expect(result.filename).toBe('doc.pdf');
@@ -270,7 +265,7 @@ describe('downloadFile', () => {
   test('rejects connection errors', async () => {
     // Port 1 should never be open; _skipValidate so SSRF doesn't fire first
     await expect(
-      downloadFile('http://127.0.0.1:1/file.pdf', tempFile(), httpGet, true)
+      downloadFile('http://127.0.0.1:1/file.pdf', tempFile(), { _httpGet: httpGet, _skipValidate: true })
     ).rejects.toThrow();
   });
 });

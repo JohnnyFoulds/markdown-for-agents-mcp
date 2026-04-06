@@ -1,8 +1,3 @@
-/**
- * Binary file download service
- * Downloads files from URLs and saves them to local disk
- */
-
 import https from 'https';
 import http from 'http';
 import fs from 'fs';
@@ -37,9 +32,8 @@ export function httpGet(
     const req = lib.get(
       url,
       {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; markdown-for-agents-mcp/1.0)',
-        },
+        // Intentionally minimal UA — identifies the tool without browser impersonation
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; markdown-for-agents-mcp/1.0)' },
         timeout: timeoutMs,
       },
       (res) => {
@@ -63,28 +57,32 @@ export function httpGet(
   });
 }
 
+/** Options for downloadFile — fields prefixed with _ are test-only seams. */
+export interface DownloadFileOptions {
+  /** Override the HTTP client (inject a mock in tests). */
+  _httpGet?: HttpGetFn;
+  /** Skip URL validation so test servers on 127.0.0.1 are reachable. */
+  _skipValidate?: boolean;
+}
+
 /**
  * Download a binary file from a URL and save it to the specified path.
- * Skips path-pattern blocklist checks so legitimate download URLs are not blocked,
- * but still enforces SSRF protection and domain blocklist.
+ * Skips path-pattern checks (/download/... etc.) — legitimate for binary files —
+ * but still enforces SSRF protection and the domain block list.
  *
- * @param url           - The URL to download from
- * @param outputPath    - Absolute local path to write the file to (parent directory must exist)
- * @param _httpGet      - Optional HTTP getter override (for testing)
- * @param _skipValidate - Skip URL validation (for testing with 127.0.0.1 test servers)
- * @returns Metadata about the saved file
+ * @param url        - The URL to download from
+ * @param outputPath - Absolute local path to write the file to (parent directory must exist)
+ * @param options    - Optional overrides (mainly for testing)
  */
 export async function downloadFile(
   url: string,
   outputPath: string,
-  _httpGet: HttpGetFn = httpGet,
-  _skipValidate = false
+  options: DownloadFileOptions = {}
 ): Promise<DownloadResult> {
+  const { _httpGet = httpGet, _skipValidate = false } = options;
   const config = getConfig();
-  const maxRedirects = config.MAX_REDIRECTS;
-  const timeoutMs = config.DOWNLOAD_TIMEOUT_MS;
+  const { MAX_REDIRECTS: maxRedirects, DOWNLOAD_TIMEOUT_MS: timeoutMs, MAX_CONTENT_LENGTH: maxBytes } = config;
 
-  // Validate URL (skip path-pattern checks — /download/... etc. are legitimate for binary files)
   if (!_skipValidate) {
     const validation = validateUrl(url, { skipPathPatterns: true });
     if (!validation.valid) {
@@ -93,26 +91,14 @@ export async function downloadFile(
   }
 
   let currentUrl = url;
-  let redirectCount = 0;
-
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount++) {
     const response = await _httpGet(currentUrl, timeoutMs);
 
-    // Handle redirects
-    if (
-      response.statusCode >= 300 &&
-      response.statusCode < 400 &&
-      response.headers['location']
-    ) {
-      if (redirectCount >= maxRedirects) {
-        throw new Error(`Redirect limit exceeded (max ${maxRedirects})`);
-      }
+    if (response.statusCode >= 300 && response.statusCode < 400 && response.headers['location']) {
       const location = Array.isArray(response.headers['location'])
         ? response.headers['location'][0]
         : response.headers['location'];
       currentUrl = new URL(location!, currentUrl).toString();
-      redirectCount++;
       continue;
     }
 
@@ -120,7 +106,6 @@ export async function downloadFile(
       throw new Error(`HTTP ${response.statusCode} error downloading ${currentUrl}`);
     }
 
-    // Reject HTML responses — caller likely wants fetch_url instead
     const rawContentType = response.headers['content-type'];
     const contentType = (
       Array.isArray(rawContentType) ? rawContentType[0] : rawContentType ?? ''
@@ -132,21 +117,25 @@ export async function downloadFile(
       );
     }
 
+    // Guard against unexpectedly large responses before writing to disk
+    const contentLengthHeader = response.headers['content-length'];
+    const declaredLength = parseInt(
+      Array.isArray(contentLengthHeader) ? contentLengthHeader[0]! : (contentLengthHeader ?? ''),
+      10
+    );
+    if (!isNaN(declaredLength) && declaredLength > maxBytes) {
+      throw new Error(`File too large: ${declaredLength} bytes (max ${maxBytes})`);
+    }
+    if (response.body.length > maxBytes) {
+      throw new Error(`File too large: ${response.body.length} bytes (max ${maxBytes})`);
+    }
+
     const mimeType = contentType.split(';')[0].trim() || 'application/octet-stream';
-    const sizeBytes = response.body.length;
+    await fs.promises.writeFile(outputPath, response.body);
 
-    // Write to disk
-    fs.writeFileSync(outputPath, response.body);
-
-    // Extract filename from original URL
-    const urlPathname = new URL(url).pathname;
-    const filename = path.basename(urlPathname) || 'download';
-
-    return {
-      savedPath: outputPath,
-      sizeBytes,
-      mimeType,
-      filename,
-    };
+    const filename = path.basename(new URL(url).pathname) || 'download';
+    return { savedPath: outputPath, sizeBytes: response.body.length, mimeType, filename };
   }
+
+  throw new Error(`Redirect limit exceeded (max ${maxRedirects})`);
 }

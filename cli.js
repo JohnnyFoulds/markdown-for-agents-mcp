@@ -7,7 +7,7 @@
 import { fetchUrl } from './dist/tools/fetchUrl.js';
 import { fetchUrls } from './dist/tools/fetchUrls.js';
 import { webSearch } from './dist/tools/webSearch.js';
-import { downloadFileHandler } from './dist/tools/downloadFile.js';
+import { downloadFile as downloadFileSvc } from './dist/services/downloadFile.js';
 import { fetcher } from './dist/fetcher.js';
 import { validateAndInitializeConfig } from './dist/config.js';
 
@@ -84,12 +84,8 @@ async function main() {
         console.error('Error: -o/--output <path> is required when using -d/--download');
         process.exit(1);
       }
-      const downloadResult = await downloadFileHandler({ url, outputPath });
-      if (downloadResult.isError) {
-        console.error(downloadResult.content[0]?.text ?? 'Download failed');
-        process.exit(1);
-      }
-      console.log(downloadResult.content[0]?.text ?? '');
+      const downloadResult = await downloadFileSvc(url, outputPath);
+      console.log(JSON.stringify(downloadResult, null, 2));
       return;
     } else if (searchQuery) {
       result = await webSearch({

@@ -14,7 +14,7 @@ import {
 import { fetchUrl } from "./tools/fetchUrl.js";
 import { fetchUrls } from "./tools/fetchUrls.js";
 import { webSearch } from "./tools/webSearch.js";
-import { downloadFileTool, downloadFileHandler } from "./tools/downloadFile.js";
+import { downloadFile } from "./services/downloadFile.js";
 import { fetcher } from "./fetcher.js";
 import { Logger } from "./utils/logger.js";
 import { validateAndInitializeConfig } from "./config.js";
@@ -123,7 +123,27 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           properties: {},
         },
       },
-      downloadFileTool,
+      {
+        name: "download_file",
+        description:
+          "Download a binary file (PDF, image, ZIP, etc.) from a URL and save it to a local path. " +
+          "Returns JSON metadata including the saved path, file size, MIME type, and filename. " +
+          "SSRF protection and domain block list are enforced. Use fetch_url for web pages.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            url: {
+              type: "string",
+              description: "URL of the file to download",
+            },
+            outputPath: {
+              type: "string",
+              description: "Absolute local path to save the file to (parent directory must exist)",
+            },
+          },
+          required: ["url", "outputPath"],
+        },
+      },
       {
         name: "web_search",
         description:
@@ -264,10 +284,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (!("outputPath" in args) || !args.outputPath) {
       throw new Error("Missing required argument: outputPath");
     }
-    return downloadFileHandler({
-      url: String(args.url),
-      outputPath: String(args.outputPath),
-    });
+    try {
+      const result = await downloadFile(String(args.url), String(args.outputPath));
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      return {
+        content: [{ type: "text", text: `# Error\n\n${errorMessage}\n` }],
+        isError: true,
+      };
+    }
   }
 
   throw new Error(`Unknown tool: ${name}`);
