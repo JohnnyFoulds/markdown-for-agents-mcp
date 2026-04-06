@@ -35,6 +35,7 @@ beforeEach(() => {
     USE_ALLOWLIST_MODE: 'false',
     WEB_SEARCH_DEFAULT_TIMEOUT_MS: '30000',
     DOWNLOAD_TIMEOUT_MS: '5000',
+    MAX_DOWNLOAD_BYTES: '100000',
   });
 });
 
@@ -112,6 +113,34 @@ describe('downloadFile', () => {
         { _httpGet: httpGet, _skipValidate: true }
       );
       expect(result.filename).toBe('download');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+    }
+  });
+
+  test('filename is taken from the final URL after redirect', async () => {
+    let port: number;
+    const server = createServer((req, res) => {
+      if (req.url === '/redirect') {
+        res.writeHead(302, { Location: `http://127.0.0.1:${port}/final/document.pdf` });
+        res.end();
+      } else {
+        res.writeHead(200, { 'Content-Type': 'application/pdf' });
+        res.end(BINARY_PAYLOAD);
+      }
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    port = (server.address() as { port: number }).port;
+    const outputPath = tempFile('.pdf');
+
+    try {
+      const result = await downloadFile(
+        `http://127.0.0.1:${port}/redirect`,
+        outputPath,
+        { _httpGet: httpGet, _skipValidate: true }
+      );
+      expect(result.filename).toBe('document.pdf');
     } finally {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
@@ -212,9 +241,21 @@ describe('downloadFile', () => {
 
   test('rejects private/loopback addresses (SSRF)', async () => {
     const outputPath = tempFile();
-    // 192.168.1.1 is RFC1918 — blocked by validateUrl before any network call
     await expect(
       downloadFile('http://192.168.1.1/secret.pdf', outputPath)
+    ).rejects.toThrow('SSRF');
+  });
+
+  test('rejects decimal-encoded IP (SSRF bypass)', async () => {
+    // 2130706433 = 127.0.0.1 in decimal — known SSRF bypass
+    await expect(
+      downloadFile('http://2130706433/secret.pdf', tempFile())
+    ).rejects.toThrow('SSRF');
+  });
+
+  test('rejects IPv6 ULA address (SSRF)', async () => {
+    await expect(
+      downloadFile('http://[fd00::1]/secret.pdf', tempFile())
     ).rejects.toThrow('SSRF');
   });
 

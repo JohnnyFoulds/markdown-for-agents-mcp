@@ -222,6 +222,20 @@ describe('Domain Blacklist', () => {
       expect(validateUrl('http://[::1]/').valid).toBe(false);
     });
 
+    it('should block decimal-encoded IP (SSRF bypass)', () => {
+      // 2130706433 = 127.0.0.1 in decimal
+      expect(validateUrl('http://2130706433/').valid).toBe(false);
+    });
+
+    it('should block IPv6 ULA addresses (fc00::/7)', () => {
+      expect(validateUrl('http://[fd00::1]/').valid).toBe(false);
+      expect(validateUrl('http://[fc00::1]/').valid).toBe(false);
+    });
+
+    it('should block IPv6 unspecified address ::', () => {
+      expect(validateUrl('http://[::]/').valid).toBe(false);
+    });
+
     it('should include SSRF error message', () => {
       const result = validateUrl('http://127.0.0.1/');
       expect(result.valid).toBe(false);
@@ -260,6 +274,19 @@ describe('Domain Blacklist', () => {
       const config = getBlocklistConfig();
       expect(config.customDomains).toContain('evil.com');
       expect(config.customDomains).toContain('bad.org');
+    });
+
+    it('should skip patterns with nested quantifiers (ReDoS protection)', () => {
+      const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      resetConfig();
+      initializeConfig({
+        USE_ALLOWLIST_MODE: 'false',
+        BLOCKLIST_DOMAINS: '',
+        BLOCKLIST_URL_PATTERNS: '(a+)+$',
+      });
+      // Pattern should be silently dropped — not added to the list
+      expect(() => isPathBlocked('/anything')).not.toThrow();
+      warnSpy.mockRestore();
     });
 
     it('should skip invalid regex patterns and warn', () => {

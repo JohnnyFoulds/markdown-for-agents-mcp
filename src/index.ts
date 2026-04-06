@@ -284,8 +284,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (!("outputPath" in args) || !args.outputPath) {
       throw new Error("Missing required argument: outputPath");
     }
+    const outputPath = String(args.outputPath);
+    if (!outputPath.startsWith("/") && !(/^[A-Za-z]:[/\\]/.test(outputPath))) {
+      throw new Error("outputPath must be an absolute path");
+    }
     try {
-      const result = await downloadFile(String(args.url), String(args.outputPath));
+      const result = await downloadFile(String(args.url), outputPath);
       return {
         content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };

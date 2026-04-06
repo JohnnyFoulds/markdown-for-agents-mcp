@@ -9,40 +9,68 @@ import { Logger } from './logger.js';
 
 /**
  * SSRF protection: check if a hostname resolves to a private or loopback address.
- * Rejects localhost, loopback (127.x), link-local (169.254.x), and RFC1918 ranges.
+ * Rejects localhost, loopback (127.x), link-local (169.254.x), RFC1918 ranges,
+ * IPv6 loopback/ULA, and decimal/octal IP representations.
  */
 function isPrivateOrLocalAddress(hostname: string): boolean {
-  // Reject loopback names
   const lower = hostname.toLowerCase();
-  if (lower === 'localhost' || lower === '::1' || lower === '0.0.0.0') {
+
+  // Strip IPv6 brackets: [::1] → ::1
+  const bare = lower.startsWith('[') && lower.endsWith(']') ? lower.slice(1, -1) : lower;
+
+  // Loopback / unspecified names
+  if (bare === 'localhost' || bare === '::1' || bare === '0.0.0.0' || bare === '::') {
     return true;
   }
 
-  // Reject IPv6 loopback / link-local
-  if (lower.startsWith('fe80:') || lower === '[::1]') {
+  // IPv6 loopback and link-local (fe80::/10)
+  if (bare.startsWith('fe80:') || bare === '::1') {
     return true;
   }
 
-  // Parse dotted-decimal IPv4 addresses
+  // IPv6 ULA (fc00::/7 — covers fc00:: through fdff::)
+  if (/^f[cd][0-9a-f]{2}:/i.test(bare)) {
+    return true;
+  }
+
+  // Reject non-standard IP representations that bypass dotted-decimal check:
+  // decimal (http://2130706433/ = 127.0.0.1), octal (0177.0.0.1), hex (0x7f000001)
+  // These are not valid hostnames in DNS but some HTTP clients resolve them.
+  if (/^(0x[0-9a-f]+|\d+)$/i.test(bare)) {
+    return true; // pure integer / hex — likely an encoded IP
+  }
+  if (/^0[0-7]+(\.[0-9]+)*$/.test(bare)) {
+    return true; // octal segment
+  }
+
+  // Parse standard dotted-decimal IPv4 addresses
   const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (ipv4) {
     const a = Number(ipv4[1]);
     const b = Number(ipv4[2]);
-    // 127.0.0.0/8 — loopback
-    if (a === 127) return true;
-    // 10.0.0.0/8 — RFC1918
-    if (a === 10) return true;
-    // 172.16.0.0/12 — RFC1918
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    // 192.168.0.0/16 — RFC1918
-    if (a === 192 && b === 168) return true;
-    // 169.254.0.0/16 — link-local / AWS instance metadata
-    if (a === 169 && b === 254) return true;
-    // 0.0.0.0/8
-    if (a === 0) return true;
+    if (a === 127) return true;                          // 127.0.0.0/8 loopback
+    if (a === 10) return true;                           // 10.0.0.0/8 RFC1918
+    if (a === 172 && b >= 16 && b <= 31) return true;   // 172.16.0.0/12 RFC1918
+    if (a === 192 && b === 168) return true;             // 192.168.0.0/16 RFC1918
+    if (a === 169 && b === 254) return true;             // 169.254.0.0/16 link-local / AWS metadata
+    if (a === 0) return true;                            // 0.0.0.0/8
   }
 
   return false;
+}
+
+/**
+ * Detect catastrophic backtracking (ReDoS) in a regex pattern string.
+ * Rejects patterns with nested quantifiers on groups containing quantifiers
+ * or alternation inside repetition — the most common ReDoS shapes.
+ */
+function isSafePattern(pattern: string): boolean {
+  // Reject patterns with nested quantifiers: (x+)+ / (x*)* / (x+)* etc.
+  if (/\([^)]*[+*][^)]*\)[+*?{]/.test(pattern)) return false;
+  // Reject alternation inside unbounded repetition: (a|b)+ style catastrophic cases
+  // that have multiple paths of different lengths
+  if (/\([^)]*\|[^)]*\)[+*]/.test(pattern)) return false;
+  return true;
 }
 
 /**
@@ -126,6 +154,10 @@ function getBlocklistConfigFromConfig(): {
             }
             return acc;
           }
+          if (!isSafePattern(trimmed)) {
+            Logger.warn(`BLOCKLIST_URL_PATTERNS: skipping pattern with potentially unsafe backtracking: ${trimmed}`);
+            return acc;
+          }
           try {
             acc.push(new RegExp(trimmed, 'i'));
           } catch {
@@ -167,12 +199,10 @@ export function isDomainBlocked(hostname: string): boolean {
   // Blocklist mode (default): block domains in DEFAULT_BLOCKLIST + customDomains
   const blocklist = new Set([...DEFAULT_BLOCKLIST, ...customDomains]);
 
-  // Check exact match first
   if (blocklist.has(normalized)) {
     return true;
   }
 
-  // Check subdomain patterns (e.g., evil.doubleclick.net)
   for (const blocked of blocklist) {
     if (normalized.endsWith('.' + blocked)) {
       return true;

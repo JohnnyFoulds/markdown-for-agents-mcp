@@ -81,7 +81,7 @@ export async function downloadFile(
 ): Promise<DownloadResult> {
   const { _httpGet = httpGet, _skipValidate = false } = options;
   const config = getConfig();
-  const { MAX_REDIRECTS: maxRedirects, DOWNLOAD_TIMEOUT_MS: timeoutMs, MAX_CONTENT_LENGTH: maxBytes } = config;
+  const { MAX_REDIRECTS: maxRedirects, DOWNLOAD_TIMEOUT_MS: timeoutMs, MAX_DOWNLOAD_BYTES: maxBytes } = config;
 
   if (!_skipValidate) {
     const validation = validateUrl(url, { skipPathPatterns: true });
@@ -91,7 +91,7 @@ export async function downloadFile(
   }
 
   let currentUrl = url;
-  for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount++) {
+  for (let redirectCount = 0; redirectCount < maxRedirects; redirectCount++) {
     const response = await _httpGet(currentUrl, timeoutMs);
 
     if (response.statusCode >= 300 && response.statusCode < 400 && response.headers['location']) {
@@ -133,7 +133,7 @@ export async function downloadFile(
     const mimeType = contentType.split(';')[0].trim() || 'application/octet-stream';
     await fs.promises.writeFile(outputPath, response.body);
 
-    const filename = path.basename(new URL(url).pathname) || 'download';
+    const filename = path.basename(new URL(currentUrl).pathname) || 'download';
     return { savedPath: outputPath, sizeBytes: response.body.length, mimeType, filename };
   }
 

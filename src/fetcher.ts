@@ -108,7 +108,7 @@ export class Fetcher {
         });
 
         Object.defineProperty(navigator, 'plugins', {
-          get: () => [1, 2, 3, 4, 5],
+          get: () => [],
         });
 
         Object.defineProperty(navigator, 'languages', {

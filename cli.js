@@ -56,7 +56,7 @@ for (let i = 0; i < args.length; i++) {
   } else if (arg === '-s' || arg === '--search') {
     searchQuery = args[++i];
   } else if (arg === '-m' || arg === '--max-results') {
-    maxResults = parseInt(args[++i]);
+    maxResults = parseInt(args[++i], 10);
   } else if (arg === '--allowed-domains') {
     allowedDomains = args[++i].split(',');
   } else if (arg === '--blocked-domains') {

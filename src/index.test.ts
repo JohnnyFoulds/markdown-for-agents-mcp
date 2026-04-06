@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { initializeConfig, resetConfig, validateConfig, validateAndInitializeConfig, getConfig } from './config.js';
+import { initializeConfig, resetConfig, validateAndInitializeConfig, getConfig } from './config.js';
 import { Logger } from './utils/logger.js';
 
 describe('MCP Server Configuration', () => {
@@ -32,13 +32,13 @@ describe('MCP Server Configuration', () => {
 
   describe('config validation', () => {
     it('should validate valid configuration', () => {
-      const config = validateConfig();
+      const config = getConfig();
       expect(config.LOG_LEVEL).toBe('INFO');
       expect(config.LOG_FORMAT).toBe('text');
     });
 
     it('should transform number strings to numbers', () => {
-      const config = validateConfig();
+      const config = getConfig();
       expect(typeof config.FETCH_TIMEOUT_MS).toBe('number');
       expect(config.FETCH_TIMEOUT_MS).toBe(30000);
       expect(typeof config.MAX_CONCURRENT_FETCHES).toBe('number');
@@ -49,7 +49,7 @@ describe('MCP Server Configuration', () => {
       resetConfig();
       initializeConfig({});
 
-      const config = validateConfig();
+      const config = getConfig();
       expect(config.FETCH_TIMEOUT_MS).toBe(30000);
       expect(config.MAX_CONCURRENT_FETCHES).toBe(5);
       expect(config.LOG_LEVEL).toBe('INFO');
@@ -72,19 +72,19 @@ describe('MCP Server Configuration', () => {
     it('should have fetch_url tool', () => {
       // Tool definitions are in index.ts
       // This test verifies the config system supports the tools
-      const config = validateConfig();
+      const config = getConfig();
       expect(config).toBeDefined();
       expect(config.LOG_LEVEL).toBeDefined();
     });
 
     it('should have fetch_urls tool', () => {
-      const config = validateConfig();
+      const config = getConfig();
       expect(config).toBeDefined();
       expect(config.MAX_CONCURRENT_FETCHES).toBeGreaterThan(0);
     });
 
     it('should have health_check tool', () => {
-      const config = validateConfig();
+      const config = getConfig();
       expect(config).toBeDefined();
       // Health check uses Logger metrics
       const health = Logger.getHealth();
@@ -97,7 +97,7 @@ describe('MCP Server Configuration', () => {
       resetConfig();
       initializeConfig({});
 
-      expect(() => validateConfig()).not.toThrow();
+      expect(() => getConfig()).not.toThrow();
     });
 
     it('should provide clear error messages for invalid config', () => {

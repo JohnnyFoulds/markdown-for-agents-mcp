@@ -34,23 +34,10 @@ const configSchema = z.object({
 
   // File Download
   DOWNLOAD_TIMEOUT_MS: z.string().default('60000').transform(Number),
+  MAX_DOWNLOAD_BYTES: z.string().default('52428800').transform(Number), // 50 MB
 });
 
 export type Config = z.infer<typeof configSchema>;
-
-/**
- * Validate and parse configuration from environment variables
- */
-export function validateConfig(): Config {
-  const result = configSchema.safeParse(process.env);
-  if (!result.success) {
-    const issues = result.error.issues.map((e) =>
-      `  - ${e.path.join('.')}: ${e.message}`
-    ).join('\n');
-    throw new Error(`Invalid configuration:\n${issues}`);
-  }
-  return result.data;
-}
 
 /**
  * Get configuration - throws if not initialized
@@ -59,7 +46,7 @@ export function getConfig(): Config {
   const globalWithConfig = globalThis as GlobalWithConfig;
   if (!globalWithConfig.__config) {
     throw new Error(
-      'Configuration not initialized. Call validateConfig() first.'
+      'Configuration not initialized. Call validateAndInitializeConfig() first.'
     );
   }
   return globalWithConfig.__config;
