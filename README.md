@@ -3,6 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/markdown-for-agents-mcp)](https://www.npmjs.com/package/markdown-for-agents-mcp)
 [![npm downloads](https://img.shields.io/npm/dm/markdown-for-agents-mcp)](https://www.npmjs.com/package/markdown-for-agents-mcp)
 [![Node.js](https://img.shields.io/node/v/markdown-for-agents-mcp)](https://nodejs.org)
+[![codecov](https://codecov.io/gh/JohnnyFoulds/markdown-for-agents-mcp/branch/main/graph/badge.svg?token=cc1e1265-2c75-413a-95ea-3f07c9e81c62)](https://codecov.io/gh/JohnnyFoulds/markdown-for-agents-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that fetches URLs with full JavaScript rendering and converts them to clean, token-efficient markdown for AI agents.
