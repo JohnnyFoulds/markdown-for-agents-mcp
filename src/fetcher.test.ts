@@ -393,6 +393,186 @@ describe('fetcher', () => {
     });
   });
 
+  describe('timeout handling', () => {
+    test('wraps timeout errors in FetchTimeoutError', async () => {
+      const mockPage = {
+        goto: vi.fn().mockRejectedValue(new Error('page.goto: Timeout 30000ms exceeded')),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockContext = {
+        newPage: vi.fn().mockResolvedValue(mockPage),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockBrowser = {
+        newContext: vi.fn().mockResolvedValue(mockContext),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      mockChromium.launch.mockResolvedValue(mockBrowser);
+
+      await fetcherInstance.initialize();
+      await expect(fetcherInstance.fetch('https://example.com')).rejects.toThrow('Fetch timeout for https://example.com');
+    });
+
+    test('passes custom timeout to page.goto', async () => {
+      const mockPage = {
+        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: vi.fn().mockReturnValue({}) }),
+        evaluate: vi.fn().mockResolvedValue('<p>ok</p>'),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockContext = {
+        newPage: vi.fn().mockResolvedValue(mockPage),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockBrowser = {
+        newContext: vi.fn().mockResolvedValue(mockContext),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      mockChromium.launch.mockResolvedValue(mockBrowser);
+
+      await fetcherInstance.initialize();
+      await fetcherInstance.fetch('https://example.com', 5000);
+
+      expect(mockPage.goto).toHaveBeenCalledWith('https://example.com', {
+        waitUntil: 'networkidle',
+        timeout: 5000,
+      });
+    });
+  });
+
+  describe('redirect — edge cases', () => {
+    test('blocks a redirect to a domain on the blocklist', async () => {
+      // doubleclick.net is in the default blocklist
+      const mockPage = {
+        goto: vi.fn().mockResolvedValue({
+          status: () => 302,
+          headers: vi.fn().mockReturnValue({ location: 'https://doubleclick.net/page' }),
+        }),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockContext = {
+        newPage: vi.fn().mockResolvedValue(mockPage),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockBrowser = {
+        newContext: vi.fn().mockResolvedValue(mockContext),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      mockChromium.launch.mockResolvedValue(mockBrowser);
+
+      await fetcherInstance.initialize();
+      await expect(fetcherInstance.fetch('https://example.com')).rejects.toThrow('Redirect blocked');
+    });
+
+    test('blocks a redirect with a malformed Location header', async () => {
+      const mockPage = {
+        goto: vi.fn().mockResolvedValue({
+          status: () => 302,
+          headers: vi.fn().mockReturnValue({ location: 'http://:80/' }),
+        }),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockContext = {
+        newPage: vi.fn().mockResolvedValue(mockPage),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockBrowser = {
+        newContext: vi.fn().mockResolvedValue(mockContext),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      mockChromium.launch.mockResolvedValue(mockBrowser);
+
+      await fetcherInstance.initialize();
+      await expect(fetcherInstance.fetch('https://example.com')).rejects.toThrow('Redirect blocked');
+    });
+
+    test('null pageResponse defaults to status 200 and continues', async () => {
+      const mockPage = {
+        goto: vi.fn().mockResolvedValue(null),
+        evaluate: vi.fn().mockResolvedValue('<p>null response ok</p>'),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockContext = {
+        newPage: vi.fn().mockResolvedValue(mockPage),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockBrowser = {
+        newContext: vi.fn().mockResolvedValue(mockContext),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      mockChromium.launch.mockResolvedValue(mockBrowser);
+
+      await fetcherInstance.initialize();
+      const result = await fetcherInstance.fetch('https://example.com');
+      expect(result).toBe('<p>null response ok</p>');
+    });
+  });
+
+  describe('initialize', () => {
+    test('does not re-create browser on second call', async () => {
+      const mockContext = {
+        newPage: vi.fn().mockResolvedValue({
+          goto: vi.fn().mockResolvedValue({ status: () => 200, headers: vi.fn().mockReturnValue({}) }),
+          evaluate: vi.fn().mockResolvedValue('<p>ok</p>'),
+          close: vi.fn().mockResolvedValue(undefined),
+        }),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockBrowser = {
+        newContext: vi.fn().mockResolvedValue(mockContext),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      mockChromium.launch.mockResolvedValue(mockBrowser);
+
+      await fetcherInstance.initialize();
+      await fetcherInstance.initialize(); // second call
+
+      expect(mockChromium.launch).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('cache write failure', () => {
+    test('continues normally when cache.set throws', async () => {
+      const liveContent = '<p>content</p>';
+      const mockPage = {
+        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: vi.fn().mockReturnValue({}) }),
+        evaluate: vi.fn().mockResolvedValue(liveContent),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockContext = {
+        newPage: vi.fn().mockResolvedValue(mockPage),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockBrowser = {
+        newContext: vi.fn().mockResolvedValue(mockContext),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      mockChromium.launch.mockResolvedValue(mockBrowser);
+
+      // Force cache.set to throw
+      vi.spyOn(urlCache, 'set').mockImplementationOnce(() => { throw new Error('cache full'); });
+
+      await fetcherInstance.initialize();
+      // Should still return the content despite the cache write failure
+      const result = await fetcherInstance.fetch('https://example.com/nocache');
+      expect(result).toBe(liveContent);
+    });
+  });
+
+  describe('domain blocking', () => {
+    test('throws on a blocked domain without touching Playwright', async () => {
+      // doubleclick.net is in the built-in blocklist
+      await expect(fetcherInstance.fetch('https://doubleclick.net/page')).rejects.toThrow('Domain blocked');
+      expect(mockChromium.launch).not.toHaveBeenCalled();
+    });
+  });
+
   describe('content truncation', () => {
     test('truncates content that exceeds MAX_CONTENT_LENGTH', async () => {
       // Set a very small content limit
