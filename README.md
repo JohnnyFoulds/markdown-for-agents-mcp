@@ -21,6 +21,7 @@ Powered by [Playwright](https://playwright.dev) and the [`markdown-for-agents`](
   - [fetch_url](#fetch_url)
   - [fetch_urls](#fetch_urls)
   - [web_search](#web_search)
+  - [download_file](#download_file)
   - [health_check](#health_check)
 - [CLI Usage](#cli-usage)
 - [Configuration](#configuration)
@@ -70,7 +71,7 @@ Add the server to your MCP client configuration.
 
 ### Claude Desktop
 
-Edit `~/.claude/config.json`:
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
 
 ```json
 {
@@ -255,6 +256,41 @@ Content from the page...
 
 ---
 
+### `download_file`
+
+Downloads a binary file (PDF, image, ZIP, etc.) from a URL and saves it to a local path. Uses a plain HTTP client — no Playwright required. SSRF protection and domain block list are enforced.
+
+**Arguments:**
+
+| Name         | Type   | Required | Description                                                              |
+|--------------|--------|----------|--------------------------------------------------------------------------|
+| `url`        | string | yes      | URL of the file to download                                              |
+| `outputPath` | string | yes      | Absolute local path to save the file to (parent directory must exist)    |
+
+**Example:**
+
+```text
+download_file(
+  url="https://example.com/report.pdf",
+  outputPath="/tmp/report.pdf"
+)
+```
+
+**Output:**
+
+```json
+{
+  "savedPath": "/tmp/report.pdf",
+  "sizeBytes": 204800,
+  "mimeType": "application/pdf",
+  "filename": "report.pdf"
+}
+```
+
+> **Note:** URLs with paths like `/download/...` are permitted for this tool even though they are blocked by `fetch_url` (to avoid binary download chains). Use `fetch_url` for HTML pages — `download_file` will reject `text/html` responses.
+
+---
+
 ### `health_check`
 
 Returns current server status, cache metrics, and fetch statistics. Useful for monitoring and debugging.
@@ -267,19 +303,18 @@ Returns current server status, cache metrics, and fetch statistics. Useful for m
 {
   "status": "healthy",
   "cache": {
-    "size": 12,
-    "totalBytes": 4194304,
-    "maxBytes": 52428800,
-    "utilization": 0.08,
     "hits": 47,
-    "misses": 15
+    "misses": 15,
+    "currentSize": 12,
+    "totalBytes": 4194304,
+    "maxBytes": 52428800
   },
-  "fetches": {
-    "total": 62,
-    "success": 59,
-    "error": 3,
-    "avgDurationMs": 1840,
-    "cacheHitRate": 0.76
+  "metrics": {
+    "totalFetches": 62,
+    "successCount": 59,
+    "errorCount": 3,
+    "avgDuration": 1840,
+    "cacheUtilization": 76
   }
 }
 ```
@@ -308,12 +343,19 @@ markdown-cli -b https://example.com https://example.org https://example.net
 markdown-cli https://example.com/article > article.md
 ```
 
+### Download a binary file
+
+```bash
+markdown-cli -d -o /tmp/report.pdf https://example.com/report.pdf
+```
+
 ### Command reference
 
 | Command | Description |
 |---------|-------------|
 | `markdown-cli <url>` | Fetch a single URL and print markdown |
 | `markdown-cli -b <url1> <url2> ...` | Fetch multiple URLs in batch mode |
+| `markdown-cli -d -o <path> <url>` | Download a binary file to a local path |
 | `markdown-cli --help` | Show help |
 
 ---
@@ -334,7 +376,6 @@ cp .env.example .env
 |----------|---------|-------------|
 | `FETCH_TIMEOUT_MS` | `30000` | Timeout per fetch request (ms) |
 | `MAX_CONCURRENT_FETCHES` | `5` | Max parallel fetches in batch operations |
-| `STABILIZATION_DELAY_MS` | `2000` | Additional wait after page load for JS rendering |
 | `MAX_REDIRECTS` | `10` | Max redirect hops before error |
 | `MAX_CONTENT_LENGTH` | `100000` | Max content size (chars) before truncation |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARN`, or `ERROR` |
@@ -344,8 +385,8 @@ cp .env.example .env
 | `USE_ALLOWLIST_MODE` | `false` | When `true`, only domains in `BLOCKLIST_DOMAINS` are allowed |
 | `BLOCKLIST_DOMAINS` | _(empty)_ | Comma-separated domains to block (or allow in allowlist mode) |
 | `BLOCKLIST_URL_PATTERNS` | _(empty)_ | Comma-separated regex patterns to block by URL path |
-| `WEB_SEARCH_MAX_RESULTS` | `10` | Max search results returned |
 | `WEB_SEARCH_DEFAULT_TIMEOUT_MS` | `30000` | Default timeout for search requests (ms) |
+| `DOWNLOAD_TIMEOUT_MS` | `60000` | Timeout for binary file downloads (ms) |
 
 All logs are written to `stderr` to keep `stdout` clean for the MCP protocol.
 

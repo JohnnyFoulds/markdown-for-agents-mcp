@@ -1,7 +1,8 @@
-import { describe, test, expect, beforeEach, vi } from 'vitest';
-import { duckDuckGoSearch, parseSearchResults, filterResults, SearchResult } from './webSearch.js';
+import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
+import zlib from 'zlib';
+import { duckDuckGoSearch, parseSearchResults, filterResults, fetchHtml, SearchResult } from './webSearch.js';
 import { fetcher } from '../fetcher.js';
-import { initializeConfig } from '../config.js';
+import { initializeConfig, resetConfig } from '../config.js';
 
 vi.mock('../fetcher.js', () => ({
   fetcher: { fetch: vi.fn(), fetchMultiple: vi.fn() },
@@ -12,7 +13,6 @@ beforeAll(() => {
   initializeConfig({
     FETCH_TIMEOUT_MS: '30000',
     MAX_CONCURRENT_FETCHES: '5',
-    STABILIZATION_DELAY_MS: '2000',
     MAX_REDIRECTS: '10',
     MAX_CONTENT_LENGTH: '100000',
     LOG_LEVEL: 'INFO',
@@ -20,7 +20,6 @@ beforeAll(() => {
     CACHE_MAX_BYTES: '52428800',
     CACHE_TTL_MS: '900000',
     USE_ALLOWLIST_MODE: 'false',
-    WEB_SEARCH_MAX_RESULTS: '10',
     WEB_SEARCH_DEFAULT_TIMEOUT_MS: '30000',
   });
 });
@@ -323,5 +322,164 @@ describe('duckDuckGoSearch', () => {
     );
 
     expect(result.markdownResults?.[0]?.markdown).toContain('Test Content');
+  });
+
+  test('warns when response looks like a bot-challenge page', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    // Short HTML triggers the bot-challenge warning (length < 2000)
+    const shortHtml = '<html><body>Short</body></html>';
+    const mockFetchHtml = vi.fn().mockResolvedValue(shortHtml);
+
+    await duckDuckGoSearch({ query: 'test' }, mockFetchHtml);
+
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('bot-challenge'));
+    consoleSpy.mockRestore();
+  });
+
+  test('warns when response contains anomaly-modal', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const challengeHtml = '<html><body>' + 'x'.repeat(3000) + '<div class="anomaly-modal">challenge</div></body></html>';
+    const mockFetchHtml = vi.fn().mockResolvedValue(challengeHtml);
+
+    await duckDuckGoSearch({ query: 'test' }, mockFetchHtml);
+
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('bot-challenge'));
+    consoleSpy.mockRestore();
+  });
+});
+
+describe('fetchHtml', () => {
+  beforeEach(() => {
+    resetConfig();
+    initializeConfig({
+      MAX_REDIRECTS: '3',
+      WEB_SEARCH_DEFAULT_TIMEOUT_MS: '5000',
+    });
+  });
+
+  afterEach(() => {
+    resetConfig();
+  });
+
+  test('returns plain text for uncompressed response', async () => {
+    const { createServer } = await import('http');
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end('<html><body>hello</body></html>');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as { port: number }).port;
+
+    try {
+      const result = await fetchHtml(`http://127.0.0.1:${port}/`, 5000);
+      expect(result).toContain('hello');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test('decompresses gzip-encoded response', async () => {
+    const { createServer } = await import('http');
+    const body = zlib.gzipSync(Buffer.from('<html><body>gzipped</body></html>'));
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Encoding': 'gzip', 'Content-Type': 'text/html' });
+      res.end(body);
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as { port: number }).port;
+
+    try {
+      const result = await fetchHtml(`http://127.0.0.1:${port}/`, 5000);
+      expect(result).toContain('gzipped');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test('decompresses deflate-encoded response', async () => {
+    const { createServer } = await import('http');
+    const body = zlib.deflateSync(Buffer.from('<html><body>deflated</body></html>'));
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Encoding': 'deflate', 'Content-Type': 'text/html' });
+      res.end(body);
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as { port: number }).port;
+
+    try {
+      const result = await fetchHtml(`http://127.0.0.1:${port}/`, 5000);
+      expect(result).toContain('deflated');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test('decompresses brotli-encoded response', async () => {
+    const { createServer } = await import('http');
+    const body = zlib.brotliCompressSync(Buffer.from('<html><body>brotli</body></html>'));
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { 'Content-Encoding': 'br', 'Content-Type': 'text/html' });
+      res.end(body);
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as { port: number }).port;
+
+    try {
+      const result = await fetchHtml(`http://127.0.0.1:${port}/`, 5000);
+      expect(result).toContain('brotli');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test('falls back to raw bytes when decompression fails', async () => {
+    const { createServer } = await import('http');
+    const server = createServer((_req, res) => {
+      // Claims gzip but sends plain text — decompression will fail
+      res.writeHead(200, { 'Content-Encoding': 'gzip', 'Content-Type': 'text/html' });
+      res.end('not actually gzipped');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as { port: number }).port;
+
+    try {
+      // Should not throw — falls back to raw
+      const result = await fetchHtml(`http://127.0.0.1:${port}/`, 5000);
+      expect(typeof result).toBe('string');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test('follows redirects', async () => {
+    const { createServer } = await import('http');
+    let port: number;
+    const server = createServer((req, res) => {
+      if (req.url === '/start') {
+        res.writeHead(302, { Location: `http://127.0.0.1:${port}/end` });
+        res.end();
+      } else {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end('<html><body>redirected</body></html>');
+      }
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    port = (server.address() as { port: number }).port;
+
+    try {
+      const result = await fetchHtml(`http://127.0.0.1:${port}/start`, 5000);
+      expect(result).toContain('redirected');
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  test('throws when redirect limit is reached', async () => {
+    await expect(fetchHtml('http://127.0.0.1:9/', 5000, 10)).rejects.toThrow('Redirect limit exceeded');
+  });
+
+  test('rejects on request error', async () => {
+    // Port 1 is never open — will get a connection refused error
+    await expect(fetchHtml('http://127.0.0.1:1/', 5000)).rejects.toThrow();
   });
 });

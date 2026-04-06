@@ -21,6 +21,12 @@ export class Converter {
     };
   }
 
+  /**
+   * Convert an HTML string to clean markdown.
+   * Applies content extraction to strip nav, footer, ads, and boilerplate.
+   * @param html - Raw HTML to convert
+   * @returns Markdown string
+   */
   convert(html: string): string {
     const result = markdownify(html, {
       // Extract main content, stripping nav, footer, ads, etc.
@@ -28,11 +34,20 @@ export class Converter {
 
       // Preserve links for reference
       linkStyle: this.options.preserveLinks ? "inlined" : "referenced",
+
+      // Strip images when configured
+      ...(this.options.stripImages ? { images: false } : {}),
     });
 
     return typeof result === "string" ? result : result.markdown;
   }
 
+  /**
+   * Convert an HTML string to markdown and prepend a URL heading.
+   * @param html - Raw HTML to convert
+   * @param url - Source URL used as the document title
+   * @returns Markdown string with URL header and attribution footer
+   */
   convertWithMetadata(html: string, url: string): string {
     const markdown = this.convert(html);
 

@@ -103,7 +103,7 @@ Returns server status, cache statistics, and fetch metrics.
 ## Development Workflow
 
 ### Prerequisites
-- Node.js >= 18.0.0
+- Node.js >= 20.0.0
 - npm or yarn
 
 ### Building

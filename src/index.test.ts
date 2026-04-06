@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { initializeConfig, resetConfig, validateConfig } from './config.js';
+import { initializeConfig, resetConfig, validateAndInitializeConfig, getConfig } from './config.js';
 import { Logger } from './utils/logger.js';
 
 describe('MCP Server Configuration', () => {
@@ -17,7 +17,6 @@ describe('MCP Server Configuration', () => {
       BLOCKLIST_URL_PATTERNS: '',
       FETCH_TIMEOUT_MS: '30000',
       MAX_CONCURRENT_FETCHES: '5',
-      STABILIZATION_DELAY_MS: '2000',
       MAX_REDIRECTS: '10',
       MAX_CONTENT_LENGTH: '100000',
       CACHE_MAX_BYTES: '52428800',
@@ -33,13 +32,13 @@ describe('MCP Server Configuration', () => {
 
   describe('config validation', () => {
     it('should validate valid configuration', () => {
-      const config = validateConfig();
+      const config = getConfig();
       expect(config.LOG_LEVEL).toBe('INFO');
       expect(config.LOG_FORMAT).toBe('text');
     });
 
     it('should transform number strings to numbers', () => {
-      const config = validateConfig();
+      const config = getConfig();
       expect(typeof config.FETCH_TIMEOUT_MS).toBe('number');
       expect(config.FETCH_TIMEOUT_MS).toBe(30000);
       expect(typeof config.MAX_CONCURRENT_FETCHES).toBe('number');
@@ -50,7 +49,7 @@ describe('MCP Server Configuration', () => {
       resetConfig();
       initializeConfig({});
 
-      const config = validateConfig();
+      const config = getConfig();
       expect(config.FETCH_TIMEOUT_MS).toBe(30000);
       expect(config.MAX_CONCURRENT_FETCHES).toBe(5);
       expect(config.LOG_LEVEL).toBe('INFO');
@@ -73,19 +72,19 @@ describe('MCP Server Configuration', () => {
     it('should have fetch_url tool', () => {
       // Tool definitions are in index.ts
       // This test verifies the config system supports the tools
-      const config = validateConfig();
+      const config = getConfig();
       expect(config).toBeDefined();
       expect(config.LOG_LEVEL).toBeDefined();
     });
 
     it('should have fetch_urls tool', () => {
-      const config = validateConfig();
+      const config = getConfig();
       expect(config).toBeDefined();
       expect(config.MAX_CONCURRENT_FETCHES).toBeGreaterThan(0);
     });
 
     it('should have health_check tool', () => {
-      const config = validateConfig();
+      const config = getConfig();
       expect(config).toBeDefined();
       // Health check uses Logger metrics
       const health = Logger.getHealth();
@@ -98,7 +97,7 @@ describe('MCP Server Configuration', () => {
       resetConfig();
       initializeConfig({});
 
-      expect(() => validateConfig()).not.toThrow();
+      expect(() => getConfig()).not.toThrow();
     });
 
     it('should provide clear error messages for invalid config', () => {
@@ -139,5 +138,54 @@ describe('MCP Server Configuration', () => {
       }
       consoleSpy.mockRestore();
     });
+  });
+});
+
+describe('validateAndInitializeConfig', () => {
+  beforeEach(() => {
+    resetConfig();
+    vi.unstubAllEnvs();
+  });
+
+  afterEach(() => {
+    resetConfig();
+    vi.unstubAllEnvs();
+  });
+
+  it('parses process.env and makes config accessible via getConfig()', () => {
+    vi.stubEnv('LOG_LEVEL', 'WARN');
+    vi.stubEnv('FETCH_TIMEOUT_MS', '45000');
+
+    const config = validateAndInitializeConfig();
+
+    expect(config.LOG_LEVEL).toBe('WARN');
+    expect(config.FETCH_TIMEOUT_MS).toBe(45000);
+
+    // Must be accessible via getConfig() after initialization
+    const stored = getConfig();
+    expect(stored.LOG_LEVEL).toBe('WARN');
+    expect(stored.FETCH_TIMEOUT_MS).toBe(45000);
+  });
+
+  it('parses the environment exactly once (returns consistent result)', () => {
+    vi.stubEnv('LOG_LEVEL', 'DEBUG');
+
+    const first = validateAndInitializeConfig();
+    const second = getConfig();
+
+    expect(first.LOG_LEVEL).toBe(second.LOG_LEVEL);
+    expect(first.FETCH_TIMEOUT_MS).toBe(second.FETCH_TIMEOUT_MS);
+  });
+
+  it('throws on invalid LOG_LEVEL in process.env', () => {
+    vi.stubEnv('LOG_LEVEL', 'INVALID_LEVEL');
+    expect(() => validateAndInitializeConfig()).toThrow('Invalid configuration');
+  });
+
+  it('uses defaults for missing env vars', () => {
+    const config = validateAndInitializeConfig();
+    expect(config.FETCH_TIMEOUT_MS).toBe(30000);
+    expect(config.MAX_CONCURRENT_FETCHES).toBe(5);
+    expect(config.LOG_LEVEL).toBe('INFO');
   });
 });

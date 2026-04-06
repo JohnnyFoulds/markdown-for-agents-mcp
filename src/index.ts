@@ -14,6 +14,7 @@ import {
 import { fetchUrl } from "./tools/fetchUrl.js";
 import { fetchUrls } from "./tools/fetchUrls.js";
 import { webSearch } from "./tools/webSearch.js";
+import { downloadFile } from "./services/downloadFile.js";
 import { fetcher } from "./fetcher.js";
 import { Logger } from "./utils/logger.js";
 import { validateAndInitializeConfig } from "./config.js";
@@ -120,6 +121,27 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         inputSchema: {
           type: "object",
           properties: {},
+        },
+      },
+      {
+        name: "download_file",
+        description:
+          "Download a binary file (PDF, image, ZIP, etc.) from a URL and save it to a local path. " +
+          "Returns JSON metadata including the saved path, file size, MIME type, and filename. " +
+          "SSRF protection and domain block list are enforced. Use fetch_url for web pages.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            url: {
+              type: "string",
+              description: "URL of the file to download",
+            },
+            outputPath: {
+              type: "string",
+              description: "Absolute local path to save the file to (parent directory must exist)",
+            },
+          },
+          required: ["url", "outputPath"],
         },
       },
       {
@@ -245,6 +267,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       });
       return {
         content: [{ type: "text", text: result }],
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      return {
+        content: [{ type: "text", text: `# Error\n\n${errorMessage}\n` }],
+        isError: true,
+      };
+    }
+  }
+
+  if (name === "download_file") {
+    if (!args || typeof args !== "object" || !("url" in args) || !args.url) {
+      throw new Error("Missing required argument: url");
+    }
+    if (!("outputPath" in args) || !args.outputPath) {
+      throw new Error("Missing required argument: outputPath");
+    }
+    const outputPath = String(args.outputPath);
+    if (!outputPath.startsWith("/") && !(/^[A-Za-z]:[/\\]/.test(outputPath))) {
+      throw new Error("outputPath must be an absolute path");
+    }
+    try {
+      const result = await downloadFile(String(args.url), outputPath);
+      return {
+        content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";

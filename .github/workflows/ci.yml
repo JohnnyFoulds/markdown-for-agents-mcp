@@ -39,7 +39,7 @@ jobs:
         run: npx vitest run --coverage
       - name: Upload coverage to Codecov
         if: matrix.node-version == '20'
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238 # v4
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./coverage/lcov.info
@@ -60,11 +60,19 @@ jobs:
       - name: Verify build output
         run: |
           test -f dist/index.js
+          test -f dist/index.d.ts
           test -f dist/fetcher.js
           test -f dist/converter.js
           test -f dist/config.js
-          test -f dist/converter.js
-          test -f dist/index.d.ts
+          test -f dist/tools/fetchUrl.js
+          test -f dist/tools/fetchUrls.js
+          test -f dist/tools/webSearch.js
+          test -f dist/utils/cache.js
+          test -f dist/utils/domainBlacklist.js
+          test -f dist/utils/errors.js
+          test -f dist/utils/logger.js
+          test -f dist/services/webSearch.js
+          test -f dist/services/downloadFile.js
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:

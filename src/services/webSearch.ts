@@ -6,6 +6,7 @@
 import { fetcher } from "../fetcher.js";
 import { converter } from "../converter.js";
 import { getConfig } from "../config.js";
+import { Logger } from "../utils/logger.js";
 import http from 'http';
 import https from 'https';
 
@@ -274,9 +275,7 @@ export async function duckDuckGoSearch(
 
     // Check for bot-challenge page (DDG anomaly modal)
     if (html.includes('anomaly-modal') || html.includes('DDoS protection') || html.length < 2000) {
-      process.stderr.write(
-        '[warn] Response looks like a bot-challenge page — results may be empty.\n'
-      );
+      Logger.warn('Response looks like a bot-challenge page — results may be empty.');
     }
 
     // Parse results from HTML
