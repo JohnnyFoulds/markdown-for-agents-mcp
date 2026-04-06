@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
 import { chromium } from 'playwright';
-import { fetcher, Fetcher, urlCache } from './fetcher.js';
+import { fetcher, Fetcher, urlCache, titleCache } from './fetcher.js';
 import { initializeConfig, resetConfig } from './config.js';
 
 vi.mock('playwright', async () => {
@@ -27,11 +27,13 @@ describe('fetcher', () => {
       MAX_CONTENT_LENGTH: '100000',
     });
     urlCache.clear();
+    titleCache.clear();
     fetcherInstance = fetcher;
   });
 
   afterEach(async () => {
     urlCache.clear();
+    titleCache.clear();
     resetConfig();
     // Clean up browser state between tests
     try {
@@ -46,7 +48,7 @@ describe('fetcher', () => {
       const mockPage = {
         goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
         waitForTimeout: vi.fn().mockResolvedValue(undefined),
-        evaluate: vi.fn().mockResolvedValue('<h1>Test</h1>'),
+        evaluate: vi.fn().mockResolvedValue({ html: '<h1>Test</h1>', title: 'Test Page' }),
         close: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -66,7 +68,8 @@ describe('fetcher', () => {
       await fetcherInstance.initialize();
       const result = await fetcherInstance.fetch('https://example.com');
 
-      expect(result).toBe('<h1>Test</h1>');
+      expect(result.html).toBe('<h1>Test</h1>');
+      expect(result.title).toBe('Test Page');
       expect(mockPage.goto).toHaveBeenCalledWith('https://example.com', {
         waitUntil: 'networkidle',
         timeout: 30000,
@@ -77,7 +80,7 @@ describe('fetcher', () => {
       const mockPage = {
         goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
         waitForTimeout: vi.fn().mockResolvedValue(undefined),
-        evaluate: vi.fn().mockResolvedValue('<main><h1>Main Content</h1></main>'),
+        evaluate: vi.fn().mockResolvedValue({ html: '<main><h1>Main Content</h1></main>', title: '' }),
         close: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -97,7 +100,98 @@ describe('fetcher', () => {
       await fetcherInstance.initialize();
       const result = await fetcherInstance.fetch('https://example.com');
 
-      expect(result).toContain('Main Content');
+      expect(result.html).toContain('Main Content');
+    });
+
+    test('extracts document.title from page', async () => {
+      const mockPage = {
+        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
+        evaluate: vi.fn().mockResolvedValue({ html: '<p>Content</p>', title: 'My Awesome Page' }),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const mockContext = {
+        newPage: vi.fn().mockResolvedValue(mockPage),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const mockBrowser = {
+        newContext: vi.fn().mockResolvedValue(mockContext),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+
+      mockChromium.launch.mockResolvedValue(mockBrowser);
+
+      await fetcherInstance.initialize();
+      const result = await fetcherInstance.fetch('https://example.com');
+
+      expect(result.title).toBe('My Awesome Page');
+    });
+
+    test('returns empty title when document.title is empty', async () => {
+      const mockPage = {
+        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
+        evaluate: vi.fn().mockResolvedValue({ html: '<p>Content</p>', title: '' }),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const mockContext = {
+        newPage: vi.fn().mockResolvedValue(mockPage),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const mockBrowser = {
+        newContext: vi.fn().mockResolvedValue(mockContext),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+
+      mockChromium.launch.mockResolvedValue(mockBrowser);
+
+      await fetcherInstance.initialize();
+      const result = await fetcherInstance.fetch('https://example.com');
+
+      expect(result.title).toBe('');
+    });
+
+    test('populates titleCache on cache miss', async () => {
+      const mockPage = {
+        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
+        evaluate: vi.fn().mockResolvedValue({ html: '<p>Content</p>', title: 'Cached Title' }),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const mockContext = {
+        newPage: vi.fn().mockResolvedValue(mockPage),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const mockBrowser = {
+        newContext: vi.fn().mockResolvedValue(mockContext),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+
+      mockChromium.launch.mockResolvedValue(mockBrowser);
+
+      await fetcherInstance.initialize();
+      await fetcherInstance.fetch('https://example.com/title-test');
+
+      expect(titleCache.get('https://example.com/title-test')).toBe('Cached Title');
+    });
+
+    test('returns title from titleCache on cache hit', async () => {
+      // Pre-populate both caches
+      const cachedContent = '<p>Cached content</p>';
+      const cachedTitle = 'Cached Title';
+      urlCache.set('https://example.com', cachedContent, Buffer.byteLength(cachedContent, 'utf8'));
+      titleCache.set('https://example.com', cachedTitle, Buffer.byteLength(cachedTitle, 'utf8'));
+
+      const result = await fetcherInstance.fetch('https://example.com');
+
+      expect(result.html).toBe(cachedContent);
+      expect(result.title).toBe(cachedTitle);
     });
 
     test('handles navigation errors', async () => {
@@ -141,7 +235,7 @@ describe('fetcher', () => {
       const mockPage = {
         goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
         waitForTimeout: vi.fn().mockResolvedValue(undefined),
-        evaluate: vi.fn().mockResolvedValue('<p>Content</p>'),
+        evaluate: vi.fn().mockResolvedValue({ html: '<p>Content</p>', title: 'Test' }),
         close: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -173,7 +267,7 @@ describe('fetcher', () => {
       const mockPage1 = {
         goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
         waitForTimeout: vi.fn().mockResolvedValue(undefined),
-        evaluate: vi.fn().mockResolvedValue('<p>Success</p>'),
+        evaluate: vi.fn().mockResolvedValue({ html: '<p>Success</p>', title: 'OK' }),
         close: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -212,7 +306,7 @@ describe('fetcher', () => {
       const mockPage = {
         goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
         waitForTimeout: vi.fn().mockResolvedValue(undefined),
-        evaluate: vi.fn().mockResolvedValue('<article>Article content</article>'),
+        evaluate: vi.fn().mockResolvedValue({ html: '<article>Article content</article>', title: '' }),
         close: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -261,6 +355,33 @@ describe('fetcher', () => {
 
       expect(results[0].success).toBe(false);
       expect(results[0].markdown).toBe('');
+      expect(results[0].title).toBe('');
+    });
+
+    test('propagates title from successful fetch', async () => {
+      const mockPage = {
+        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
+        evaluate: vi.fn().mockResolvedValue({ html: '<p>ok</p>', title: 'Page Title' }),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const mockContext = {
+        newPage: vi.fn().mockResolvedValue(mockPage),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+
+      const mockBrowser = {
+        newContext: vi.fn().mockResolvedValue(mockContext),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+
+      mockChromium.launch.mockResolvedValue(mockBrowser);
+
+      await fetcherInstance.initialize();
+      const results = await fetcherInstance.fetchMultiple(['https://example.com']);
+
+      expect(results[0].title).toBe('Page Title');
     });
   });
 
@@ -268,7 +389,7 @@ describe('fetcher', () => {
     test('returns cached content without calling Playwright', async () => {
       const mockPage = {
         goto: vi.fn().mockResolvedValue({ status: () => 200, headers: vi.fn().mockReturnValue({}) }),
-        evaluate: vi.fn().mockResolvedValue('<p>Live content</p>'),
+        evaluate: vi.fn().mockResolvedValue({ html: '<p>Live content</p>', title: 'Live' }),
         close: vi.fn().mockResolvedValue(undefined),
       };
       const mockContext = {
@@ -288,7 +409,7 @@ describe('fetcher', () => {
 
       const result = await fetcherInstance.fetch('https://example.com');
 
-      expect(result).toBe(cachedContent);
+      expect(result.html).toBe(cachedContent);
       // Playwright should NOT have been invoked
       expect(mockPage.goto).not.toHaveBeenCalled();
     });
@@ -297,7 +418,7 @@ describe('fetcher', () => {
       const liveContent = '<h1>Fresh content</h1>';
       const mockPage = {
         goto: vi.fn().mockResolvedValue({ status: () => 200, headers: vi.fn().mockReturnValue({}) }),
-        evaluate: vi.fn().mockResolvedValue(liveContent),
+        evaluate: vi.fn().mockResolvedValue({ html: liveContent, title: 'Fresh' }),
         close: vi.fn().mockResolvedValue(undefined),
       };
       const mockContext = {
@@ -313,7 +434,7 @@ describe('fetcher', () => {
 
       const result = await fetcherInstance.fetch('https://example.com');
 
-      expect(result).toBe(liveContent);
+      expect(result.html).toBe(liveContent);
       expect(mockPage.goto).toHaveBeenCalledOnce();
       // Should now be cached
       expect(urlCache.get('https://example.com')).toBe(liveContent);
@@ -417,7 +538,7 @@ describe('fetcher', () => {
     test('passes custom timeout to page.goto', async () => {
       const mockPage = {
         goto: vi.fn().mockResolvedValue({ status: () => 200, headers: vi.fn().mockReturnValue({}) }),
-        evaluate: vi.fn().mockResolvedValue('<p>ok</p>'),
+        evaluate: vi.fn().mockResolvedValue({ html: '<p>ok</p>', title: '' }),
         close: vi.fn().mockResolvedValue(undefined),
       };
       const mockContext = {
@@ -492,7 +613,7 @@ describe('fetcher', () => {
     test('null pageResponse defaults to status 200 and continues', async () => {
       const mockPage = {
         goto: vi.fn().mockResolvedValue(null),
-        evaluate: vi.fn().mockResolvedValue('<p>null response ok</p>'),
+        evaluate: vi.fn().mockResolvedValue({ html: '<p>null response ok</p>', title: '' }),
         close: vi.fn().mockResolvedValue(undefined),
       };
       const mockContext = {
@@ -508,7 +629,7 @@ describe('fetcher', () => {
 
       await fetcherInstance.initialize();
       const result = await fetcherInstance.fetch('https://example.com');
-      expect(result).toBe('<p>null response ok</p>');
+      expect(result.html).toBe('<p>null response ok</p>');
     });
   });
 
@@ -517,7 +638,7 @@ describe('fetcher', () => {
       const mockContext = {
         newPage: vi.fn().mockResolvedValue({
           goto: vi.fn().mockResolvedValue({ status: () => 200, headers: vi.fn().mockReturnValue({}) }),
-          evaluate: vi.fn().mockResolvedValue('<p>ok</p>'),
+          evaluate: vi.fn().mockResolvedValue({ html: '<p>ok</p>', title: '' }),
           close: vi.fn().mockResolvedValue(undefined),
         }),
         addInitScript: vi.fn().mockResolvedValue(undefined),
@@ -534,6 +655,61 @@ describe('fetcher', () => {
 
       expect(mockChromium.launch).toHaveBeenCalledOnce();
     });
+
+    test('passes proxy config to chromium.launch when PLAYWRIGHT_PROXY is set', async () => {
+      resetConfig();
+      initializeConfig({
+        FETCH_TIMEOUT_MS: '30000',
+        MAX_CONCURRENT_FETCHES: '5',
+        MAX_REDIRECTS: '3',
+        MAX_CONTENT_LENGTH: '100000',
+        PLAYWRIGHT_PROXY: 'http://proxy.example.com:8080',
+      });
+
+      const mockContext = {
+        newPage: vi.fn(),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockBrowser = {
+        newContext: vi.fn().mockResolvedValue(mockContext),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      mockChromium.launch.mockResolvedValue(mockBrowser);
+
+      // Use a fresh instance so it re-initializes with new config
+      const freshFetcher = new Fetcher();
+      await freshFetcher.initialize();
+
+      expect(mockChromium.launch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          proxy: { server: 'http://proxy.example.com:8080', bypass: undefined },
+        })
+      );
+
+      await freshFetcher.close();
+    });
+
+    test('does not pass proxy config when PLAYWRIGHT_PROXY is absent', async () => {
+      const mockContext = {
+        newPage: vi.fn(),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockBrowser = {
+        newContext: vi.fn().mockResolvedValue(mockContext),
+        close: vi.fn().mockResolvedValue(undefined),
+      };
+      mockChromium.launch.mockResolvedValue(mockBrowser);
+
+      const freshFetcher = new Fetcher();
+      await freshFetcher.initialize();
+
+      const launchCall = mockChromium.launch.mock.calls[0][0];
+      expect(launchCall.proxy).toBeUndefined();
+
+      await freshFetcher.close();
+    });
   });
 
   describe('cache write failure', () => {
@@ -541,7 +717,7 @@ describe('fetcher', () => {
       const liveContent = '<p>content</p>';
       const mockPage = {
         goto: vi.fn().mockResolvedValue({ status: () => 200, headers: vi.fn().mockReturnValue({}) }),
-        evaluate: vi.fn().mockResolvedValue(liveContent),
+        evaluate: vi.fn().mockResolvedValue({ html: liveContent, title: '' }),
         close: vi.fn().mockResolvedValue(undefined),
       };
       const mockContext = {
@@ -561,7 +737,7 @@ describe('fetcher', () => {
       await fetcherInstance.initialize();
       // Should still return the content despite the cache write failure
       const result = await fetcherInstance.fetch('https://example.com/nocache');
-      expect(result).toBe(liveContent);
+      expect(result.html).toBe(liveContent);
     });
   });
 
@@ -587,7 +763,7 @@ describe('fetcher', () => {
       const largeContent = 'A'.repeat(100);
       const mockPage = {
         goto: vi.fn().mockResolvedValue({ status: () => 200, headers: vi.fn().mockReturnValue({}) }),
-        evaluate: vi.fn().mockResolvedValue(largeContent),
+        evaluate: vi.fn().mockResolvedValue({ html: largeContent, title: '' }),
         close: vi.fn().mockResolvedValue(undefined),
       };
       const mockContext = {
@@ -604,15 +780,15 @@ describe('fetcher', () => {
       await fetcherInstance.initialize();
       const result = await fetcherInstance.fetch('https://example.com/big');
 
-      expect(result.length).toBe(20);
-      expect(result).toBe('A'.repeat(20));
+      expect(result.html.length).toBe(20);
+      expect(result.html).toBe('A'.repeat(20));
     });
 
     test('does not truncate content within MAX_CONTENT_LENGTH', async () => {
       const content = '<p>Short content</p>';
       const mockPage = {
         goto: vi.fn().mockResolvedValue({ status: () => 200, headers: vi.fn().mockReturnValue({}) }),
-        evaluate: vi.fn().mockResolvedValue(content),
+        evaluate: vi.fn().mockResolvedValue({ html: content, title: '' }),
         close: vi.fn().mockResolvedValue(undefined),
       };
       const mockContext = {
@@ -629,7 +805,7 @@ describe('fetcher', () => {
       await fetcherInstance.initialize();
       const result = await fetcherInstance.fetch('https://example.com/short');
 
-      expect(result).toBe(content);
+      expect(result.html).toBe(content);
     });
   });
 });

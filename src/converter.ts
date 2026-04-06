@@ -43,15 +43,18 @@ export class Converter {
   }
 
   /**
-   * Convert an HTML string to markdown and prepend a URL heading.
+   * Convert an HTML string to markdown and prepend a heading.
+   * When a page title is available it is used as the heading; otherwise the URL is used.
    * @param html - Raw HTML to convert
-   * @param url - Source URL used as the document title
-   * @returns Markdown string with URL header and attribution footer
+   * @param url - Source URL (always included as a "Source:" line when a title is present)
+   * @param title - Optional page title extracted from document.title
+   * @returns Markdown string with heading and attribution footer
    */
-  convertWithMetadata(html: string, url: string): string {
+  convertWithMetadata(html: string, url: string, title?: string): string {
     const markdown = this.convert(html);
+    const heading = title ? `# ${title}\n\nSource: ${url}` : `# ${url}`;
 
-    return `# ${url}
+    return `${heading}
 
 ${markdown}
 

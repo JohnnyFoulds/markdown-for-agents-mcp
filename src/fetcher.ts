@@ -22,6 +22,20 @@ export const urlCache = new LRUCache<string>({
   ttl: 15 * 60 * 1000,
 });
 
+// Title cache: stores page titles alongside HTML cache entries (1MB, same TTL)
+export const titleCache = new LRUCache<string>({
+  maxBytes: 1 * 1024 * 1024,
+  ttl: 15 * 60 * 1000,
+});
+
+/**
+ * Result of a single page fetch, including rendered HTML and extracted page title.
+ */
+export interface PageResult {
+  html: string;
+  title: string;
+}
+
 /**
  * Get fetcher configuration with fallback for initialization order
  * Used to handle cases where config is accessed before initialization
@@ -36,6 +50,8 @@ function getFetcherConfig() {
       MAX_CONCURRENT_FETCHES: 5,
       MAX_REDIRECTS: 10,
       MAX_CONTENT_LENGTH: 100000,
+      PLAYWRIGHT_PROXY: undefined as string | undefined,
+      PLAYWRIGHT_PROXY_BYPASS: undefined as string | undefined,
     };
   }
 }
@@ -44,6 +60,7 @@ export interface FetchResult {
   url: string;
   success: boolean;
   markdown: string;
+  title: string;
   error?: string;
   requestId?: string;
 }
@@ -72,6 +89,9 @@ export class Fetcher {
    */
   async initialize(): Promise<void> {
     if (!this.browser) {
+      const config = this.getConfig();
+      const proxyServer = process.env['PLAYWRIGHT_PROXY'] ?? process.env['HTTP_PROXY'] ?? config.PLAYWRIGHT_PROXY;
+
       this.browser = await chromium.launch({
         headless: true,
         args: [
@@ -80,6 +100,7 @@ export class Fetcher {
           "--disable-dev-shm-usage",
           "--disable-gpu",
         ],
+        ...(proxyServer ? { proxy: { server: proxyServer, bypass: config.PLAYWRIGHT_PROXY_BYPASS } } : {}),
       });
 
       this.context = await this.browser.newContext({
@@ -177,15 +198,15 @@ export class Fetcher {
   }
 
   /**
-   * Fetch a single URL and return HTML content.
+   * Fetch a single URL and return rendered HTML content with page title.
    * Checks the LRU cache first; on a miss, renders the page with Playwright,
    * handles same-origin redirects, truncates oversized content, and caches the result.
    * @param url - The URL to fetch
    * @param timeout - Optional request timeout in milliseconds (overrides config)
    * @param requestId - Optional request ID for correlated logging
-   * @returns Resolved HTML string
+   * @returns PageResult with rendered HTML and extracted page title
    */
-  async fetch(url: string, timeout?: number, requestId?: string): Promise<string> {
+  async fetch(url: string, timeout?: number, requestId?: string): Promise<PageResult> {
     const config = this.getConfig();
     const requestTimeout = timeout ?? config.FETCH_TIMEOUT_MS;
     const startTime = Date.now();
@@ -205,7 +226,7 @@ export class Fetcher {
       Logger.logCacheHit(hostname, Buffer.byteLength(cached, 'utf8'), requestId);
       const stats = urlCache.getStats();
       Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
-      return cached;
+      return { html: cached, title: titleCache.get(url) ?? '' };
     }
 
     Logger.logCacheMiss(hostname, requestId);
@@ -213,6 +234,7 @@ export class Fetcher {
     let currentUrl = url;
     let redirectCount = 0;
     let html = '';
+    let pageTitle = '';
 
     try {
       while (redirectCount < config.MAX_REDIRECTS) {
@@ -257,7 +279,7 @@ export class Fetcher {
             continue;
           }
 
-          html = await page.evaluate(() => {
+          const pageData = await page.evaluate((): { html: string; title: string } => {
             const elementsToRemove = [
               "nav", "footer", "header", "[role='navigation']",
               ".nav", ".navbar", ".sidebar", ".ads", ".advertisement",
@@ -275,8 +297,13 @@ export class Fetcher {
               document.querySelector(".content") ||
               document.querySelector("body");
 
-            return mainContent?.innerHTML || document.body.innerHTML;
+            return {
+              html: mainContent?.innerHTML || document.body.innerHTML,
+              title: document.title || '',
+            };
           });
+          html = pageData.html;
+          pageTitle = pageData.title;
 
           await page.close();
           break;
@@ -298,6 +325,7 @@ export class Fetcher {
 
       try {
         urlCache.set(url, html, Buffer.byteLength(html, 'utf8'));
+        titleCache.set(url, pageTitle, Buffer.byteLength(pageTitle, 'utf8'));
         const stats = urlCache.getStats();
         Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
       } catch {
@@ -308,7 +336,7 @@ export class Fetcher {
       const duration = Date.now() - startTime;
       Logger.logFetch({ url, duration, success: true, requestId });
 
-      return html;
+      return { html, title: pageTitle };
     } catch (error) {
       const duration = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
@@ -353,11 +381,12 @@ export class Fetcher {
       const batchPromises = batch.map(async (url) => {
         try {
           const requestId = Logger.generateRequestId();
-          const html = await this.fetch(url, timeout, requestId);
+          const pageResult = await this.fetch(url, timeout, requestId);
           return {
             url,
             success: true,
-            markdown: html,
+            markdown: pageResult.html,
+            title: pageResult.title,
             requestId,
           } as FetchResult;
         } catch (error) {
@@ -365,6 +394,7 @@ export class Fetcher {
             url,
             success: false,
             markdown: "",
+            title: "",
             error: error instanceof Error ? error.message : "Unknown error",
             requestId: Logger.generateRequestId(),
           } as FetchResult;

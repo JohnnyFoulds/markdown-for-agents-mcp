@@ -35,6 +35,13 @@ const configSchema = z.object({
   // File Download
   DOWNLOAD_TIMEOUT_MS: z.string().default('60000').transform(Number),
   MAX_DOWNLOAD_BYTES: z.string().default('52428800').transform(Number), // 50 MB
+
+  // HTTP server mode
+  HTTP_PORT: z.string().optional().transform(v => v ? Number(v) : undefined),
+
+  // Proxy
+  PLAYWRIGHT_PROXY: z.string().optional(),
+  PLAYWRIGHT_PROXY_BYPASS: z.string().optional(),
 });
 
 export type Config = z.infer<typeof configSchema>;

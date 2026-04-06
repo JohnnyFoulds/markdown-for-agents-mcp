@@ -6,14 +6,33 @@
 [![codecov](https://codecov.io/gh/JohnnyFoulds/markdown-for-agents-mcp/branch/main/graph/badge.svg?token=cc1e1265-2c75-413a-95ea-3f07c9e81c62)](https://codecov.io/gh/JohnnyFoulds/markdown-for-agents-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that fetches URLs with full JavaScript rendering and converts them to clean, token-efficient markdown for AI agents.
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that fetches URLs with **full JavaScript rendering** and converts them to clean, token-efficient markdown for AI agents.
+
+Most MCP fetch tools use plain HTTP — they see what a server sends without running any JavaScript. That works for static sites, but silently returns empty or broken content for **React, Vue, Angular, SPAs, and any page that loads data dynamically**. This server runs a real Chromium browser via [Playwright](https://playwright.dev), so it renders the full page before extraction — the same content a human user would see.
 
 Powered by [Playwright](https://playwright.dev) and the [`markdown-for-agents`](https://www.npmjs.com/package/markdown-for-agents) library. Strips ads, navigation, and boilerplate — delivering up to 80% fewer tokens than raw HTML.
 
 ---
 
+## Why Playwright?
+
+| Capability | Plain HTTP fetchers | markdown-for-agents-mcp |
+| --- | --- | --- |
+| Static HTML pages | ✅ | ✅ |
+| React / Vue / Angular apps | ❌ | ✅ |
+| JavaScript-rendered content | ❌ | ✅ |
+| Single-page app routes | ❌ | ✅ |
+| Lazy-loaded / infinite-scroll | ❌ | ✅ |
+| Token efficiency vs raw HTML | Medium | Up to 80% fewer |
+| Bot-detection evasion | None | UA rotation, webdriver spoofing |
+
+**Token reduction example:** a typical news article page is ~150 KB of raw HTML (~40,000 tokens). After Playwright rendering, DOM pruning, and markdown conversion the same article becomes ~2,000 tokens — a 95% reduction.
+
+---
+
 ## Table of Contents
 
+- [Why Playwright?](#why-playwright)
 - [Features](#features)
 - [Installation](#installation)
 - [MCP Client Setup](#mcp-client-setup)
@@ -38,12 +57,15 @@ Powered by [Playwright](https://playwright.dev) and the [`markdown-for-agents`](
 ## Features
 
 - **JavaScript Rendering** — Playwright-driven Chromium renders React, Vue, Angular, and any JS-heavy page before extraction
+- **Structured Output** — Tools return typed `structuredContent` (url, title, markdown, fetchedAt, contentSize) alongside the text response, compatible with MCP SDK 1.11+
 - **Smart Content Extraction** — Scores and selects the main content block (`main` > `article` > `#content` > `body`), dropping sidebars, nav, and ads automatically
 - **Token Efficiency** — Produces compact LLM-ready markdown; benchmarks show up to 80% fewer tokens than raw HTML
 - **Web Search** — DuckDuckGo search with optional fetch-and-convert of top results
 - **LRU Cache** — 50 MB in-memory cache with a 15-minute TTL avoids redundant fetches
 - **Domain Filtering** — Built-in blocklist of trackers/social domains; supports per-request allow/block lists and server-level allowlist mode
 - **Batch Fetching** — Concurrent multi-URL fetches with configurable parallelism
+- **HTTP Server Mode** — Run as an HTTP server (`--http [port]` or `HTTP_PORT` env var) with optional bearer token auth
+- **Proxy Support** — Pass `PLAYWRIGHT_PROXY` to route Playwright traffic through a proxy
 - **Health Monitoring** — `health_check` tool exposes cache and fetch metrics
 - **Zero Configuration** — Chromium is installed automatically on first run
 
@@ -117,6 +139,26 @@ Any client that implements the [MCP specification](https://modelcontextprotocol.
 }
 ```
 
+### HTTP server mode
+
+Instead of stdio, you can run the server as a standard HTTP endpoint — useful for shared deployments, Docker, or any client that prefers the Streamable HTTP transport:
+
+```bash
+# Start on port 3456
+markdown-mcp --http 3456
+
+# Or use the env var
+HTTP_PORT=3456 markdown-mcp
+```
+
+All MCP traffic is handled at `POST|GET|DELETE /mcp`. To require a bearer token, set `MCP_AUTH_TOKEN`:
+
+```bash
+MCP_AUTH_TOKEN=mysecrettoken HTTP_PORT=3456 markdown-mcp
+```
+
+Clients must then pass `Authorization: Bearer mysecrettoken` with every request.
+
 ---
 
 ## Available Tools
@@ -138,16 +180,33 @@ Fetches a single URL with full JavaScript rendering and returns clean markdown.
 fetch_url(url="https://example.com/blog/post")
 ```
 
-**Output:**
+**Text output** (always present, backward-compatible):
 
 ```markdown
 # Blog Post Title
+
+Source: https://example.com/blog/post
 
 This is the main content of the article, stripped of navigation, ads, and boilerplate.
 
 ## Related Section
 
 More content here...
+
+---
+*Converted by markdown-for-agents-mcp*
+```
+
+**Structured output** (available to MCP SDK 1.11+ clients via `structuredContent`):
+
+```json
+{
+  "url": "https://example.com/blog/post",
+  "title": "Blog Post Title",
+  "markdown": "# Blog Post Title\n\nSource: ...",
+  "fetchedAt": "2026-04-06T17:00:00.000Z",
+  "contentSize": 2048
+}
 ```
 
 ---
@@ -172,20 +231,50 @@ fetch_urls(urls=[
 ])
 ```
 
-**Output:**
+**Text output:**
 
 ```markdown
-## URL: https://example.com/post1
 # Post 1 Title
+
+Source: https://example.com/post1
+
 ...
 
 ---
 
-## URL: https://example.com/post2
 # Post 2 Title
+
+Source: https://example.com/post2
+
 ...
 
 ---
+```
+
+**Structured output** (via `structuredContent`):
+
+```json
+{
+  "results": [
+    {
+      "url": "https://example.com/post1",
+      "title": "Post 1 Title",
+      "markdown": "...",
+      "fetchedAt": "2026-04-06T17:00:00.000Z",
+      "contentSize": 1820,
+      "success": true
+    },
+    {
+      "url": "https://example.com/post2",
+      "title": "Post 2 Title",
+      "markdown": "...",
+      "fetchedAt": "2026-04-06T17:00:00.000Z",
+      "contentSize": 2104,
+      "success": true
+    }
+  ],
+  "summary": { "total": 2, "succeeded": 2, "failed": 0 }
+}
 ```
 
 Parallelism is controlled by `MAX_CONCURRENT_FETCHES` (default: 5).
@@ -227,7 +316,7 @@ web_search(
 )
 ```
 
-**Output:**
+**Text output:**
 
 ```markdown
 # Web Search Results
@@ -242,14 +331,21 @@ web_search(
 
 2. [Best TypeScript Tutorials](https://github.com/danistefanovic/build-your-own-typescript)
    Learn TypeScript by building your own compiler...
+```
 
----
+**Structured output** (via `structuredContent`):
 
-## Fetched Content:
-
-### https://www.typescriptlang.org/docs/
-# TypeScript Documentation
-Content from the page...
+```json
+{
+  "query": "typescript tutorials",
+  "results": [
+    { "title": "TypeScript Handbook", "url": "https://www.typescriptlang.org/docs/", "snippet": "...", "domain": "typescriptlang.org" }
+  ],
+  "fetchedContent": [
+    { "url": "https://www.typescriptlang.org/docs/", "markdown": "..." }
+  ],
+  "durationMs": 1234
+}
 ```
 
 > **Note:** `allowedDomains` and `blockedDomains` arguments apply to search result filtering only. Server-level `BLOCKLIST_DOMAINS` / `USE_ALLOWLIST_MODE` settings still apply when those results are subsequently fetched.
@@ -387,6 +483,10 @@ cp .env.example .env
 | `BLOCKLIST_URL_PATTERNS` | _(empty)_ | Comma-separated regex patterns to block by URL path |
 | `WEB_SEARCH_DEFAULT_TIMEOUT_MS` | `30000` | Default timeout for search requests (ms) |
 | `DOWNLOAD_TIMEOUT_MS` | `60000` | Timeout for binary file downloads (ms) |
+| `HTTP_PORT` | _(unset)_ | When set, starts an HTTP server on this port instead of stdio |
+| `MCP_AUTH_TOKEN` | _(unset)_ | Bearer token required on all HTTP requests (HTTP mode only) |
+| `PLAYWRIGHT_PROXY` | _(unset)_ | Proxy server URL for Playwright (e.g. `http://proxy.example.com:8080`) |
+| `PLAYWRIGHT_PROXY_BYPASS` | _(unset)_ | Comma-separated domains to bypass the proxy |
 
 All logs are written to `stderr` to keep `stdout` clean for the MCP protocol.
 
