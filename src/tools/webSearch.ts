@@ -45,21 +45,14 @@ ${item.markdown}
 export async function webSearch(options: SearchOptions): Promise<string> {
   const { query, maxResults, allowedDomains, blockedDomains, fetchResults, timeout } = options;
 
-  try {
-    const response = await duckDuckGoSearch({
-      query,
-      maxResults: maxResults ?? 10,
-      allowedDomains,
-      blockedDomains,
-      fetchResults: fetchResults ?? false,
-      timeout,
-    });
+  const response = await duckDuckGoSearch({
+    query,
+    maxResults: maxResults ?? 10,
+    allowedDomains,
+    blockedDomains,
+    fetchResults: fetchResults ?? false,
+    timeout,
+  });
 
-    return formatSearchResults(response);
-  } catch (error) {
-    return `# Web Search Error
-
-Failed to perform search: ${error instanceof Error ? error.message : "Unknown error"}
-`;
-  }
+  return formatSearchResults(response);
 }

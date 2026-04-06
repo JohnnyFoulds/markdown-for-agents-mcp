@@ -4,6 +4,7 @@
  */
 
 import { fetcher } from "../fetcher.js";
+import { converter } from "../converter.js";
 
 export interface FetchUrlsOptions {
   urls: string[];
@@ -12,29 +13,21 @@ export interface FetchUrlsOptions {
 
 export async function fetchUrls(options: FetchUrlsOptions): Promise<string> {
   const { urls, timeout } = options;
-  try {
-    const results = await fetcher.fetchMultiple(urls, timeout);
+  const results = await fetcher.fetchMultiple(urls, timeout);
 
-    const output: string[] = [];
+  const output: string[] = [];
 
-    for (const result of results) {
-      output.push(`## URL: ${result.url}`);
+  for (const result of results) {
+    output.push(`## URL: ${result.url}`);
 
-      if (!result.success) {
-        output.push(`**Error:** ${result.error || "Unknown error"}`);
-      } else {
-        output.push(result.markdown);
-      }
-
-      output.push("---");
+    if (!result.success) {
+      output.push(`**Error:** ${result.error || "Unknown error"}`);
+    } else {
+      output.push(converter.convertWithMetadata(result.markdown, result.url));
     }
 
-    return output.join("\n\n");
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
-    return `# Error fetching URLs
-
-Failed to fetch URLs: ${errorMessage}
-`;
+    output.push("---");
   }
+
+  return output.join("\n\n");
 }

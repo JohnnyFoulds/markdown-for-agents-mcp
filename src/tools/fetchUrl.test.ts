@@ -46,39 +46,29 @@ describe('fetchUrl', () => {
   });
 
   describe('error handling', () => {
-    test('returns error message when fetch fails', async () => {
+    test('throws when fetch fails', async () => {
       const url = 'https://example.com';
       const fetchError = new Error('Network timeout');
 
       vi.mocked(fetcher.fetch).mockRejectedValue(fetchError);
 
-      const result = await fetchUrl({ url });
-
-      expect(result).toContain('# Error fetching');
-      expect(result).toContain(url);
-      expect(result).toContain('Network timeout');
+      await expect(fetchUrl({ url })).rejects.toThrow('Network timeout');
     });
 
-    test('handles non-Error exceptions', async () => {
+    test('throws non-Error exceptions', async () => {
       const url = 'https://example.com';
 
       vi.mocked(fetcher.fetch).mockRejectedValue('String error');
 
-      const result = await fetchUrl({ url });
-
-      expect(result).toContain('# Error fetching');
-      expect(result).toContain('Unknown error');
+      await expect(fetchUrl({ url })).rejects.toBe('String error');
     });
 
-    test('handles null/undefined errors', async () => {
+    test('throws null errors', async () => {
       const url = 'https://example.com';
 
       vi.mocked(fetcher.fetch).mockRejectedValue(null);
 
-      const result = await fetchUrl({ url });
-
-      expect(result).toContain('# Error fetching');
-      expect(result).toContain('Unknown error');
+      await expect(fetchUrl({ url })).rejects.toBeNull();
     });
   });
 

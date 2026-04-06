@@ -44,7 +44,7 @@ export class LRUCache<T> {
     }
 
     // Check TTL
-    if (Date.now() - entry.accessAt > this.options.ttl) {
+    if (Date.now() - entry.createdAt > this.options.ttl) {
       this.delete(key);
       return undefined;
     }

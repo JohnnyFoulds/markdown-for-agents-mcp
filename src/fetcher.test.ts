@@ -42,6 +42,7 @@ describe('fetcher', () => {
 
       const mockContext = {
         newPage: vi.fn().mockResolvedValue(mockPage),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -72,6 +73,7 @@ describe('fetcher', () => {
 
       const mockContext = {
         newPage: vi.fn().mockResolvedValue(mockPage),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -97,6 +99,7 @@ describe('fetcher', () => {
 
       const mockContext = {
         newPage: vi.fn().mockResolvedValue(mockPage),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -134,6 +137,7 @@ describe('fetcher', () => {
 
       const mockContext = {
         newPage: vi.fn().mockResolvedValue(mockPage),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -173,6 +177,7 @@ describe('fetcher', () => {
         newPage: vi.fn()
           .mockResolvedValueOnce(mockPage1)
           .mockResolvedValueOnce(mockPage2),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -203,6 +208,7 @@ describe('fetcher', () => {
 
       const mockContext = {
         newPage: vi.fn().mockResolvedValue(mockPage),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
       };
 
@@ -229,6 +235,7 @@ describe('fetcher', () => {
 
       const mockContext = {
         newPage: vi.fn().mockResolvedValue(mockPage),
+        addInitScript: vi.fn().mockResolvedValue(undefined),
         close: vi.fn().mockResolvedValue(undefined),
       };
 

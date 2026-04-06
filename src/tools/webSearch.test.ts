@@ -60,22 +60,16 @@ describe('webSearch', () => {
     expect(result).toContain('123ms');
   });
 
-  test('handles search errors gracefully', async () => {
+  test('throws when search fails', async () => {
     vi.mocked(duckDuckGoSearch).mockRejectedValue(new Error('Search failed'));
 
-    const result = await webSearch({ query: 'test query' });
-
-    expect(result).toContain('# Web Search Error');
-    expect(result).toContain('Search failed');
+    await expect(webSearch({ query: 'test query' })).rejects.toThrow('Search failed');
   });
 
-  test('handles non-Error exceptions', async () => {
+  test('throws non-Error exceptions', async () => {
     vi.mocked(duckDuckGoSearch).mockRejectedValue('String error');
 
-    const result = await webSearch({ query: 'test query' });
-
-    expect(result).toContain('# Web Search Error');
-    expect(result).toContain('Unknown error');
+    await expect(webSearch({ query: 'test query' })).rejects.toBe('String error');
   });
 
   test('respects maxResults parameter', async () => {

@@ -252,7 +252,9 @@ export class Logger {
   } {
     const summary = this.getSummary();
     return {
-      status: summary.errorCount === 0 ? 'healthy' : 'unhealthy',
+      status: summary.totalFetches === 0 || summary.errorCount / summary.totalFetches <= 0.1
+        ? 'healthy'
+        : 'unhealthy',
       cache: this.cacheMetrics,
       metrics: {
         totalFetches: summary.totalFetches,

@@ -39,15 +39,10 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "markdown-for-agents": "^1.0.0",
     "playwright": "^1.40.0",
-    "readability": "^0.1.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/jest": "^29.5.0",
     "@types/node": "^20.19.39",
-    "jest": "^29.7.0",
-    "jest-mock-extended": "^4.0.0",
-    "ts-jest": "^29.1.0",
     "typescript": "^5.3.0",
     "vitest": "^4.1.2"
   },
