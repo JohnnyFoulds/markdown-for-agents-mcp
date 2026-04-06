@@ -1,8 +1,8 @@
 {
   "name": "markdown-for-agents-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
-  "description": "MCP server for AI agents - fetch URLs and convert to clean markdown with JavaScript rendering",
+  "description": "MCP server for AI agents — fetch any URL with full JavaScript rendering (Playwright/Chromium) and convert to clean, token-efficient markdown. Works on React, Vue, Angular, and any JS-heavy page.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
@@ -12,6 +12,7 @@
   "files": [
     "dist",
     "cli.js",
+    "scripts/install-playwright.js",
     "README.md",
     "LICENSE"
   ],
@@ -30,13 +31,25 @@
     "agent",
     "markdown",
     "playwright",
-    "html-to-markdown"
+    "html-to-markdown",
+    "web-scraping",
+    "fetch",
+    "spa",
+    "chromium",
+    "llm",
+    "mcp-server",
+    "javascript-rendering"
   ],
   "mcpName": "io.github.JohnnyFoulds/markdown-for-agents-mcp",
+  "author": "JohnnyFoulds",
   "license": "MIT",
+  "homepage": "https://github.com/JohnnyFoulds/markdown-for-agents-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/JohnnyFoulds/markdown-for-agents-mcp/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "git@github.com:JohnnyFoulds/markdown-for-agents-mcp.git"
+    "url": "https://github.com/JohnnyFoulds/markdown-for-agents-mcp.git"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-04-06
+
+### Fixed
+- `scripts/install-playwright.js` added to `files` array — postinstall hook was silently failing for all npm users because the file was excluded from the published package
+- `repository.url` changed from SSH (`git@github.com:...`) to HTTPS so npm renders the repository link correctly on the package page
+
+### Added
+- `homepage`, `bugs`, and `author` fields in `package.json`
+- Expanded `keywords`: `web-scraping`, `fetch`, `spa`, `chromium`, `llm`, `mcp-server`, `javascript-rendering`
+- Improved `description` — explicitly mentions React/Vue/Angular, Playwright/Chromium, and token efficiency
+
+---
+
 ## [1.0.0] - 2026-04-06
 
 ### Added
