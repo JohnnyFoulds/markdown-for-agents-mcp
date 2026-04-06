@@ -2,7 +2,7 @@
  * Domain blacklist unit tests
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { validateUrl, isDomainBlocked, isPathBlocked, getBlocklistConfig } from './domainBlacklist.js';
 import { initializeConfig, resetConfig } from '../config.js';
 
@@ -173,11 +173,118 @@ describe('Domain Blacklist', () => {
     });
   });
 
+  describe('SSRF protection', () => {
+    it('should block localhost', () => {
+      expect(validateUrl('http://localhost/path').valid).toBe(false);
+      expect(validateUrl('http://localhost:8080/').valid).toBe(false);
+    });
+
+    it('should block 127.x.x.x loopback addresses', () => {
+      expect(validateUrl('http://127.0.0.1/').valid).toBe(false);
+      expect(validateUrl('http://127.0.0.2/').valid).toBe(false);
+      expect(validateUrl('http://127.255.255.255/').valid).toBe(false);
+    });
+
+    it('should block 10.x.x.x RFC1918 addresses', () => {
+      expect(validateUrl('http://10.0.0.1/').valid).toBe(false);
+      expect(validateUrl('http://10.255.255.255/').valid).toBe(false);
+    });
+
+    it('should block 172.16-31.x.x RFC1918 addresses', () => {
+      expect(validateUrl('http://172.16.0.1/').valid).toBe(false);
+      expect(validateUrl('http://172.31.255.255/').valid).toBe(false);
+    });
+
+    it('should allow 172.15.x.x (not in RFC1918 range)', () => {
+      // 172.15.x.x is outside the 172.16-31 block
+      expect(validateUrl('http://172.15.0.1/').valid).toBe(true);
+    });
+
+    it('should allow 172.32.x.x (not in RFC1918 range)', () => {
+      expect(validateUrl('http://172.32.0.1/').valid).toBe(true);
+    });
+
+    it('should block 192.168.x.x RFC1918 addresses', () => {
+      expect(validateUrl('http://192.168.0.1/').valid).toBe(false);
+      expect(validateUrl('http://192.168.1.100/').valid).toBe(false);
+    });
+
+    it('should block 169.254.x.x link-local / AWS metadata', () => {
+      expect(validateUrl('http://169.254.169.254/').valid).toBe(false);
+      expect(validateUrl('http://169.254.0.1/').valid).toBe(false);
+    });
+
+    it('should block 0.0.0.0', () => {
+      expect(validateUrl('http://0.0.0.0/').valid).toBe(false);
+    });
+
+    it('should block IPv6 loopback ::1', () => {
+      expect(validateUrl('http://[::1]/').valid).toBe(false);
+    });
+
+    it('should include SSRF error message', () => {
+      const result = validateUrl('http://127.0.0.1/');
+      expect(result.valid).toBe(false);
+      if (!result.valid) {
+        expect(result.error).toContain('SSRF');
+      }
+    });
+  });
+
   describe('custom blocklist configuration', () => {
     it('should get blocklist config', () => {
       const config = getBlocklistConfig();
       expect(config.mode).toBe('blocklist');
       expect(config.patternCount).toBeGreaterThan(0);
+    });
+
+    it('should reflect allowlist mode in getBlocklistConfig', () => {
+      resetConfig();
+      initializeConfig({
+        USE_ALLOWLIST_MODE: 'true',
+        BLOCKLIST_DOMAINS: 'allowed.com',
+        BLOCKLIST_URL_PATTERNS: '',
+      });
+      const config = getBlocklistConfig();
+      expect(config.mode).toBe('allowlist');
+      expect(config.customDomains).toContain('allowed.com');
+    });
+
+    it('should include custom domains in getBlocklistConfig', () => {
+      resetConfig();
+      initializeConfig({
+        USE_ALLOWLIST_MODE: 'false',
+        BLOCKLIST_DOMAINS: 'evil.com,bad.org',
+        BLOCKLIST_URL_PATTERNS: '',
+      });
+      const config = getBlocklistConfig();
+      expect(config.customDomains).toContain('evil.com');
+      expect(config.customDomains).toContain('bad.org');
+    });
+
+    it('should skip invalid regex patterns and warn', () => {
+      const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      resetConfig();
+      initializeConfig({
+        USE_ALLOWLIST_MODE: 'false',
+        BLOCKLIST_DOMAINS: '',
+        BLOCKLIST_URL_PATTERNS: '(invalid[,/valid/path',
+      });
+      // Should not throw; invalid pattern skipped, valid one kept
+      expect(() => isPathBlocked('/valid/path')).not.toThrow();
+      warnSpy.mockRestore();
+    });
+
+    it('should skip patterns longer than 500 chars', () => {
+      const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      resetConfig();
+      initializeConfig({
+        USE_ALLOWLIST_MODE: 'false',
+        BLOCKLIST_DOMAINS: '',
+        BLOCKLIST_URL_PATTERNS: 'a'.repeat(501),
+      });
+      expect(() => isPathBlocked('/anything')).not.toThrow();
+      warnSpy.mockRestore();
     });
   });
 
