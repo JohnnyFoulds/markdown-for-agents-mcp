@@ -79,7 +79,7 @@ export function validateAndInitializeConfig(): Config {
 }
 
 // Store config in global for testing
-interface GlobalWithConfig extends Global {
+interface GlobalWithConfig {
   __config?: Config;
 }
 
