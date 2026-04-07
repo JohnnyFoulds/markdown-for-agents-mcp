@@ -2,9 +2,13 @@
 
 This document tracks gaps and potential improvements identified by comparing `markdown-for-agents-mcp` against similar tools in the ecosystem. It is organised by priority and theme.
 
+Legend: ✅ implemented · 🔲 planned · ❌ not available
+
 ---
 
 ## Competitive Landscape Summary
+
+### Current state
 
 | Feature | This project | Official MCP Fetch | Firecrawl MCP | Playwright MCP | Jina Reader | Crawl4AI |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -13,14 +17,53 @@ This document tracks gaps and potential improvements identified by comparing `ma
 | Web search | ✅ | ❌ | ✅ | ❌ | Separate | ❌ |
 | In-process cache | ✅ | ❌ | ❌ | ❌ | Cloud | ✅ |
 | Proxy support | ✅ | ✅ | Cloud-managed | ✅ | ✅ | ✅ |
-| Structured output | ✅ | ❌ | ✅ JSON schema | Accessibility | ✅ | ✅ |
+| Structured output (MCP schema) | ✅ | ❌ | ✅ | Accessibility | ✅ | ✅ |
 | MCP native | ✅ | ✅ | ✅ | ✅ | ❌ | Via Docker |
 | No API key required | ✅ | ✅ | ❌ | ❌ | Free tier | ✅ |
 | Local / self-hosted | ✅ | ✅ | Partial | ✅ | ❌ | ✅ |
+| Binary file download | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Streamable HTTP + auth | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Interactive browser | ❌ | ❌ | ✅ | ✅ | ❌ | Partial |
 | Site crawl | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ |
+| Async crawl jobs | ❌ | ❌ | ✅ | ❌ | ❌ | Partial |
 | Anti-bot stealth | Light | None | Cloud-managed | None | Cloud | Aggressive |
+| Proxy list rotation | ❌ | ❌ | Cloud-managed | ❌ | Cloud | ✅ |
+| Schema-based extraction | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ |
+| Multiple output formats | ❌ | ❌ | ✅ | Accessibility | ✅ | ✅ |
+| Auth / cookie passthrough | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| robots.txt compliance | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Content pagination | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| Multi-browser support | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ |
+| CSS selector targeting | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ |
+| Retry and back-off | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ |
+
+### After implementing all planned work
+
+| Feature | This project | Official MCP Fetch | Firecrawl MCP | Playwright MCP | Jina Reader | Crawl4AI |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| JS rendering | ✅ | Partial | ✅ | ✅ | ✅ | ✅ |
+| Batch fetch | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ |
+| Web search | ✅ | ❌ | ✅ | ❌ | Separate | ❌ |
+| In-process cache | ✅ | ❌ | ❌ | ❌ | Cloud | ✅ |
 | Binary file download | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Streamable HTTP + auth | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| No API key required | ✅ | ✅ | ❌ | ❌ | Free tier | ✅ |
+| Local / self-hosted | ✅ | ✅ | Partial | ✅ | ❌ | ✅ |
+| Site crawl | 🔲 | ❌ | ✅ | ❌ | ❌ | ✅ |
+| Async crawl jobs | 🔲 | ❌ | ✅ | ❌ | ❌ | Partial |
+| Anti-bot stealth | 🔲 Strong | Cloud-managed | Cloud-managed | None | Cloud | Aggressive |
+| Proxy list rotation | 🔲 | ❌ | Cloud-managed | ❌ | Cloud | ✅ |
+| Schema-based extraction | 🔲 | ❌ | ✅ | ❌ | ❌ | ✅ |
+| Multiple output formats | 🔲 | ❌ | ✅ | Accessibility | ✅ | ✅ |
+| Auth / cookie passthrough | 🔲 | ❌ | ✅ | ✅ | ✅ | ✅ |
+| Stateful browser sessions | 🔲 | ❌ | ✅ | ✅ | ❌ | Partial |
+| robots.txt compliance | 🔲 | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Content pagination | 🔲 | ✅ | ❌ | ❌ | ✅ | ❌ |
+| Multi-browser support | 🔲 | ❌ | ❌ | ✅ | ❌ | ✅ |
+| CSS selector targeting | 🔲 | ❌ | ✅ | ❌ | ✅ | ✅ |
+| Retry and back-off | 🔲 | ❌ | ✅ | ❌ | ❌ | ✅ |
+| CAPTCHA bypass | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Enterprise-scale infra | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ |
 
 ---
 
@@ -40,7 +83,10 @@ This document tracks gaps and potential improvements identified by comparing `ma
 
 **Gap:** The server returns markdown only. Firecrawl and Crawl4AI can extract structured data against a user-supplied JSON schema, which is significantly more useful for data pipeline use cases.
 
-**Proposed change:** Add an optional `schema` parameter (JSON Schema object) to `fetch_url`. When supplied, pass the page content + schema to a local LLM call (or a lightweight extraction pipeline) and return structured JSON alongside the markdown.
+**Proposed change:** Implement in two phases:
+
+- **Phase 1 (CSS/XPath-based):** Add an optional `schema` parameter (JSON Schema object) to `fetch_url`. Use `cheerio` selectors or XPath expressions mapped to schema fields for deterministic extraction. Covers the majority of structured pages (product listings, documentation, data tables) without requiring an LLM.
+- **Phase 2 (LLM-assisted):** When CSS/XPath extraction yields insufficient confidence, optionally pass the page markdown + schema to a configured LLM endpoint and return structured JSON alongside the markdown. The LLM endpoint is user-supplied — the tool does not bundle a model.
 
 **Comparators with this feature:** Firecrawl MCP (`extract` tool), Crawl4AI (LLM-driven extraction)
 
@@ -50,7 +96,12 @@ This document tracks gaps and potential improvements identified by comparing `ma
 
 **Gap:** There is no way to crawl an entire site or enumerate all URLs under a domain. Firecrawl exposes `firecrawl_crawl` and `firecrawl_map` for this.
 
-**Proposed change:** Add a `crawl_site` tool that accepts a root URL, maximum depth, and URL include/exclude patterns. Returns a list of discovered URLs and optionally fetches each to markdown. Implement politeness controls (delay between requests, respect robots.txt option).
+**Proposed change:** Implement in two phases aligned with the async job design (see [Async Job Execution and Resumable Crawls](#async-job-execution-and-resumable-crawls)):
+
+- **Phase 1 (synchronous `crawl_site`):** A depth-limited BFS crawler that accepts a root URL, `maxDepth`, `maxPages`, and URL include/exclude patterns. Fetches each page using the existing Playwright fetcher and returns results inline. Suitable for small sites (< 100 pages).
+- **Phase 2 (async `crawl_start` / job API):** For larger crawls, the async job system replaces the synchronous tool. The `crawl_site` tool is retained for small, agent-driven tasks; `crawl_start` is used for production crawls.
+
+Both phases respect the existing domain blocklist/allowlist configuration and support politeness controls (request delay, `maxConcurrency`). robots.txt compliance (see [Gap 5](#5-robotstxt-compliance-option)) applies to both.
 
 **Comparators with this feature:** Firecrawl MCP, Crawl4AI
 
@@ -104,7 +155,7 @@ PLAYWRIGHT_PROXY_LIST=/path/to/proxies.txt   # one proxy URL per line
 PLAYWRIGHT_PROXY_ROTATION=random             # random | round-robin | sticky-per-domain
 ```
 
-The fetcher selects a proxy per request (or per domain, in sticky mode) from the list. Failed requests with a given proxy can automatically retry with a different one.
+The fetcher selects a proxy per request (or per domain, in sticky mode) from the list. Failed requests with a given proxy automatically retry with a different one.
 
 #### B. Residential proxy service integration
 
@@ -144,7 +195,7 @@ PLAYWRIGHT_PROXY_PINS={"docs.example.com": "socks5://user:pass@proxy1.example.co
 | Datacentre IP range block | ❌ | ✅ | ✅ |
 | CAPTCHA (hCaptcha, reCAPTCHA) | ❌ | ❌ | ❌ |
 
-CAPTCHA solving is explicitly out of scope — it requires a third-party solving service and raises ethical/legal questions beyond the scope of this tool.
+CAPTCHA solving is explicitly out of scope — it requires a third-party solving service and raises ethical/legal questions beyond the scope of this tool. See [Moat 1: CAPTCHA Bypass](#moat-1-captcha-bypass).
 
 **Comparators with stronger stealth:** Crawl4AI (3-tier anti-bot), Browserbase (paid stealth mode with managed residential IPs)
 
@@ -154,9 +205,9 @@ CAPTCHA solving is explicitly out of scope — it requires a third-party solving
 
 **Gap:** The server does not check or respect `robots.txt`. The official Anthropic MCP fetch server enforces this by default. Some deployment environments (corporate, research) may require compliance.
 
-**Proposed change:** Add a `RESPECT_ROBOTS_TXT` environment variable (default `false` for backwards compatibility). When enabled, fetch and parse `robots.txt` for the target domain before each request and block disallowed paths. Cache parsed `robots.txt` per domain with a longer TTL (e.g. 1 hour).
+**Proposed change:** Add a `RESPECT_ROBOTS_TXT` environment variable (default `false` for backwards compatibility). When enabled, fetch and parse `robots.txt` for the target domain before each request and block disallowed paths. Cache parsed `robots.txt` per domain with a longer TTL (e.g. 1 hour). The crawl worker (see [Gap 3](#3-site-crawling-and-mapping)) also respects this setting.
 
-**Comparators with this feature:** Official MCP Fetch (enforced by default)
+**Comparators with this feature:** Official MCP Fetch (enforced by default), Firecrawl MCP, Crawl4AI
 
 ---
 
@@ -164,9 +215,9 @@ CAPTCHA solving is explicitly out of scope — it requires a third-party solving
 
 **Gap:** Content extraction uses a fixed priority chain (`<main>` > `<article>` > `#content` > `.content` > `<body>`). Jina Reader supports explicit `X-Target-Selector` and `X-Remove-Selector` headers for precise targeting.
 
-**Proposed change:** Add optional `includeSelector` and `excludeSelectors` parameters to `fetch_url`. When supplied, scope extraction to the matched element(s) and strip the excluded elements before conversion. Useful for sites where the fixed priority chain picks the wrong region.
+**Proposed change:** Add optional `includeSelector` and `excludeSelectors` parameters to `fetch_url`. When supplied, scope extraction to the matched element(s) and strip the excluded elements before conversion. Useful for sites where the fixed priority chain picks the wrong region, and as a building block for Phase 1 of schema-based extraction (see [Gap 2](#2-structured-json-extraction)).
 
-**Comparators with this feature:** Jina Reader
+**Comparators with this feature:** Jina Reader, Firecrawl MCP, Crawl4AI
 
 ---
 
@@ -174,19 +225,21 @@ CAPTCHA solving is explicitly out of scope — it requires a third-party solving
 
 **Gap:** Only Chromium is supported. Playwright MCP supports Chrome, Firefox, WebKit (Safari), and Edge.
 
-**Proposed change:** Add a `PLAYWRIGHT_BROWSER` environment variable accepting `chromium` (default), `firefox`, or `webkit`. Some sites render differently or are blocked only on Chromium — having a fallback browser is useful.
+**Proposed change:** Add a `PLAYWRIGHT_BROWSER` environment variable accepting `chromium` (default), `firefox`, or `webkit`. Some sites render differently or are blocked only on Chromium — having a fallback browser is useful. Note: the stealth plugin (see [Gap 4, Layer 1](#layer-1-browser-fingerprint-stealth-js-based-detection)) is Chromium-specific; Firefox and WebKit would run without it.
 
-**Comparators with this feature:** Playwright MCP
+**Comparators with this feature:** Playwright MCP, Crawl4AI
 
 ---
 
 ### 8. Authentication / Cookie Passthrough
 
-**Gap:** There is no way to fetch authenticated pages. Jina Reader supports `X-Set-Cookie` header forwarding; Browserbase supports persistent authenticated sessions.
+**Gap:** There is no way to fetch authenticated pages without a full browser session. Jina Reader supports `X-Set-Cookie` header forwarding; Browserbase supports persistent authenticated sessions.
 
-**Proposed change:** Add an optional `cookies` parameter to `fetch_url` (array of `{ name, value, domain }` objects) and a `storageState` parameter (path to a Playwright storage state JSON file) for full session replay.
+**Proposed change:** Add an optional `cookies` parameter to `fetch_url` (array of `{ name, value, domain }` objects) and a `storageState` parameter (path to a Playwright storage state JSON file) for full session replay. This covers the common case of fetching a page behind a login without requiring a stateful session.
 
-**Comparators with this feature:** Jina Reader (`X-Set-Cookie`), Browserbase (session persistence)
+For full multi-step login flows and interactive authenticated pages that cannot be handled by replaying a storage state file, see [Moat 2: Stateful Interactive Browser Sessions](#moat-2-stateful-interactive-browser-sessions).
+
+**Comparators with this feature:** Jina Reader (`X-Set-Cookie`), Browserbase (session persistence), Firecrawl MCP, Crawl4AI
 
 ---
 
@@ -194,9 +247,16 @@ CAPTCHA solving is explicitly out of scope — it requires a third-party solving
 
 **Gap:** The server always returns markdown. Jina Reader can return raw HTML, plain text, screenshots, and full-page images.
 
-**Proposed change:** Add an optional `outputFormat` parameter to `fetch_url` accepting `markdown` (default), `html`, `text`, or `screenshot` (base64 PNG). This covers use cases where downstream tools need the raw HTML or a visual snapshot.
+**Proposed change:** Add an optional `outputFormat` parameter to `fetch_url` accepting:
 
-**Comparators with this feature:** Jina Reader
+- `markdown` (default) — current behaviour
+- `html` — raw cleaned HTML before markdown conversion
+- `text` — plain text, whitespace-normalised
+- `screenshot` — base64 PNG of the full rendered page
+
+The `screenshot` format is the foundation for visual extraction use cases (see [Moat 3: Visual / Screenshot-Based Extraction](#moat-3-visual--screenshot-based-extraction)) — the agent can pass the returned PNG to a vision LLM for content extraction from pages where the DOM does not faithfully represent the content.
+
+**Comparators with this feature:** Jina Reader, Firecrawl MCP, Crawl4AI
 
 ---
 
@@ -204,9 +264,9 @@ CAPTCHA solving is explicitly out of scope — it requires a third-party solving
 
 **Gap:** Failed requests are not retried. Firecrawl has configurable exponential back-off with a `maxRetries` parameter.
 
-**Proposed change:** Add `FETCH_MAX_RETRIES` (default `2`) and `FETCH_RETRY_DELAY_MS` (default `1000`) environment variables. Implement exponential back-off with jitter for transient failures (network errors, 429, 503). Log retry attempts at warn level.
+**Proposed change:** Add `FETCH_MAX_RETRIES` (default `2`) and `FETCH_RETRY_DELAY_MS` (default `1000`) environment variables. Implement exponential back-off with jitter for transient failures (network errors, 429, 503). Log retry attempts at warn level. The crawl worker (see [Gap 3](#3-site-crawling-and-mapping)) uses the same retry logic, with per-page `retry_count` tracked in SQLite.
 
-**Comparators with this feature:** Firecrawl MCP
+**Comparators with this feature:** Firecrawl MCP, Crawl4AI
 
 ---
 
@@ -218,9 +278,9 @@ Firecrawl is the most feature-rich competitor in this space and the most commonl
 
 Firecrawl has three genuine advantages that are hard to replicate without infrastructure investment:
 
-1. **Cloud-managed stealth and IP rotation** — Firecrawl runs requests through a managed browser farm with residential proxies and Cloudflare bypass. This is infrastructure, not just code.
-2. **NL-driven agent mode** (`firecrawl_agent`) — accepts a natural-language task and autonomously navigates, clicks, and extracts. This is a product-level feature, not a single tool.
-3. **Enterprise reliability at scale** — rate limiting, retries, queuing, and observability are handled server-side. For high-volume crawls this matters.
+1. **Cloud-managed stealth and IP rotation** — Firecrawl runs requests through a managed browser farm with residential proxies and Cloudflare bypass. This is infrastructure, not just code. See [Gap 4](#4-anti-bot--stealth-improvements) for the local equivalent using proxy list rotation.
+2. **Async long-running crawl jobs** — Firecrawl crawls run asynchronously; callers poll for completion via job ID. See [Async Job Execution and Resumable Crawls](#async-job-execution-and-resumable-crawls) for the local equivalent using tmux + SQLite, which is argued to be superior in several respects.
+3. **Enterprise reliability at scale** — rate limiting, retries, queuing, and observability are handled server-side. For high-volume crawls this matters. See [Addressing the Reliability Moat](#addressing-the-reliability-moat).
 
 Everything else Firecrawl offers is implementable locally.
 
@@ -235,22 +295,6 @@ These are existing differentiators that make a compelling case for self-hosted u
 - **Streamable HTTP mode with bearer-token auth** — can be deployed as a shared team server; Firecrawl's MCP server is stdio-only
 - **Full local execution** — data never leaves the machine; important for sensitive or proprietary content
 
-### The four features that would close the gap
-
-Closing ~90% of Firecrawl's functional advantage requires implementing four things, all achievable without cloud infrastructure:
-
-#### 1. Site crawling (`crawl_site` tool)
-This is Firecrawl's most-used feature for RAG ingestion pipelines. A depth-limited BFS crawler using the existing Playwright fetcher and the existing domain blocklist/allowlist infrastructure would cover most use cases. See [Gap 3: Site Crawling and Mapping](#3-site-crawling-and-mapping).
-
-#### 2. Schema-based structured extraction
-Firecrawl's `extract` tool turns a page into a typed JSON object against a user-supplied schema. This can be implemented without a cloud LLM — a CSS/XPath-based extraction layer (similar to what `cheerio` or `zod` + a simple selector map provides) would handle the structured data use case for most pages. LLM-assisted extraction can be added as an optional enhancement. See [Gap 2: Structured JSON Extraction](#2-structured-json-extraction).
-
-#### 3. Stealth improvements
-The current anti-bot posture (UA randomisation + `webdriver=false`) fails against Cloudflare and similar. Integrating `playwright-extra` with the stealth plugin and randomising fingerprints (viewport, timezone, platform, canvas noise) would pass most bot-detection checks without requiring cloud IP rotation. This won't match a residential proxy farm, but covers the vast majority of public websites. See [Gap 4: Anti-Bot / Stealth Improvements](#4-anti-bot--stealth-improvements).
-
-#### 4. Retry and back-off
-Firecrawl's reliability story depends partly on transparent retries. Adding configurable exponential back-off with jitter removes one of the last remaining reliability objections. See [Gap 10: Retry and Back-off Logic](#10-retry-and-back-off-logic).
-
 ### On "NL agent mode" — why this isn't actually a gap
 
 Firecrawl's `firecrawl_agent` accepts a plain English task and autonomously navigates, clicks, and extracts. At first glance this looks like a hard-to-replicate product feature. It isn't.
@@ -259,13 +303,25 @@ Firecrawl's `firecrawl_agent` accepts a plain English task and autonomously navi
 
 This also means any improvement to the MCP tools (better markdown quality, schema extraction, crawling) directly improves the agent's capability without any agent-side changes.
 
-### What Firecrawl would still win on
+### The four features that would close the gap
 
-After implementing the four features above, Firecrawl retains advantages in:
+Closing ~90% of Firecrawl's functional advantage requires implementing four things, all achievable without cloud infrastructure:
 
-- **Cloud stealth at scale** — residential IP rotation is infrastructure, not a library. Sites that actively block datacentre IPs will still require a proxy service.
-- **Async long-running jobs** — Firecrawl crawls run asynchronously in their cloud; callers poll for completion via job ID. The current MCP model blocks until the tool call returns, which is impractical for large crawls. See [Async Job Execution and Resumable Crawls](#async-job-execution-and-resumable-crawls) for the proposed local equivalent.
-- **Managed reliability for high-volume crawls** — queuing, distributed concurrency, and SLA-backed uptime are cloud features.
+#### 1. Site crawling (`crawl_site` / async job API)
+
+This is Firecrawl's most-used feature for RAG ingestion pipelines. A depth-limited BFS crawler using the existing Playwright fetcher and the existing domain blocklist/allowlist infrastructure would cover most use cases. For large sites, the async job system (tmux + SQLite) provides parity with Firecrawl's async model. See [Gap 3](#3-site-crawling-and-mapping) and [Async Job Execution and Resumable Crawls](#async-job-execution-and-resumable-crawls).
+
+#### 2. Schema-based structured extraction
+
+Firecrawl's `extract` tool turns a page into a typed JSON object against a user-supplied schema. Implement CSS/XPath-based extraction first (no LLM required, covers most structured pages), then add LLM-assisted extraction as an optional enhancement for unstructured content. See [Gap 2](#2-structured-json-extraction).
+
+#### 3. Stealth improvements
+
+The current anti-bot posture fails against Cloudflare and similar. Integrating `playwright-extra` with the stealth plugin covers JS-based detection; proxy list rotation with a residential proxy service covers IP reputation blocking. See [Gap 4](#4-anti-bot--stealth-improvements).
+
+#### 4. Retry and back-off
+
+Firecrawl's reliability story depends partly on transparent retries. Adding configurable exponential back-off with jitter removes one of the last remaining reliability objections. See [Gap 10](#10-retry-and-back-off-logic).
 
 ### Async Job Execution and Resumable Crawls
 
@@ -316,7 +372,7 @@ CREATE INDEX idx_pages_status ON pages(status);
 
 | Tool | Input | Output |
 |---|---|---|
-| `crawl_start` | `url`, `maxDepth`, `includePatterns`, `excludePatterns`, `fetchContent`, `delay` | `jobId`, `sessionName`, `statusUrl` |
+| `crawl_start` | `url`, `maxDepth`, `maxPages`, `includePatterns`, `excludePatterns`, `fetchContent`, `delay` | `jobId`, `sessionName` |
 | `crawl_status` | `jobId` | `status`, `queued`, `fetching`, `done`, `failed`, `skipped`, progress % |
 | `crawl_results` | `jobId`, `offset`, `limit`, `status` filter | Array of `{ url, title, markdown, fetchedAt }` |
 | `crawl_stop` | `jobId` | Confirmation, final counts |
@@ -366,26 +422,12 @@ markdown-mcp crawl list
 - The crawl worker is a separate Node.js process (not the MCP server process) so it survives MCP session termination
 - tmux is assumed to be available; the CLI should check and warn if not installed
 - Job IDs are UUIDs; the SQLite file path is deterministic (`~/.markdown-mcp/jobs/<jobId>.db`) so they are portable
-- The worker respects the existing domain blocklist/allowlist configuration
+- The worker uses the retry/back-off logic from [Gap 10](#10-retry-and-back-off-logic) with `retry_count` tracked per page in SQLite
+- The worker respects the existing domain blocklist/allowlist configuration and `RESPECT_ROBOTS_TXT` (see [Gap 5](#5-robotstxt-compliance-option))
 - Politeness controls: configurable `delay` between requests (default 500 ms), `maxConcurrency` (default 3 workers per job)
 - The MCP `crawl_results` tool supports streaming via the existing Streamable HTTP transport
 
-### Recommended implementation order
-
-To maximise impact per unit of effort:
-
-| Priority | Feature | Effort | Impact |
-|---|---|---|---|
-| 1 | Stealth improvements (playwright-extra) | Low | High — unblocks many currently-failing sites |
-| 2 | Retry and back-off | Low | High — removes reliability objection |
-| 3 | Site crawling (`crawl_site`, synchronous) | Medium | Very high — closes the biggest functional gap |
-| 4 | Schema-based extraction (CSS/XPath) | Medium | High — enables data pipeline use cases |
-| 5 | Async crawl jobs (tmux + SQLite) | Medium-High | Very high — matches Firecrawl's async model locally |
-| 6 | Schema-based extraction (LLM-assisted) | High | Medium — covers complex/unstructured pages |
-
-Completing priorities 1–5 would make `markdown-for-agents-mcp` the preferred choice over Firecrawl for any team that values local execution, zero cost, data privacy, or TypeScript-native deployment — which describes the majority of individual developers and small teams.
-
-### Addressing Firecrawl's reliability moat
+### Addressing the Reliability Moat
 
 Firecrawl's managed infrastructure moat has two components: distributed queuing and SLA-backed uptime. Both are addressable locally for the vast majority of use cases.
 
@@ -395,7 +437,7 @@ Firecrawl's managed infrastructure moat has two components: distributed queuing 
 
 **What remains genuinely hard to replicate locally:**
 
-- *Distributed crawling across multiple machines* — though this is partially addressable by running multiple worker processes pointing at the same SQLite DB on a shared volume (NFS, network mount). Not a first-class feature but viable for power users.
+- *Distributed crawling across multiple machines* — partially addressable by running multiple worker processes pointing at the same SQLite DB on a shared volume (NFS, network mount). Not a first-class feature but viable for power users.
 - *SLA-backed uptime* — irrelevant for self-hosted tools where the user controls the machine.
 
 **Large crawl scalability** (10k+ pages) requires a few additional constraints to avoid resource exhaustion on a single machine:
@@ -406,6 +448,31 @@ Firecrawl's managed infrastructure moat has two components: distributed queuing 
 - Configurable `delay` between requests (default 500 ms) to avoid hammering targets and triggering rate limits
 
 With these in place, the local design is viable for crawls up to tens of thousands of pages. Firecrawl's infrastructure advantage only becomes meaningful at millions of pages or when 99.9% uptime SLAs are contractually required — neither of which is a typical use case for an MCP-integrated developer tool.
+
+---
+
+## Recommended Implementation Order
+
+To maximise impact per unit of effort, across all gaps:
+
+| Priority | Gap | Feature | Effort | Impact |
+| --- | --- | --- | --- | --- |
+| 1 | Gap 4 (Layer 1) | Stealth: `playwright-extra` fingerprint plugin | Low | High — unblocks many currently-failing sites immediately |
+| 2 | Gap 10 | Retry and back-off | Low | High — removes reliability objection; needed by crawl worker |
+| 3 | Gap 3 (Phase 1) | Synchronous `crawl_site` tool | Medium | Very high — closes the biggest functional gap |
+| 4 | Gap 2 (Phase 1) | Schema extraction: CSS/XPath-based | Medium | High — enables data pipeline use cases without LLM dependency |
+| 5 | Gap 3 (Phase 2) | Async crawl jobs: tmux + SQLite | Medium-High | Very high — matches Firecrawl's async model; unlocks large-site crawling |
+| 6 | Gap 4 (Layer 2) | Stealth: proxy list rotation + residential proxy docs | Medium | High — closes IP reputation gap for users with proxy subscriptions |
+| 7 | Gap 9 | Multiple output formats (html, text, screenshot) | Low-Medium | Medium — unlocks visual extraction path via agent |
+| 8 | Gap 6 | CSS selector targeting | Low | Medium — improves extraction accuracy; building block for Gap 2 |
+| 9 | Gap 8 | Auth / cookie passthrough (`storageState`) | Low-Medium | Medium — unblocks authenticated page fetching without full sessions |
+| 10 | Gap 5 | robots.txt compliance option | Low | Low-Medium — compliance requirement for some deployments |
+| 11 | Gap 1 | Content pagination | Low | Low-Medium — niche need; most agents re-call with refined queries |
+| 12 | Gap 7 | Multi-browser support (Firefox, WebKit) | Low | Low — edge case; Chromium covers >95% of sites |
+| 13 | Gap 2 (Phase 2) | Schema extraction: LLM-assisted | High | Medium — covers complex/unstructured pages |
+| 14 | Moat 2 | Stateful browser sessions (`session_*` tools) | High | High — unlocks login flows and interactive SPAs |
+
+Completing priorities 1–6 would make `markdown-for-agents-mcp` the preferred choice over Firecrawl for any team that values local execution, zero cost, data privacy, or TypeScript-native deployment — which describes the majority of individual developers and small teams.
 
 ---
 
@@ -427,8 +494,7 @@ This section catalogues what competitors would still do better after everything 
 - reCAPTCHA v3 is score-based and largely unsolvable without genuine human-like behaviour over time
 - Raises ethical and legal questions (ToS violations, potential CFAA exposure depending on jurisdiction)
 
-
-**Verdict:** Explicitly out of scope. The right answer for a page that requires CAPTCHA solving is to use a browser session with real user credentials (see Moat 2) rather than automated bypassing. Document this limitation clearly in the README.
+**Verdict:** Explicitly out of scope. The right answer for a page that requires CAPTCHA solving is to use a browser session with real user credentials (see [Moat 2](#moat-2-stateful-interactive-browser-sessions)) rather than automated bypassing. Document this limitation clearly in the README.
 
 ---
 
@@ -438,29 +504,32 @@ This section catalogues what competitors would still do better after everything 
 
 **What it is:** A persistent browser session where the agent can issue a sequence of actions — navigate, click a button, fill a form, wait for a response, extract content — across multiple tool calls. The browser state (cookies, localStorage, DOM) persists between calls.
 
-**Why it's hard to close:**
+**Why it requires a significant design change:**
 
 The current architecture is deliberately stateless: each `fetch_url` call spawns a fresh Playwright page, extracts content, and closes. This is the right design for content retrieval — it is simple, safe, and cache-friendly. Stateful sessions require a fundamentally different model:
 
 - A `session_create` tool that opens a browser context and returns a `sessionId`
 - Subsequent tools (`session_click`, `session_type`, `session_navigate`, `session_extract`) operate on the live session
 - A `session_close` tool that tears it down
-- Session state must survive across MCP tool calls, which means the server must hold open browser contexts in memory between calls — a significant change to the process model
+- Session state must survive across MCP tool calls, which means the server must hold open browser contexts in memory between calls
 
-**What this unlocks:**
+Note: simple authenticated fetching (supplying cookies or a storage state file) is covered by [Gap 8](#8-authentication--cookie-passthrough) and does not require stateful sessions.
 
-- Login flows (username/password → session cookie → authenticated fetch)
-- Multi-step form submission
+**What stateful sessions unlock beyond Gap 8:**
+
+- Multi-step login flows where the login form itself requires interaction (JS-rendered fields, OTP entry, CAPTCHA-gated login pages)
 - SPAs that require user interaction to reveal content (infinite scroll, tab navigation, accordion sections)
 - Wizard-style pages where content only appears after completing steps
+- Multi-page form submission workflows
 
-**Verdict:** A meaningful scope expansion but achievable. It is a separate tool family (`session_*`) that runs alongside the existing stateless tools rather than replacing them. The stateless tools remain preferred for simple content retrieval; session tools are for pages that cannot be fetched otherwise. Worth implementing after the crawling and extraction work is complete.
+**Verdict:** A meaningful scope expansion but achievable. It is a separate tool family (`session_*`) that runs alongside the existing stateless tools rather than replacing them. The stateless tools remain preferred for simple content retrieval; session tools are for pages that cannot be fetched otherwise. Implement after priorities 1–6 are complete.
 
 **Implementation sketch:**
+
 - Session store: a `Map<sessionId, BrowserContext>` held in the MCP server process
 - Session TTL: auto-close idle sessions after a configurable timeout (default 10 minutes)
 - Tools: `session_create`, `session_navigate`, `session_click`, `session_type`, `session_scroll`, `session_wait`, `session_extract`, `session_screenshot`, `session_close`
-- Storage state export: `session_save(sessionId, path)` saves Playwright storage state JSON for reuse (avoids re-logging in on every run)
+- Storage state export: `session_save(sessionId, path)` saves Playwright storage state JSON for reuse; this state file can then be used with [Gap 8](#8-authentication--cookie-passthrough) for subsequent stateless fetches
 
 ---
 
@@ -470,17 +539,19 @@ The current architecture is deliberately stateless: each `fetch_url` call spawns
 
 **What it is:** Pages where the meaningful content is not in the DOM — canvas-rendered applications, PDF-like layouts, complex data visualisations, or pages where the visual structure is essential context. These require passing a screenshot to a vision LLM to extract meaning.
 
-**Why it's hard to close:**
+**Why it is only partially addressable:**
+
 - Requires a vision-capable LLM call per page — adds latency and cost
 - Screenshot fidelity matters: full-page screenshots of long pages need stitching
 - Not useful for most pages; should be opt-in, not default
 
 **What this looks like in practice:**
-- `fetch_url` with `outputFormat: "screenshot"` already proposed (Gap 9) — returns a base64 PNG
-- The agent receiving that screenshot can pass it to a vision LLM for extraction
-- Alternatively, a `fetch_url` with `outputFormat: "vision-extract"` could do this automatically if a vision model endpoint is configured
 
-**Verdict:** Partially addressable. The screenshot output format (Gap 9) gets you 80% of the way — the agent can handle the vision extraction step using its own multimodal capabilities. A first-class `vision-extract` mode is a nice-to-have for pipelines that want it done inside the tool.
+- `fetch_url` with `outputFormat: "screenshot"` (see [Gap 9](#9-multiple-output-formats)) returns a base64 PNG
+- The agent receiving that screenshot can pass it to a vision LLM for extraction — no tool-side change needed
+- Optionally, a `fetch_url` with `outputFormat: "vision-extract"` could do this automatically if a vision model endpoint is configured by the user
+
+**Verdict:** Partially addressable. The screenshot output format (Gap 9) gets you 80% of the way — the agent can handle the vision extraction step using its own multimodal capabilities. A first-class `vision-extract` mode is a nice-to-have for pipelines that want it done inside the tool, deferred until after Gap 9 is implemented.
 
 ---
 
@@ -491,14 +562,16 @@ The current architecture is deliberately stateless: each `fetch_url` call spawns
 **What it is:** When crawling millions of pages, a single local machine hits hard limits: CPU, memory, disk I/O, network bandwidth, and IP reputation. Cloud providers distribute this across fleets of machines, manage IP rotation automatically, and offer contractual SLAs.
 
 **Why it cannot be fully closed locally:**
+
 - IP fleet management (hundreds of residential exit nodes with automatic failover) is infrastructure, not software
 - Distributed crawl coordination across multiple machines requires a proper job queue (Redis, SQS) not just SQLite on a shared volume
 - 99.9% uptime SLAs require redundant infrastructure
 
 **What can be done:**
+
 - The tmux + SQLite design handles everything up to tens of thousands of pages on a single machine
 - Multi-machine distribution is partially addressable with a shared SQLite DB on a network volume — viable for small teams
-- Proxy list rotation (Layer 2 stealth) with a residential proxy service subscription bridges the IP fleet gap for most use cases
+- Proxy list rotation ([Gap 4, Layer 2](#layer-2-ip-reputation-stealth-network-level-detection)) with a residential proxy service subscription bridges the IP fleet gap for most use cases
 - For users who hit single-machine limits, document a migration path to running multiple worker instances
 
 **Verdict:** This moat only matters at enterprise scale (millions of pages, SLA requirements). For the target audience — individual developers, small teams, AI agent pipelines — the local design is sufficient. Acknowledge the ceiling clearly in the documentation rather than trying to engineer around it.
@@ -510,8 +583,8 @@ The current architecture is deliberately stateless: each `fetch_url` call spawns
 | Remaining moat | Addressable? | Recommended stance |
 |---|---|---|
 | CAPTCHA bypass | No (out of scope by choice) | Document limitation; recommend credential-based auth instead |
-| Stateful browser sessions | Yes (significant effort) | Implement as `session_*` tool family post-crawl work |
-| Visual/screenshot extraction | Partially (agent handles it) | Implement screenshot output format; leave vision LLM to the agent |
+| Stateful browser sessions | Yes (significant effort) | Implement as `session_*` tool family — see priority 14 |
+| Visual/screenshot extraction | Partially (agent handles it) | Implement screenshot output (priority 7); leave vision LLM to the agent |
 | Enterprise-scale infrastructure | No (infrastructure problem) | Document ceiling; proxy rotation closes the gap for most users |
 
 ---
@@ -527,3 +600,4 @@ These are areas where this project leads — any future changes should avoid reg
 - **`download_file` tool** — binary download to local path; not found in any comparator.
 - **Streamable HTTP mode** — can run as a network-accessible server with bearer-token auth, not just stdio.
 - **Structured MCP output schemas** — every tool returns both `text` and `structuredContent` (Zod-typed JSON).
+- **Full data locality** — nothing leaves the machine; critical for sensitive or proprietary content pipelines.
