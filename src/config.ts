@@ -62,6 +62,12 @@ const configSchema = z.object({
   LIGHTPANDA_ENABLED: z.string().default('false').transform(val => val === 'true'),
   LIGHTPANDA_CDP_URL: z.string().default('ws://127.0.0.1:9222'),
   LIGHTPANDA_MAX_FAILURE_RATE: z.string().default('0.4').transform(Number),
+
+  // Search providers
+  BRAVE_API_KEY: z.string().optional(),
+  SERPER_API_KEY: z.string().optional(),
+  SEARXNG_URL: z.string().optional(),
+  SEARCH_FANOUT_RESULTS: z.string().default('20').transform(Number),
 });
 
 export type Config = z.infer<typeof configSchema>;

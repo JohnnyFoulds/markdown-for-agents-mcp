@@ -1,0 +1,111 @@
+import { describe, test, expect } from 'vitest';
+import { fanout } from './fanout.js';
+import { AllProvidersFailedError, BotChallengeError } from '../utils/errors.js';
+import type { SearchProvider, SearchProviderQuery, ProviderResult } from './types.js';
+
+function fakeProvider(
+  name: string,
+  tier: 1 | 2 | 3,
+  results: ProviderResult[] | Error,
+  configured = true,
+): SearchProvider {
+  return {
+    name,
+    tier,
+    isConfigured: () => configured,
+    supports: () => ({ ok: true }),
+    async search(_q, _opts) {
+      if (results instanceof Error) throw results;
+      return results;
+    },
+  };
+}
+
+function makeResult(provider: string, url: string, rank = 1): ProviderResult {
+  return { title: 'T', url, snippet: '', domain: new URL(url).hostname, rank, provider };
+}
+
+const Q: SearchProviderQuery = { query: 'test', maxResults: 10 };
+const OPTS = { signal: new AbortController().signal, requestId: 'r1', deadlineMs: 5000 };
+
+describe('fanout', () => {
+  test('returns results from tier-1 provider', async () => {
+    const p = fakeProvider('brave', 1, [makeResult('brave', 'https://a.com'), makeResult('brave', 'https://b.com', 2)]);
+    const results = await fanout(Q, [p], OPTS);
+    expect(results).toHaveLength(2);
+    expect(results[0]!.url).toBe('https://a.com');
+  });
+
+  test('falls back to tier 2 when tier 1 fails', async () => {
+    const t1 = fakeProvider('brave', 1, new Error('API down'));
+    const t2 = fakeProvider('searxng', 2, [makeResult('searxng', 'https://c.com')]);
+    const results = await fanout(Q, [t1, t2], OPTS);
+    expect(results[0]!.url).toBe('https://c.com');
+  });
+
+  test('falls back to tier 3 when tier 1 and 2 both fail', async () => {
+    const t1 = fakeProvider('brave', 1, new Error('down'));
+    const t2 = fakeProvider('searxng', 2, new Error('down'));
+    const t3 = fakeProvider('ddg', 3, [makeResult('ddg', 'https://d.com')]);
+    const results = await fanout(Q, [t1, t2, t3], OPTS);
+    expect(results[0]!.url).toBe('https://d.com');
+  });
+
+  test('throws AllProvidersFailedError when all fail', async () => {
+    const t1 = fakeProvider('a', 1, new Error('a down'));
+    const t2 = fakeProvider('b', 3, new Error('b down'));
+    await expect(fanout(Q, [t1, t2], OPTS)).rejects.toBeInstanceOf(AllProvidersFailedError);
+  });
+
+  test('throws AllProvidersFailedError when no configured providers', async () => {
+    const p = fakeProvider('a', 1, [], false);
+    await expect(fanout(Q, [p], OPTS)).rejects.toBeInstanceOf(AllProvidersFailedError);
+  });
+
+  test('merges and deduplicates results from multiple tier-1 providers', async () => {
+    const p1 = fakeProvider('brave', 1, [
+      makeResult('brave', 'https://same.com', 1),
+      makeResult('brave', 'https://only-brave.com', 2),
+    ]);
+    const p2 = fakeProvider('serper', 1, [
+      makeResult('serper', 'https://same.com', 1),
+      makeResult('serper', 'https://only-serper.com', 2),
+    ]);
+    const results = await fanout(Q, [p1, p2], OPTS);
+    const urls = results.map(r => r.url);
+    expect(new Set(urls).size).toBe(urls.length); // no duplicates
+    expect(urls).toContain('https://same.com');
+    // agreed-upon URL should rank first (higher RRF score)
+    expect(results[0]!.url).toBe('https://same.com');
+  });
+
+  test('excludes domains in excludeDomains', async () => {
+    const p = fakeProvider('brave', 1, [
+      makeResult('brave', 'https://good.com'),
+      makeResult('brave', 'https://bad.com', 2),
+    ]);
+    const results = await fanout(Q, [p], { ...OPTS, excludeDomains: ['bad.com'] });
+    expect(results.every(r => r.domain !== 'bad.com')).toBe(true);
+  });
+
+  test('only includes domains in includeDomains when set', async () => {
+    const p = fakeProvider('brave', 1, [
+      makeResult('brave', 'https://allowed.com'),
+      makeResult('brave', 'https://other.com', 2),
+    ]);
+    const results = await fanout(Q, [p], { ...OPTS, includeDomains: ['allowed.com'] });
+    expect(results.every(r => r.domain === 'allowed.com')).toBe(true);
+  });
+
+  test('BotChallengeError from a provider is treated as provider failure', async () => {
+    const t1 = fakeProvider('ddg', 3, new BotChallengeError('https://duckduckgo.com'));
+    await expect(fanout(Q, [t1], OPTS)).rejects.toBeInstanceOf(AllProvidersFailedError);
+  });
+
+  test('falls back when tier-1 returns empty results', async () => {
+    const t1 = fakeProvider('brave', 1, []);
+    const t3 = fakeProvider('ddg', 3, [makeResult('ddg', 'https://fallback.com')]);
+    const results = await fanout(Q, [t1, t3], OPTS);
+    expect(results[0]!.url).toBe('https://fallback.com');
+  });
+});
