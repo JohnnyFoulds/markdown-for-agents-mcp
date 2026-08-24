@@ -37,6 +37,9 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
 COPY package.json ./
 
+# Drop to non-root before exec — pwuser (UID 1000) is pre-created by the Playwright image.
+USER pwuser
+
 # Use dumb-init as PID 1 so Chrome child processes are reaped.
 # The Playwright image already ships tini/dumb-init at /usr/bin/dumb-init.
 # NOTE: Fargate users should use linuxParameters.initProcessEnabled=true instead.

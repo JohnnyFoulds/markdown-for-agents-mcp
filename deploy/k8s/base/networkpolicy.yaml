@@ -1,3 +1,40 @@
+# Ingress NetworkPolicy — restricts who can reach the mcp-server Service.
+#
+# Only allows traffic from pods labelled app=ingress-nginx (or your ingress class)
+# within the cluster. Adjust the namespaceSelector/podSelector to match your ingress
+# controller. This prevents any other pod in the cluster from calling the MCP server
+# directly, limiting the blast radius of a compromised adjacent service.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: mcp-server
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow traffic from the ingress controller namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3000
+    # Allow intra-namespace health-check traffic (kube-apiserver, Prometheus scrape)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mcp-system
+      ports:
+        - protocol: TCP
+          port: 3000
+---
 # Egress NetworkPolicy — blocks Chromium from reaching private IP ranges.
 #
 # Why this matters: Chrome resolves DNS internally, so our app-level isPrivateIp()

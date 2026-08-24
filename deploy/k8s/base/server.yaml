@@ -23,6 +23,17 @@ spec:
         - name: mcp-server
           image: markdown-for-agents-mcp:latest
           command: ["node", "dist/index.js", "--http", "3000"]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+            # readOnlyRootFilesystem omitted: Chromium writes to /tmp at runtime.
+            # Mitigated by runAsNonRoot + caps drop + NetworkPolicy egress controls.
           ports:
             - name: http
               containerPort: 3000

@@ -19,6 +19,15 @@ spec:
         - name: mcp-worker
           image: markdown-for-agents-mcp:latest
           command: ["node", "dist/index.js", "--role=worker"]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           envFrom:
             - configMapRef:
                 name: mcp-config
