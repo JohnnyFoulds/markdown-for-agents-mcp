@@ -71,6 +71,10 @@ const configSchema = z.object({
   SEARCH_DEFAULT_COUNTRY: z.string().default('za'),
   SEARCH_DEFAULT_LANGUAGE: z.string().default('en'),
   LOG_REDACT_QUERIES: z.string().default('true').transform(val => val === 'true'),
+  SEARXNG_ENGINE_PROFILE: z.string().default('clean').refine(v => ['clean', 'full'].includes(v), {
+    message: 'SEARXNG_ENGINE_PROFILE must be clean or full',
+  }),
+  SEARCH_CACHE_TTL_MS: z.string().default('3600000').transform(Number),
 
   // Reranker
   RERANK_BACKEND: z.string().default('none').refine(v => ['none', 'local', 'tei'].includes(v), {

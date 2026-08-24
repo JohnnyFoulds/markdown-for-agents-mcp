@@ -1,5 +1,5 @@
-import { describe, test, expect } from 'vitest';
-import { fanout } from './fanout.js';
+import { describe, test, expect, beforeEach } from 'vitest';
+import { fanout, resetBreakers } from './fanout.js';
 import { AllProvidersFailedError, BotChallengeError } from '../utils/errors.js';
 import type { SearchProvider, SearchProviderQuery, ProviderResult } from './types.js';
 
@@ -29,6 +29,7 @@ const Q: SearchProviderQuery = { query: 'test', maxResults: 10 };
 const OPTS = { signal: new AbortController().signal, requestId: 'r1', deadlineMs: 5000 };
 
 describe('fanout', () => {
+  beforeEach(() => resetBreakers());
   test('returns results from tier-1 provider', async () => {
     const p = fakeProvider('brave', 1, [makeResult('brave', 'https://a.com'), makeResult('brave', 'https://b.com', 2)]);
     const results = await fanout(Q, [p], OPTS);
@@ -107,5 +108,33 @@ describe('fanout', () => {
     const t3 = fakeProvider('ddg', 3, [makeResult('ddg', 'https://fallback.com')]);
     const results = await fanout(Q, [t1, t3], OPTS);
     expect(results[0]!.url).toBe('https://fallback.com');
+  });
+
+  // RED: circuit breaker not wired into fanout yet — open breaker must skip the provider
+  test('skips a provider whose circuit breaker is open', async () => {
+    // searchCount tracks how many times the provider is called
+    let searchCount = 0;
+    const failing: SearchProvider = {
+      name: 'flaky',
+      tier: 1,
+      isConfigured: () => true,
+      supports: () => ({ ok: true }),
+      async search() {
+        searchCount++;
+        throw new Error('upstream down');
+      },
+    };
+    const fallback = fakeProvider('ddg', 3, [makeResult('ddg', 'https://ok.com')]);
+
+    // Drive enough failures to open the breaker (6+ with ≥50% failure rate)
+    for (let i = 0; i < 6; i++) {
+      await fanout(Q, [failing, fallback], OPTS).catch(() => {});
+    }
+    const countBeforeOpen = searchCount;
+
+    // After breaker opens, subsequent calls must NOT invoke the provider
+    await fanout(Q, [failing, fallback], OPTS);
+    // Provider must not have been called again after the breaker opened
+    expect(searchCount).toBe(countBeforeOpen);
   });
 });

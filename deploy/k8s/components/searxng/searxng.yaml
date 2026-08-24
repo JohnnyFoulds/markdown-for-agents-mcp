@@ -1,0 +1,113 @@
+---
+# SearXNG ConfigMap — engine settings.yml mounted into the container.
+# Edit settings.yml in this directory; the two profiles are documented there.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: searxng-config
+data:
+  settings.yml: |
+    use_default_settings: true
+    server:
+      limiter: false
+      image_proxy: false
+    search:
+      safe_search: 0
+      autocomplete: ""
+      default_lang: ""
+    formats:
+      - json
+    engines:
+      - name: mojeek
+        engine: mojeek
+        shortcut: mj
+        disabled: false
+      - name: marginalia ng
+        engine: marginalia
+        shortcut: mg
+        disabled: false
+      - name: brave
+        engine: brave
+        shortcut: br
+        disabled: false
+      - name: wikipedia
+        engine: wikipedia
+        shortcut: wp
+        disabled: false
+      - name: wikidata
+        engine: wikidata
+        shortcut: wd
+        disabled: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: searxng
+  labels:
+    app: searxng
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: searxng
+  template:
+    metadata:
+      labels:
+        app: searxng
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 977
+      containers:
+        - name: searxng
+          image: searxng/searxng:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SEARXNG_SETTINGS_PATH
+              value: /etc/searxng/settings.yml
+          volumeMounts:
+            - name: config
+              mountPath: /etc/searxng
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+      volumes:
+        - name: config
+          configMap:
+            name: searxng-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: searxng
+  labels:
+    app: searxng
+spec:
+  selector:
+    app: searxng
+  ports:
+    - port: 8080
+      targetPort: 8080

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { fetcher } from '../fetcher.js';
 import { extract } from '../extract/pipeline.js';
 import { getConfig } from '../config.js';
@@ -9,7 +10,8 @@ import { searXNGProvider } from '../search/providers/searxng.js';
 import { DuckDuckGoProvider, duckDuckGoProvider, parseDuckDuckGoHtml } from '../search/providers/duckduckgo.js';
 import { passesAllowedList, passesBlockedList, domainOf } from '../search/filter.js';
 import { chunkMarkdown, getReranker } from '../rank/index.js';
-import { rerankDurationSeconds } from '../obs/metrics.js';
+import { rerankDurationSeconds, searchCacheTotal } from '../obs/metrics.js';
+import { getStores } from '../store/factory.js';
 import type { SearchProvider } from '../search/types.js';
 import type { HttpClient } from '../http/types.js';
 
@@ -44,6 +46,33 @@ const DEFAULT_PROVIDERS: SearchProvider[] = [
   braveProvider, serperProvider, searXNGProvider, duckDuckGoProvider,
 ];
 
+function buildCacheKey(opts: SearchOptions & { profile: string }): string {
+  const { query, maxResults = 10, allowedDomains, blockedDomains, searchDepth = 'fast', chunksPerSource = 1, profile } = opts;
+  const digest = createHash('sha256').update(JSON.stringify({
+    query, maxResults, allowedDomains, blockedDomains, searchDepth, chunksPerSource,
+  })).digest('hex').slice(0, 16);
+  return `search:${profile}:${digest}`;
+}
+
+async function getCachedResponse(key: string): Promise<SearchResponse | undefined> {
+  try {
+    const buf = await getStores().kv.get(key);
+    if (!buf) return undefined;
+    return JSON.parse(buf.toString('utf8')) as SearchResponse;
+  } catch {
+    return undefined;
+  }
+}
+
+async function setCachedResponse(key: string, response: SearchResponse, ttlMs: number): Promise<void> {
+  try {
+    const buf = Buffer.from(JSON.stringify(response), 'utf8');
+    await getStores().kv.set(key, buf, ttlMs);
+  } catch {
+    // stores not initialized or unavailable — silently skip caching
+  }
+}
+
 // Exported for tests that import from this module
 export function parseSearchResults(html: string): SearchResult[] {
   return parseDuckDuckGoHtml(html).map(({ title, url, snippet, domain }) => ({ title, url, snippet, domain }));
@@ -74,6 +103,17 @@ export async function webSearch(options: SearchOptions): Promise<SearchResponse>
   } = options;
 
   const config = getConfig();
+  const profile = config.SEARXNG_ENGINE_PROFILE;
+
+  // Cache lookup — skip for fetched/reranked results since those are large and
+  // per-request freshness matters more than latency.
+  const cacheKey = buildCacheKey({ ...options, profile });
+  const cached = await getCachedResponse(cacheKey);
+  if (cached) {
+    searchCacheTotal.inc({ result: 'hit' });
+    return { ...cached, durationMs: Date.now() - startTime };
+  }
+  searchCacheTotal.inc({ result: 'miss' });
   const searchTimeout = timeout ?? config.WEB_SEARCH_DEFAULT_TIMEOUT_MS;
   const requestId = Logger.generateRequestId();
   const controller = new AbortController();
@@ -128,7 +168,10 @@ export async function webSearch(options: SearchOptions): Promise<SearchResponse>
       markdownResults = ranked;
     }
 
-    return { query, results, markdownResults, durationMs: Date.now() - startTime };
+    const response: SearchResponse = { query, results, markdownResults, durationMs: Date.now() - startTime };
+    // Store in cache (fire-and-forget — never block the response on cache write)
+    void setCachedResponse(cacheKey, response, config.SEARCH_CACHE_TTL_MS);
+    return response;
   } finally {
     clearTimeout(timer);
   }

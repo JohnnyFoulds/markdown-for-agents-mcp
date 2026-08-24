@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Phases 0–10 (Tavily Parity)
 
+### Added — Phase 3: Zero-budget search reliability
+- `src/search/providers/searxng.ts` — detect HTML/403/429 responses and throw `BotChallengeError` (was bare `SyntaxError`); add `language` and `time_range` (from `freshness`) params to outgoing SearXNG query
+- `src/search/fanout.ts` — wire `CircuitBreaker` into every provider call; open breakers skip the provider and increment `search_degraded_total{reason:breaker_open}` instead of wasting every request on a failing upstream
+- `src/services/webSearch.ts` — `KeyValueStore`-backed result cache keyed on `search:{SEARXNG_ENGINE_PROFILE}:{queryHash}`; `SEARCH_CACHE_TTL_MS` controls TTL (default 1 h); `search_cache_total{result}` metric tracks hit rate
+- `src/obs/metrics.ts` — add `search_degraded_total{reason}` and `search_cache_total{result}` counters
+- `deploy/k8s/components/searxng/` — Kustomize Component (Deployment + Service + ConfigMap) for SearXNG; `settings.yml` ships the `clean` engine profile (ToS-safe: Mojeek, Marginalia, Brave free, Wikipedia, Wikidata); `full` profile commented out with ToS warning
+- `deploy/searxng/settings.yml` — same settings for docker-compose
+- `docker-compose.yml` — `searxng` profile: `docker compose --profile searxng up`; `SEARXNG_URL` and `SEARXNG_ENGINE_PROFILE` threaded through server + worker
+- `SEARXNG_ENGINE_PROFILE` (default `clean`) and `SEARCH_CACHE_TTL_MS` (default `3600000`) added to all four config locations
+
 ### Fixed — Phase 2: Activate search quality (was silently noop-ing)
 - `src/tools/definitions.ts` — expose `searchDepth` (`fast`/`basic`/`advanced`) and `chunksPerSource` in the `web_search` input schema; update description from single-provider to multi-provider fan-out language
 - `src/tools/webSearch.ts` — thread `searchDepth` and `chunksPerSource` through to the services layer (both were silently dropped)

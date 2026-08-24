@@ -1,5 +1,6 @@
 import { getConfig } from '../../config.js';
 import { httpClient as defaultHttpClient } from '../../http/client.js';
+import { BotChallengeError } from '../../utils/errors.js';
 import type { HttpClient } from '../../http/types.js';
 import { domainOf } from '../filter.js';
 import type { SearchProvider, SearchProviderQuery, ProviderResult } from '../types.js';
@@ -47,6 +48,9 @@ export class SearXNGProvider implements SearchProvider {
       pageno: '1',
     });
 
+    if (q.language) params.set('language', q.language);
+    if (q.freshness) params.set('time_range', q.freshness);
+
     const res = await this.client.request({
       url: `${config.SEARXNG_URL}/search?${params}`,
       purpose: 'api',
@@ -55,7 +59,17 @@ export class SearXNGProvider implements SearchProvider {
       requestId: opts.requestId,
     });
 
-    const raw: SearXNGResponse = JSON.parse(res.text());
+    // Non-200 status or non-JSON body (HTML rate-limit page) → bot challenge
+    if (res.status === 429 || res.status === 403) {
+      throw new BotChallengeError(`${config.SEARXNG_URL}/search`);
+    }
+
+    const body = res.text();
+    if (!body.trimStart().startsWith('{') && !body.trimStart().startsWith('[')) {
+      throw new BotChallengeError(`${config.SEARXNG_URL}/search`);
+    }
+
+    const raw: SearXNGResponse = JSON.parse(body);
     return parseSearXNGResponse(raw).slice(0, q.maxResults);
   }
 }

@@ -1,0 +1,80 @@
+# SearXNG settings.yml — two engine profiles controlled by SEARXNG_ENGINE_PROFILE.
+#
+# IMPORTANT: formats: [json] MUST be listed or every query returns 403 (non-JSON).
+#            This is a SearXNG default that silently breaks the provider.
+#
+# Profile: clean (default — SEARXNG_ENGINE_PROFILE=clean)
+#   All engines below permit automated / self-hosted access.
+#   Safe for production without legal sign-off.
+#
+# Profile: full (SEARXNG_ENGINE_PROFILE=full — requires legal sign-off)
+#   Adds Google, Bing, DuckDuckGo, Yahoo.
+#   These engines' ToS prohibit automated scraping — DO NOT enable without
+#   explicit legal approval.
+
+use_default_settings: true
+
+server:
+  limiter: false
+  image_proxy: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: ""
+
+# Restrict output to JSON only — the MCP provider requires this.
+# Without this line SearXNG returns HTML and every query triggers BotChallengeError.
+formats:
+  - json
+
+engines:
+  # ── clean profile (ToS-safe, automated access permitted) ─────────────────────
+
+  - name: mojeek
+    engine: mojeek
+    shortcut: mj
+    disabled: false
+
+  - name: marginalia ng
+    engine: marginalia
+    shortcut: mg
+    disabled: false
+
+  - name: brave
+    engine: brave
+    shortcut: br
+    disabled: false
+
+  - name: wikipedia
+    engine: wikipedia
+    shortcut: wp
+    disabled: false
+
+  - name: wikidata
+    engine: wikidata
+    shortcut: wd
+    disabled: false
+
+  # ── full profile (requires legal sign-off — ToS prohibit automated access) ───
+  # Uncomment and set SEARXNG_ENGINE_PROFILE=full only after legal approval.
+
+  # - name: google
+  #   engine: google
+  #   shortcut: g
+  #   disabled: false
+
+  # - name: bing
+  #   engine: bing
+  #   shortcut: b
+  #   disabled: false
+
+  # - name: duckduckgo
+  #   engine: duckduckgo
+  #   shortcut: ddg
+  #   disabled: false
+
+  # - name: yahoo
+  #   engine: yahoo
+  #   shortcut: yh
+  #   disabled: false

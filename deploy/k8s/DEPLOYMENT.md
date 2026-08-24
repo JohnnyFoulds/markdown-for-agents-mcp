@@ -164,6 +164,8 @@ All variables are set in `base/configmap.yaml` and overridden in overlay patches
 | `SEARCH_DEFAULT_LANGUAGE` | `en` | BCP 47 language code for result ranking. |
 | `LOG_REDACT_QUERIES` | `true` | Hash query text in logs (POPIA compliance). Set `false` only for debugging — never in production. |
 | `SEARXNG_URL` | — | SearXNG instance URL; enables the free Tier-2 search provider. |
+| `SEARXNG_ENGINE_PROFILE` | `clean` | `clean` — ToS-safe engines (Mojeek, Marginalia, Brave free, Wikipedia). `full` — adds Google/Bing/DDG; **breaches those engines' ToS** — legal sign-off required before enabling. |
+| `SEARCH_CACHE_TTL_MS` | `3600000` | Search result cache TTL (ms; 1 h default). Caches by `(profile, query)` hash via `KeyValueStore`. Reduces engine load and mitigates IP-rate blocks at scale. |
 
 ### Reranker
 

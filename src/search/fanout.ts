@@ -2,7 +2,8 @@ import { AllProvidersFailedError } from '../utils/errors.js';
 import { Logger } from '../utils/logger.js';
 import { deduplicateByCanonical } from './canonicalize.js';
 import { passesAllowedList, passesBlockedList, passesSystemBlocklist } from './filter.js';
-import { searchProviderRequestsTotal } from '../obs/metrics.js';
+import { searchProviderRequestsTotal, searchDegradedTotal } from '../obs/metrics.js';
+import { CircuitBreaker } from './breaker.js';
 import type { SearchProvider, SearchProviderQuery, ProviderResult } from './types.js';
 
 export interface FanoutOptions {
@@ -11,6 +12,24 @@ export interface FanoutOptions {
   deadlineMs: number;
   includeDomains?: string[];
   excludeDomains?: string[];
+}
+
+// Per-process per-provider circuit breakers.
+// These are in-memory singletons; state resets on pod restart.
+const breakers = new Map<string, CircuitBreaker>();
+
+function getBreakerFor(providerName: string): CircuitBreaker {
+  let b = breakers.get(providerName);
+  if (!b) {
+    b = new CircuitBreaker();
+    breakers.set(providerName, b);
+  }
+  return b;
+}
+
+// Exported for tests only.
+export function resetBreakers(): void {
+  breakers.clear();
 }
 
 // Reciprocal Rank Fusion — rewards agreement across providers without calibration
@@ -39,6 +58,14 @@ async function runProvider(
   q: SearchProviderQuery,
   opts: { signal: AbortSignal; requestId: string; deadlineMs: number },
 ): Promise<{ provider: string; results: ProviderResult[] } | { provider: string; error: unknown }> {
+  const breaker = getBreakerFor(provider.name);
+
+  if (breaker.isOpen()) {
+    searchDegradedTotal.inc({ reason: 'breaker_open' });
+    Logger.debug(`[fanout] ${provider.name} skipped — circuit breaker open`);
+    return { provider: provider.name, error: new Error('circuit breaker open') };
+  }
+
   const deadline = new Promise<never>((_, reject) =>
     setTimeout(() => reject(new Error(`Provider ${provider.name} timeout`)), opts.deadlineMs),
   );
@@ -47,9 +74,11 @@ async function runProvider(
       provider.search(q, { signal: opts.signal, requestId: opts.requestId }),
       deadline,
     ]);
+    breaker.recordSuccess();
     searchProviderRequestsTotal.inc({ provider: provider.name, outcome: 'success' });
     return { provider: provider.name, results };
   } catch (err) {
+    breaker.recordFailure();
     searchProviderRequestsTotal.inc({ provider: provider.name, outcome: 'error' });
     Logger.warn(`[fanout] ${provider.name} failed: ${err instanceof Error ? err.message : String(err)}`);
     return { provider: provider.name, error: err };

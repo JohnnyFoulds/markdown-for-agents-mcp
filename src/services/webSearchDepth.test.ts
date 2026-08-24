@@ -15,6 +15,11 @@ vi.mock('../rank/index.js', () => ({
 
 vi.mock('../obs/metrics.js', () => ({
   rerankDurationSeconds: { startTimer: vi.fn(() => vi.fn()) },
+  searchCacheTotal: { inc: vi.fn() },
+}));
+
+vi.mock('../store/factory.js', () => ({
+  getStores: vi.fn(() => { throw new Error('stores not initialized'); }),
 }));
 
 vi.mock('../extract/pipeline.js', () => ({

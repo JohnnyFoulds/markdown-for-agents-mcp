@@ -102,6 +102,20 @@ export const searchProviderRequestsTotal = new Counter({
   registers: [registry],
 });
 
+export const searchDegradedTotal = new Counter({
+  name: 'search_degraded_total',
+  help: 'Search degradation events — provider blocked, breaker open, or forced fallthrough',
+  labelNames: ['reason'] as const,
+  registers: [registry],
+});
+
+export const searchCacheTotal = new Counter({
+  name: 'search_cache_total',
+  help: 'Search result cache hits and misses',
+  labelNames: ['result'] as const,
+  registers: [registry],
+});
+
 // Reranker
 export const rerankDurationSeconds = new Histogram({
   name: 'rerank_duration_seconds',

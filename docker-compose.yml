@@ -6,6 +6,9 @@
 #   lightpanda  — Tier 2 render sidecar (AGPL-3.0, CDP)
 #                 docker compose --profile lightpanda up
 #                 Set LIGHTPANDA_ENABLED=true in your .env to enable the tier.
+#   searxng     — Zero-budget Tier-2 search provider (clean engine profile by default)
+#                 docker compose --profile searxng up
+#                 Set SEARXNG_URL=http://searxng:8080 and optionally SEARXNG_ENGINE_PROFILE=full.
 #   redis       — Shared store for multi-replica deployments
 #                 docker compose --profile redis up
 #                 Set STORE_BACKEND=redis and STORE_REDIS_URL=redis://redis:6379.
@@ -34,6 +37,8 @@ services:
       LOG_FORMAT: json
       LIGHTPANDA_ENABLED: "${LIGHTPANDA_ENABLED:-false}"
       LIGHTPANDA_CDP_URL: "${LIGHTPANDA_CDP_URL:-ws://lightpanda:9222}"
+      SEARXNG_URL: "${SEARXNG_URL:-}"
+      SEARXNG_ENGINE_PROFILE: "${SEARXNG_ENGINE_PROFILE:-clean}"
     # Provide 1 GB tmpfs at /dev/shm so Chromium renderers don't exhaust the
     # Docker default 64 MB and crash under concurrency.
     shm_size: 1gb
@@ -49,6 +54,9 @@ services:
         condition: service_healthy
         required: false
       redis:
+        condition: service_healthy
+        required: false
+      searxng:
         condition: service_healthy
         required: false
 
@@ -67,6 +75,8 @@ services:
       LOG_FORMAT: json
       LIGHTPANDA_ENABLED: "${LIGHTPANDA_ENABLED:-false}"
       LIGHTPANDA_CDP_URL: "${LIGHTPANDA_CDP_URL:-ws://lightpanda:9222}"
+      SEARXNG_URL: "${SEARXNG_URL:-}"
+      SEARXNG_ENGINE_PROFILE: "${SEARXNG_ENGINE_PROFILE:-clean}"
     shm_size: 1gb
     restart: unless-stopped
     depends_on:
@@ -76,6 +86,9 @@ services:
         condition: service_healthy
         required: false
       redis:
+        condition: service_healthy
+        required: false
+      searxng:
         condition: service_healthy
         required: false
 
@@ -94,6 +107,26 @@ services:
       timeout: 3s
       retries: 5
       start_period: 10s
+
+  # Optional SearXNG — activate with: docker compose --profile searxng up
+  # Also set SEARXNG_URL=http://searxng:8080 (done automatically via the env passthrough above).
+  # SEARXNG_ENGINE_PROFILE=clean (default) uses only ToS-safe engines.
+  # Set SEARXNG_ENGINE_PROFILE=full only after legal sign-off (adds Google/Bing/DDG).
+  searxng:
+    image: searxng/searxng:latest
+    environment:
+      SEARXNG_SETTINGS_PATH: /etc/searxng/settings.yml
+    volumes:
+      - ./deploy/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    profiles:
+      - searxng
 
   # Optional Redis — activate with: docker compose --profile redis up
   # Also set STORE_BACKEND=redis and STORE_REDIS_URL=redis://redis:6379.
