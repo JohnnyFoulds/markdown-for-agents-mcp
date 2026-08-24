@@ -3,8 +3,13 @@
 #   docker compose -f docker-compose.scale-test.yml \
 #     up -d --scale mcp-server=3 --scale mcp-worker=2
 #
+# Redis is always required here (shared state is the whole point of the test).
+#
+# Lightpanda is optional — activate with --profile lightpanda and LIGHTPANDA_ENABLED=true:
+#   LIGHTPANDA_ENABLED=true docker compose -f docker-compose.scale-test.yml \
+#     --profile lightpanda up -d --scale mcp-server=3 --scale mcp-worker=2
+#
 # nginx round-robins across all mcp-server replicas on host port 3000.
-# Redis is always enabled (no profile gate).
 
 services:
   nginx:
@@ -38,14 +43,15 @@ services:
       SHUTDOWN_DRAIN_MS: "5000"
       SHUTDOWN_TIMEOUT_MS: "30000"
       LOG_FORMAT: json
-      LIGHTPANDA_ENABLED: "true"
-      LIGHTPANDA_CDP_URL: "ws://lightpanda:9222"
+      LIGHTPANDA_ENABLED: "${LIGHTPANDA_ENABLED:-false}"
+      LIGHTPANDA_CDP_URL: "${LIGHTPANDA_CDP_URL:-ws://lightpanda:9222}"
     shm_size: 1gb
     depends_on:
       redis:
         condition: service_healthy
       lightpanda:
         condition: service_healthy
+        required: false
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3000/healthz || exit 1"]
       interval: 10s
@@ -66,19 +72,23 @@ services:
       SHUTDOWN_DRAIN_MS: "5000"
       SHUTDOWN_TIMEOUT_MS: "30000"
       LOG_FORMAT: json
-      LIGHTPANDA_ENABLED: "true"
-      LIGHTPANDA_CDP_URL: "ws://lightpanda:9222"
+      LIGHTPANDA_ENABLED: "${LIGHTPANDA_ENABLED:-false}"
+      LIGHTPANDA_CDP_URL: "${LIGHTPANDA_CDP_URL:-ws://lightpanda:9222}"
     shm_size: 1gb
     depends_on:
       redis:
         condition: service_healthy
       lightpanda:
         condition: service_healthy
+        required: false
 
   # Tier 2 render sidecar — AGPL-3.0, run as a separate process via CDP.
+  # Activate with: --profile lightpanda and LIGHTPANDA_ENABLED=true
   lightpanda:
     image: lightpanda/browser:0.3.7
     restart: unless-stopped
+    profiles:
+      - lightpanda
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9222' 2>/dev/null"]
       interval: 5s

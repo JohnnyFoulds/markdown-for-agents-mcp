@@ -1,10 +1,18 @@
-# Two services from the same image:
+# Services from the same image:
 #   mcp-server  — serves MCP over HTTP in stateless mode
 #   mcp-worker  — runs the crawl worker loop, no HTTP listener
-#   lightpanda  — Tier 2 render sidecar (AGPL-3.0, separate process via CDP)
 #
-# Add Redis and override STORE_BACKEND=redis for multi-replica deployments.
-# Single-replica: default sqlite store works without Redis.
+# Optional sidecars (disabled by default — activate with --profile):
+#   lightpanda  — Tier 2 render sidecar (AGPL-3.0, CDP)
+#                 docker compose --profile lightpanda up
+#                 Set LIGHTPANDA_ENABLED=true in your .env to enable the tier.
+#   redis       — Shared store for multi-replica deployments
+#                 docker compose --profile redis up
+#                 Set STORE_BACKEND=redis and STORE_REDIS_URL=redis://redis:6379.
+#
+# Minimal single-replica start (no sidecars):
+#   docker compose up
+#   → HTTP + Playwright render, SQLite store
 
 services:
   mcp-server:
@@ -24,8 +32,8 @@ services:
       SHUTDOWN_DRAIN_MS: "5000"
       SHUTDOWN_TIMEOUT_MS: "30000"
       LOG_FORMAT: json
-      LIGHTPANDA_ENABLED: "true"
-      LIGHTPANDA_CDP_URL: "ws://lightpanda:9222"
+      LIGHTPANDA_ENABLED: "${LIGHTPANDA_ENABLED:-false}"
+      LIGHTPANDA_CDP_URL: "${LIGHTPANDA_CDP_URL:-ws://lightpanda:9222}"
     # Provide 1 GB tmpfs at /dev/shm so Chromium renderers don't exhaust the
     # Docker default 64 MB and crash under concurrency.
     shm_size: 1gb
@@ -39,6 +47,7 @@ services:
     depends_on:
       lightpanda:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
         required: false
@@ -56,20 +65,29 @@ services:
       SHUTDOWN_DRAIN_MS: "5000"
       SHUTDOWN_TIMEOUT_MS: "30000"
       LOG_FORMAT: json
-      LIGHTPANDA_ENABLED: "true"
-      LIGHTPANDA_CDP_URL: "ws://lightpanda:9222"
+      LIGHTPANDA_ENABLED: "${LIGHTPANDA_ENABLED:-false}"
+      LIGHTPANDA_CDP_URL: "${LIGHTPANDA_CDP_URL:-ws://lightpanda:9222}"
     shm_size: 1gb
     restart: unless-stopped
     depends_on:
-      - mcp-server
-      - lightpanda
+      mcp-server:
+        condition: service_healthy
+      lightpanda:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_healthy
+        required: false
 
   # Tier 2 render sidecar — Lightpanda speaks CDP (same protocol as Playwright).
   # AGPL-3.0: run as a separate process, never imported/vendored into our code.
-  # Disable by removing this service and setting LIGHTPANDA_ENABLED=false.
+  # Activate with: docker compose --profile lightpanda up
+  # Also set LIGHTPANDA_ENABLED=true (via .env or -e) to enable the render tier.
   lightpanda:
     image: lightpanda/browser:0.3.7
     restart: unless-stopped
+    profiles:
+      - lightpanda
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9222' 2>/dev/null"]
       interval: 5s
@@ -77,8 +95,8 @@ services:
       retries: 5
       start_period: 10s
 
-  # Optional Redis — uncomment and set STORE_BACKEND=redis to share state
-  # across multiple mcp-server and mcp-worker replicas.
+  # Optional Redis — activate with: docker compose --profile redis up
+  # Also set STORE_BACKEND=redis and STORE_REDIS_URL=redis://redis:6379.
   redis:
     image: redis:7-alpine
     ports:
