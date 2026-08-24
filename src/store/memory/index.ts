@@ -54,6 +54,18 @@ export class MemoryKvStore implements KeyValueStore {
     return { backend: 'memory', entries: this.store.size, bytes };
   }
 
+  async purgeExpired(): Promise<number> {
+    const now = Date.now();
+    let count = 0;
+    for (const [k, v] of this.store) {
+      if (v.expiresAt !== null && v.expiresAt <= now) {
+        this.store.delete(k);
+        count++;
+      }
+    }
+    return count;
+  }
+
   async close(): Promise<void> { this.store.clear(); }
 }
 
@@ -285,21 +297,45 @@ export class MemoryJobQueue implements JobQueue {
     job.status = 'cancelled';
     job.updatedAt = Date.now();
 
-    for (const entry of this.queue.values()) {
-      if (entry.jobId === jobId && (entry.status === 'pending' || entry.status === 'leased')) {
-        entry.status = 'failed';
-      }
+    // Delete all queue items and page content — do not accrete data for cancelled jobs
+    for (const [id, entry] of this.queue) {
+      if (entry.jobId === jobId) this.queue.delete(id);
+    }
+    for (const [key] of this.pages) {
+      if (key.startsWith(`${jobId}:`)) this.pages.delete(key);
     }
   }
 
   async list(): Promise<JobSummary[]> {
     const summaries: JobSummary[] = [];
     for (const job of this.jobs.values()) {
+      if (job.status === 'cancelled') continue;
       const s = await this.status(job.id);
       if (s) summaries.push(s);
     }
     summaries.sort((a, b) => b.createdAt - a.createdAt);
     return summaries;
+  }
+
+  async purgeOlderThan(cutoffMs: number, limit: number): Promise<string[]> {
+    const toDelete: string[] = [];
+    for (const job of this.jobs.values()) {
+      if (job.createdAt < cutoffMs) {
+        toDelete.push(job.id);
+        if (toDelete.length >= limit) break;
+      }
+    }
+    for (const id of toDelete) {
+      this.jobs.delete(id);
+      this.visited.delete(id);
+      for (const [qid, e] of this.queue) {
+        if (e.jobId === id) this.queue.delete(qid);
+      }
+      for (const [key] of this.pages) {
+        if (key.startsWith(`${id}:`)) this.pages.delete(key);
+      }
+    }
+    return toDelete;
   }
 
   async close(): Promise<void> {

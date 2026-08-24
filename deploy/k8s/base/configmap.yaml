@@ -33,6 +33,10 @@ data:
   SHUTDOWN_DRAIN_MS: "5000"
   SHUTDOWN_TIMEOUT_MS: "30000"
 
+  # POPIA s14 retention (unconditional — not under POPIA_MODE)
+  CRAWL_RETENTION_MS: "604800000"        # 7 days
+  RETENTION_SWEEP_INTERVAL_MS: "3600000" # 1 hour
+
   # Prometheus scraping is handled by existing cluster Prometheus via pod
   # annotations on the server pods (prometheus.io/scrape=true on port 3000).
   # No Prometheus or Grafana is deployed by these manifests.

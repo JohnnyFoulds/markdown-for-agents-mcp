@@ -5,6 +5,12 @@ export interface KeyValueStore {
   /** Atomic set-if-not-exists. Returns true if the key was set (i.e. did not exist). */
   setNx(key: string, value: Buffer, ttlMs: number): Promise<boolean>;
   stats(): Promise<{ backend: string; entries?: number; bytes?: number }>;
+  /**
+   * Purge all KV entries past their TTL.
+   * No-op for backends that expire natively (Redis). Returns number deleted.
+   * POPIA s14: ensures expired entries are physically removed.
+   */
+  purgeExpired(): Promise<number>;
   close(): Promise<void>;
 }
 
@@ -88,6 +94,12 @@ export interface JobQueue {
   results(jobId: string, offset: number, limit: number, filter?: PageStatus | 'all'): Promise<PageRecord[]>;
   cancel(jobId: string): Promise<void>;
   list(): Promise<JobSummary[]>;
+  /**
+   * Delete all jobs created before cutoffMs (epoch ms), processing at most limit at a time.
+   * Returns the ids of deleted jobs so the caller can sweep out-of-keyspace copies (KV spec).
+   * POPIA s14: the primary retention control — unconditional, not under POPIA_MODE.
+   */
+  purgeOlderThan(cutoffMs: number, limit: number): Promise<string[]>;
   close(): Promise<void>;
 }
 

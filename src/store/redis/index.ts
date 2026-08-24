@@ -53,6 +53,11 @@ export class RedisKvStore implements KeyValueStore {
     return result === 'OK';
   }
 
+  async purgeExpired(): Promise<number> {
+    // Redis expires keys natively via TTL/PX — no action needed
+    return 0;
+  }
+
   async stats(): Promise<{ backend: string; entries?: number; bytes?: number }> {
     return { backend: 'redis' };
   }
@@ -457,40 +462,16 @@ return 1
 
   async cancel(jobId: string): Promise<void> {
     const now = Date.now();
-    const [pendingUrls, leasedUrls] = await Promise.all([
-      this.redis.zrange(this.pk(jobId), 0, -1) as Promise<string[]>,
-      this.redis.zrange(this.lk(jobId), 0, -1) as Promise<string[]>,
-    ]);
-    const allUrls = [...new Set([...pendingUrls, ...leasedUrls])];
-
-    // Fetch item metadata (depth) before clearing the ZSET/HASH data
-    let depthMap: Record<string, number> = {};
-    if (allUrls.length > 0) {
-      const p = this.redis.pipeline();
-      for (const url of allUrls) p.hget(this.ik(jobId), url);
-      const res = await p.exec() as Array<[Error | null, string | null]>;
-      depthMap = Object.fromEntries(allUrls.map((url, i) => {
-        const raw = res[i]![1];
-        const depth = raw ? (JSON.parse(raw) as { depth: number }).depth : 0;
-        return [url, depth];
-      }));
-    }
-
     const p = this.redis.pipeline();
     p.hset(this.jk(jobId), 'status', 'cancelled', 'updated_at', String(now));
     p.srem(this.rnk(), jobId);
+    // Delete all data keys — do not accrete page records for cancelled URLs
     p.del(this.pk(jobId));
     p.del(this.lk(jobId));
-    for (const url of allUrls) {
-      const depth = depthMap[url] ?? 0;
-      p.hset(this.pgk(jobId), url, JSON.stringify({
-        status: 'failed', depth, error: 'cancelled', crawled_at: now,
-      }));
-      p.rpush(this.pok(jobId), url);
-    }
-    if (allUrls.length > 0) {
-      p.hincrby(this.jk(jobId), 'failed_count', allUrls.length);
-    }
+    p.del(this.vk(jobId));
+    p.del(this.ik(jobId));
+    p.del(this.pgk(jobId));
+    p.del(this.pok(jobId));
     await p.exec();
   }
 
@@ -499,9 +480,31 @@ return 1
     const summaries: JobSummary[] = [];
     for (const id of jobIds) {
       const s = await this.status(id);
-      if (s) summaries.push(s);
+      if (s && s.status !== 'cancelled') summaries.push(s);
     }
     return summaries;
+  }
+
+  async purgeOlderThan(cutoffMs: number, limit: number): Promise<string[]> {
+    // mcp:jobs ZSET is scored by created_at (ms) — ZRANGEBYSCORE returns oldest first
+    const jobIds = await this.redis.zrangebyscore(
+      this.jlk(), '-inf', cutoffMs, 'LIMIT', 0, limit,
+    ) as string[];
+    if (jobIds.length === 0) return [];
+    const p = this.redis.pipeline();
+    for (const id of jobIds) {
+      p.del(this.jk(id));
+      p.del(this.pk(id));
+      p.del(this.lk(id));
+      p.del(this.vk(id));
+      p.del(this.ik(id));
+      p.del(this.pgk(id));
+      p.del(this.pok(id));
+      p.zrem(this.jlk(), id);
+      p.srem(this.rnk(), id);
+    }
+    await p.exec();
+    return jobIds;
   }
 
   async close(): Promise<void> { /* shared connection — closed by factory */ }

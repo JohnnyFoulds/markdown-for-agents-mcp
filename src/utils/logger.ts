@@ -85,6 +85,8 @@ export interface FetchMetrics {
   success: boolean;
   error?: string;
   requestId?: string;
+  /** Epoch ms when this entry was recorded — used for age-based eviction. */
+  timestamp?: number;
 }
 
 interface DomainMetrics {
@@ -153,10 +155,17 @@ export class Logger {
    * Log a fetch operation with metrics
    */
   static logFetch(metrics: FetchMetrics): void {
+  const now = Date.now();
+  // Age-based eviction: raw URLs must not persist beyond the retention window
+  let retentionMs = 7 * 24 * 60 * 60 * 1000; // 7-day default matches CRAWL_RETENTION_MS
+  try { retentionMs = getConfig().CRAWL_RETENTION_MS; } catch { /* config not initialized */ }
+  const ageCutoff = now - retentionMs;
+  this.metrics = this.metrics.filter(m => (m.timestamp ?? 0) > ageCutoff);
+
   if (this.metrics.length >= this.MAX_METRICS) {
     this.metrics = this.metrics.slice(-Math.floor(this.MAX_METRICS / 2));
   }
-  this.metrics.push(metrics);
+  this.metrics.push({ ...metrics, timestamp: now });
 
   try {
     const hostname = new URL(metrics.url).hostname;

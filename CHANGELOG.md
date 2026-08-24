@@ -25,6 +25,16 @@ already thread `MCP_AUTH_TOKEN` through — you only need to supply the value.
 
 ## [Unreleased] — Phases 0–10 (Tavily Parity)
 
+### Added — POPIA Phase 2: Retention (s14)
+- `src/store/types.ts` — `JobQueue.purgeOlderThan(cutoffMs, limit)` and `KeyValueStore.purgeExpired()` interfaces
+- `src/store/retention.ts` — `runRetentionSweep` / `startRetentionTimer`: periodic sweep deletes jobs older than `CRAWL_RETENTION_MS`, plus out-of-keyspace KV spec copies and expired KV entries
+- `src/store/memory/index.ts`, `sqlite/index.ts`, `redis/index.ts` — implement `purgeOlderThan`/`purgeExpired`; fix `cancel()` to delete page content and queue items rather than accreting data; `list()` excludes cancelled jobs
+- `src/store/sqlite/index.ts` — `PRAGMA secure_delete = ON` on all three connections; `idx_jobs_created` index; cascade-delete in `cancel` and `purgeOlderThan`
+- `src/obs/metrics.ts` — `retention_purged_total{backend,entity}` counter; `retention_last_sweep_timestamp_seconds` gauge (alertable as "no sweep in 2h")
+- `src/index.ts` — wire retention timer after `initStores()`; immediate sweep on startup; clear timer on drain
+- `src/utils/logger.ts` — `Logger.metrics[]` age-bounded by `CRAWL_RETENTION_MS` (raw URLs must not persist beyond the retention window)
+- `CRAWL_RETENTION_MS` (default `604800000`, 7 days) and `RETENTION_SWEEP_INTERVAL_MS` (default `3600000`, 1 hour) added to all six config locations
+
 ### Added — Phase 3: Zero-budget search reliability
 - `src/search/providers/searxng.ts` — detect HTML/403/429 responses and throw `BotChallengeError` (was bare `SyntaxError`); add `language` and `time_range` (from `freshness`) params to outgoing SearXNG query
 - `src/search/fanout.ts` — wire `CircuitBreaker` into every provider call; open breakers skip the provider and increment `search_degraded_total{reason:breaker_open}` instead of wasting every request on a failing upstream

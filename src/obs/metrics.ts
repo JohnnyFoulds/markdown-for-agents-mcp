@@ -183,3 +183,17 @@ export const cacheNotStoredTotal = new Counter({
   labelNames: ['reason'] as const,
   registers: [registry],
 });
+
+// Retention sweep (POPIA Phase 2 — s14)
+export const retentionPurgedTotal = new Counter({
+  name: 'retention_purged_total',
+  help: 'Records deleted by the periodic retention sweep',
+  labelNames: ['backend', 'entity'] as const,
+  registers: [registry],
+});
+
+export const retentionLastSweepTimestamp = new Gauge({
+  name: 'retention_last_sweep_timestamp_seconds',
+  help: 'Unix timestamp of the last successful retention sweep — alert if no sweep in 2h',
+  registers: [registry],
+});

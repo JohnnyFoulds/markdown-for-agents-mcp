@@ -584,6 +584,8 @@ The full reference is in `.env.example`. Key variables:
 | `MCP_ROLE` | `server` | `server` \| `worker` \| `both` |
 | `SHUTDOWN_DRAIN_MS` | `5000` | Grace period before closing HTTP |
 | `OTEL_ENABLED` | `false` | Enable OpenTelemetry tracing |
+| `CRAWL_RETENTION_MS` | `604800000` | Job + page retention window in ms (7 days). Unconditional — POPIA s14. |
+| `RETENTION_SWEEP_INTERVAL_MS` | `3600000` | Retention sweep interval in ms (1 hour). |
 
 All logs are written to `stderr` to keep `stdout` clean for the MCP protocol.
 

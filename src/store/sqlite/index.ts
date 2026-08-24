@@ -59,7 +59,8 @@ CREATE TABLE IF NOT EXISTS crawl_pages (
   UNIQUE(job_id, url)
 ) STRICT;
 
-CREATE INDEX IF NOT EXISTS idx_pages_job ON crawl_pages(job_id, status);
+CREATE INDEX IF NOT EXISTS idx_pages_job      ON crawl_pages(job_id, status);
+CREATE INDEX IF NOT EXISTS idx_jobs_created   ON crawl_jobs(created_at);
 `;
 
 // ── KeyValueStore ─────────────────────────────────────────────────────────────
@@ -69,6 +70,7 @@ export class SqliteKvStore implements KeyValueStore {
 
   constructor(path: string) {
     this.db = new DatabaseSync(path);
+    this.db.exec('PRAGMA secure_delete = ON');
     this.db.exec(SCHEMA);
   }
 
@@ -113,6 +115,12 @@ export class SqliteKvStore implements KeyValueStore {
     }
   }
 
+  async purgeExpired(): Promise<number> {
+    const now = Date.now();
+    const result = this.db.prepare('DELETE FROM kv WHERE exp IS NOT NULL AND exp<=?').run(now) as { changes: number };
+    return result.changes;
+  }
+
   async stats(): Promise<{ backend: string; entries: number; bytes: number }> {
     const now = Date.now();
     this.db.prepare('DELETE FROM kv WHERE exp IS NOT NULL AND exp<=?').run(now);
@@ -132,6 +140,7 @@ export class SqliteRateLimitStore implements RateLimitStore {
 
   constructor(path: string) {
     this.db = new DatabaseSync(path);
+    this.db.exec('PRAGMA secure_delete = ON');
     this.db.exec(SCHEMA);
   }
 
@@ -184,6 +193,7 @@ export class SqliteJobQueue implements JobQueue {
 
   constructor(path: string) {
     this.db = new DatabaseSync(path);
+    this.db.exec('PRAGMA secure_delete = ON');
     this.db.exec(SCHEMA);
   }
 
@@ -394,9 +404,9 @@ export class SqliteJobQueue implements JobQueue {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.db.prepare("UPDATE crawl_jobs SET status='cancelled',updated_at=? WHERE id=?").run(now, jobId);
-      this.db.prepare(
-        "UPDATE crawl_queue SET status='failed' WHERE job_id=? AND status IN ('pending','leased')"
-      ).run(jobId);
+      // Delete all queue items and page content — do not accrete data for cancelled jobs
+      this.db.prepare('DELETE FROM crawl_pages WHERE job_id=?').run(jobId);
+      this.db.prepare('DELETE FROM crawl_queue WHERE job_id=?').run(jobId);
       this.db.exec('COMMIT');
     } catch (e) {
       this.db.exec('ROLLBACK');
@@ -406,7 +416,7 @@ export class SqliteJobQueue implements JobQueue {
 
   async list(): Promise<JobSummary[]> {
     const jobs = this.db.prepare(
-      'SELECT id FROM crawl_jobs ORDER BY created_at DESC'
+      "SELECT id FROM crawl_jobs WHERE status != 'cancelled' ORDER BY created_at DESC"
     ).all() as Array<{ id: string }>;
 
     const summaries: JobSummary[] = [];
@@ -415,6 +425,27 @@ export class SqliteJobQueue implements JobQueue {
       if (s) summaries.push(s);
     }
     return summaries;
+  }
+
+  async purgeOlderThan(cutoffMs: number, limit: number): Promise<string[]> {
+    const rows = this.db.prepare(
+      'SELECT id FROM crawl_jobs WHERE created_at < ? LIMIT ?'
+    ).all(cutoffMs, limit) as Array<{ id: string }>;
+    if (rows.length === 0) return [];
+    const ids = rows.map(r => r.id);
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      for (const id of ids) {
+        this.db.prepare('DELETE FROM crawl_pages WHERE job_id=?').run(id);
+        this.db.prepare('DELETE FROM crawl_queue WHERE job_id=?').run(id);
+        this.db.prepare('DELETE FROM crawl_jobs WHERE id=?').run(id);
+      }
+      this.db.exec('COMMIT');
+    } catch (e) {
+      this.db.exec('ROLLBACK');
+      throw e;
+    }
+    return ids;
   }
 
   async close(): Promise<void> {

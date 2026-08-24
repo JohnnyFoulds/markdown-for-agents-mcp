@@ -372,6 +372,97 @@ function runQueueContract(
       expect(ids.has(id1)).toBe(true);
       expect(ids.has(id2)).toBe(true);
     });
+
+    // ── POPIA Phase 2 — s14 retention ────────────────────────────────────────
+    //
+    // Phase 2 RED reason (before fix):
+    //   cancel() accretes data rather than deleting it:
+    //     - Redis cancel writes fake page records for every cancelled URL (hset/:pages + rpush/:pages:o)
+    //     - Memory/SQLite cancel marks queue items 'failed' but leaves completed page records intact
+    //   After cancel, results() returns content in all three backends.
+    //   After cancel, list() returns the cancelled job in all three backends.
+    //   purgeOlderThan() does not exist → compile error across all three backends.
+
+    it('(POPIA Phase 2) cancel deletes page content — results() empty after partial crawl + cancel', async () => {
+      const id = await queue.createJob(BASE_SPEC);
+      await queue.enqueue(id, [
+        { url: 'https://example.com/a', depth: 0 },
+        { url: 'https://example.com/b', depth: 0 },
+      ]);
+      // Complete one page before cancel — this would leave a page record without the fix
+      const [item] = await queue.lease(id, 1, 30_000);
+      await queue.complete(item!, {
+        url: item!.url, jobId: id, status: 'completed',
+        title: 'T', content: 'Content', depth: 0, crawledAt: Date.now(),
+      });
+      await queue.cancel(id);
+      const results = await queue.results(id, 0, 100);
+      expect(results).toHaveLength(0);
+    });
+
+    it('(POPIA Phase 2) cancelled job is absent from list()', async () => {
+      const id = await queue.createJob(BASE_SPEC);
+      await queue.enqueue(id, [{ url: 'https://example.com/a', depth: 0 }]);
+      await queue.cancel(id);
+      const jobs = await queue.list();
+      expect(jobs.map(j => j.id)).not.toContain(id);
+    });
+
+    it('(POPIA Phase 2) status() still reports cancelled after cancel', async () => {
+      const id = await queue.createJob(BASE_SPEC);
+      await queue.enqueue(id, [{ url: 'https://example.com/a', depth: 0 }]);
+      await queue.cancel(id);
+      const s = await queue.status(id);
+      expect(s?.status).toBe('cancelled');
+      expect(s?.pending).toBe(0);
+    });
+
+    it('(POPIA Phase 2) purgeOlderThan removes completed job older than cutoff', async () => {
+      const id = await queue.createJob(BASE_SPEC);
+      await queue.enqueue(id, [{ url: 'https://example.com/a', depth: 0 }]);
+      const [item] = await queue.lease(id, 1, 30_000);
+      await queue.complete(item!, { url: item!.url, jobId: id, status: 'completed', depth: 0, crawledAt: Date.now() });
+      // Purge everything created before "now + 1s"
+      const purged = await queue.purgeOlderThan(Date.now() + 1000, 100);
+      expect(purged).toContain(id);
+      const jobs = await queue.list();
+      expect(jobs.map(j => j.id)).not.toContain(id);
+    });
+
+    it('(POPIA Phase 2) purgeOlderThan returns purged job ids', async () => {
+      const id = await queue.createJob(BASE_SPEC);
+      await queue.enqueue(id, [{ url: 'https://example.com/a', depth: 0 }]);
+      const [item] = await queue.lease(id, 1, 30_000);
+      await queue.complete(item!, { url: item!.url, jobId: id, status: 'completed', depth: 0, crawledAt: Date.now() });
+      const purged = await queue.purgeOlderThan(Date.now() + 1000, 100);
+      expect(Array.isArray(purged)).toBe(true);
+      expect(purged).toContain(id);
+    });
+
+    it('(POPIA Phase 2) purgeOlderThan respects limit — returns at most limit ids', async () => {
+      const ids = await Promise.all([
+        queue.createJob(BASE_SPEC),
+        queue.createJob(BASE_SPEC),
+        queue.createJob(BASE_SPEC),
+      ]);
+      for (const id of ids) {
+        await queue.enqueue(id, [{ url: `https://example.com/${id}`, depth: 0 }]);
+        const [item] = await queue.lease(id, 1, 30_000);
+        await queue.complete(item!, { url: item!.url, jobId: id, status: 'completed', depth: 0, crawledAt: Date.now() });
+      }
+      const purged = await queue.purgeOlderThan(Date.now() + 1000, 2);
+      expect(purged.length).toBeLessThanOrEqual(2);
+    });
+
+    it('(POPIA Phase 2) purgeOlderThan does not remove jobs newer than cutoff', async () => {
+      const id = await queue.createJob(BASE_SPEC);
+      await queue.enqueue(id, [{ url: 'https://example.com/a', depth: 0 }]);
+      // Cutoff in the past — this job was created after the cutoff
+      const purged = await queue.purgeOlderThan(Date.now() - 60_000, 100);
+      expect(purged).not.toContain(id);
+      const jobs = await queue.list();
+      expect(jobs.map(j => j.id)).toContain(id);
+    });
   });
 }
 

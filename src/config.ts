@@ -99,6 +99,9 @@ const configSchema = z.object({
   CRAWL_MAX_CONCURRENCY: z.string().default('5').transform(Number),
   CRAWL_QUEUE_LEASE_MS: z.string().default('30000').transform(Number),
   CRAWL_WORKER_POLL_MS: z.string().default('1000').transform(Number),
+  // Retention (POPIA s14 — unconditional, not under POPIA_MODE)
+  CRAWL_RETENTION_MS: z.string().default('604800000').transform(Number),   // 7 days
+  RETENTION_SWEEP_INTERVAL_MS: z.string().default('3600000').transform(Number), // 1 hour
 
   // Process role (Phase 6)
   MCP_ROLE: z.string().default('server').refine(v => ['server', 'worker', 'both'].includes(v), {

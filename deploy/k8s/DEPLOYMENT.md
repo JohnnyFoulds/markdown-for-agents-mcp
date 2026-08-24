@@ -139,6 +139,8 @@ All variables are set in `base/configmap.yaml` and overridden in overlay patches
 | `CRAWL_MAX_PAGES` | `1000` | Hard page cap per crawl job. |
 | `CRAWL_MAX_DEPTH` | `10` | Link-following depth limit. |
 | `CRAWL_MAX_CONCURRENCY` | `5` (server), `10` (worker) | Concurrent fetches per crawl job. |
+| `CRAWL_RETENTION_MS` | `604800000` | Job + page retention window in ms (default 7 days). Unconditional — not under POPIA_MODE. |
+| `RETENTION_SWEEP_INTERVAL_MS` | `3600000` | How often the retention sweep runs in ms (default 1 hour). |
 
 ### Rate limiting
 

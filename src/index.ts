@@ -12,6 +12,7 @@ import { Logger } from "./utils/logger.js";
 import { registerAll } from "./server/registry.js";
 import { TOOLS } from "./tools/definitions.js";
 import { initStores, closeStores, getStores } from "./store/factory.js";
+import { runRetentionSweep, startRetentionTimer } from "./store/retention.js";
 import { gracefulDrain, setReady, isReady } from "./server/lifecycle.js";
 import { Socks5Server } from "./proxy/socks5Server.js";
 import { registry as metricsRegistry, rerankerReady as rerankerReadyGauge } from "./obs/metrics.js";
@@ -251,6 +252,10 @@ async function main() {
   });
   Logger.info(`Stores initialized (backend=${config.STORE_BACKEND}, http=${isHttpMode})`);
 
+  // POPIA s14 retention — unconditional; runs on all roles
+  void runRetentionSweep(getStores());                   // immediate sweep on startup
+  const retentionTimer = startRetentionTimer(getStores());
+
   // Wire rate limiter to shared store whenever rate limiting is configured.
   // Workers must also use the shared store so aggregate RPS is honoured across
   // all replicas — without this each worker has an independent in-memory bucket.
@@ -353,6 +358,7 @@ async function main() {
     drainMs: config.SHUTDOWN_DRAIN_MS,
     timeoutMs: config.SHUTDOWN_TIMEOUT_MS,
     closeStores: async () => {
+      clearInterval(retentionTimer);
       if (socks5Server) await socks5Server.close();
       await closeStores();
     },
