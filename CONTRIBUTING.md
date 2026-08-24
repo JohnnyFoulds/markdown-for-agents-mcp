@@ -27,8 +27,9 @@ Feature suggestions are welcome! Please provide:
 1. Branch from `development`
 2. Make your changes
 3. Add or update tests — aim for >90% coverage
-4. Commit using [Conventional Commits](https://www.conventionalcommits.org/)
-5. Push to your fork and open a pull request against `development`
+4. Run `npm run lint` and `npm run scan` — both must pass (0 errors, 0 high/critical findings) before opening a PR
+5. Commit using [Conventional Commits](https://www.conventionalcommits.org/)
+6. Push to your fork and open a pull request against `development`
 
 ## Development Setup
 

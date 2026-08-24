@@ -302,10 +302,19 @@ npm test
 # 3. Build
 npm run build
 
-# 4. Smoke test (stdio)
+# 4. Type check
+npm run typecheck
+
+# 5. Lint
+npm run lint
+
+# 6. Security scan (SCA + SAST + secrets — no server needed)
+npm run scan
+
+# 7. Smoke test (stdio)
 echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}' | node dist/index.js
 
-# 5. Smoke test (HTTP)
+# 8. Smoke test (HTTP)
 HTTP_PORT=3456 node dist/index.js &
 curl -s -X POST http://localhost:3456/healthz
 kill %1
@@ -409,5 +418,7 @@ node scripts/scale-proof.mjs
 - [ ] `npm test` shows all tests passing
 - [ ] `npm run build` completes without errors
 - [ ] `npm run typecheck` shows no errors
+- [ ] `npm run lint` shows 0 errors (warnings acceptable)
+- [ ] `npm run scan` exits 0 — no SCA critical/high CVEs, no SAST error/high findings, no secrets
 - [ ] `node dist/index.js` starts in stdio mode
 - [ ] `HTTP_PORT=3000 node dist/index.js` serves `/healthz` → 200

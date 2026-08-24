@@ -22,8 +22,15 @@ unauthenticated** — they must be reachable by Kubernetes liveness/readiness pr
 without credentials. These endpoints return only binary health state and expose no
 data.
 
-**`/metrics`** is unauthenticated by default. In a shared cluster, restrict it at the
-ingress or NetworkPolicy level to Prometheus scrape IPs only.
+**`/metrics` on the main port (default: 3000)** follows the same auth policy as `/mcp`.
+When `MCP_AUTH_TOKEN` is set, this endpoint requires a valid bearer token. When
+`MCP_AUTH_ALLOW_ANONYMOUS=true` is set (or no token is configured), it is public.
+
+**`METRICS_BIND_PORT` (default: 3001)** exposes a dedicated, always-unauthenticated
+Prometheus scrape endpoint. This is intentional: cluster-internal Prometheus cannot
+carry bearer tokens in standard scrape configs without custom configuration. Restrict
+this port at the NetworkPolicy or firewall level so only Prometheus scrape IPs can
+reach it. Never expose it on a public interface.
 
 **Ceiling:** The bearer token is a shared secret, not per-user or per-session. There is
 no RBAC, no audit log of which agent called which tool, and no rate-limiting by caller
@@ -32,7 +39,24 @@ it is not.
 
 ---
 
-## 2. Input validation
+## 2. Response security headers
+
+`applyBaseHeaders()` in `src/index.ts` sets two security headers on every HTTP response
+via `res.setHeader()`, so they compose with the SDK transport's own `writeHead()` call:
+
+| Header | Value | Rationale |
+|---|---|---|
+| `Cache-Control` | `no-store` | Prevents caching of MCP responses, which may contain fetched external content. Addresses ZAP finding 10049. |
+| `X-Content-Type-Options` | `nosniff` | Prevents MIME-type sniffing of JSON responses. |
+
+**Intentionally omitted:** `Strict-Transport-Security` (belongs at the TLS terminator,
+not the plaintext HTTP listener), `Content-Security-Policy` and `X-Frame-Options` (inert
+for JSON-only APIs — no HTML is served). Adding these would cause incorrect browser
+caching if the server is ever briefly exposed without TLS during a misconfiguration.
+
+---
+
+## 3. Input validation
 
 **All MCP tool inputs** are validated by Zod schemas at the handler boundary
 (`src/server/registry.ts`). Unknown properties are stripped; enum values are validated;
@@ -50,7 +74,7 @@ browser-native exploitation of the Chromium process itself.
 
 ---
 
-## 3. SSRF — the honest ceiling {#3-ssrf}
+## 4. SSRF — the honest ceiling {#4-ssrf}
 
 **There are two SSRF mitigations, with different guarantees.**
 
@@ -101,7 +125,7 @@ See `src/proxy/policy.ts:20–22` for the explicit caveat in code.
 
 ---
 
-## 4. Chromium sandbox and container security
+## 5. Chromium sandbox and container security
 
 **`--no-sandbox` flag:** The Playwright base image requires `--no-sandbox` in most
 Linux environments without user namespaces. This means a successful Chromium renderer
@@ -120,9 +144,16 @@ by the NetworkPolicy, but the NetworkPolicy ceiling above applies). This is the
 standard accepted risk for any headless browser deployment. The mitigations reduce the
 blast radius; they do not eliminate it.
 
+**`download_file.outputPath` filesystem write constraint:** The tool accepts an
+arbitrary absolute path and writes fetched content there. Under UID 1000 (`pwuser`),
+the only writable locations are `/tmp` and `/dev/shm` (both bound `emptyDir` volumes).
+A caller passing `/app/dist/index.js` or `/etc/cron.d/x` gets `EACCES` — this is an
+accidental control, not a designed one. A deployment that adds a persistent volume
+mounted at a path writable by UID 1000 removes this containment.
+
 ---
 
-## 5. SOCKS5 `intercept` mode
+## 6. SOCKS5 `intercept` mode
 
 `intercept` mode (TLS MITM proxy) is **not implemented**. When `SOCKS5_LISTEN_MODE=intercept`
 is set in the environment, the server exits with code 1 (`src/index.ts`). This is a
@@ -131,7 +162,7 @@ positive. Do not implement it.
 
 ---
 
-## 6. API key exposure
+## 7. API key exposure
 
 Paid provider keys (`BRAVE_API_KEY`, `SERPER_API_KEY`) and `MCP_AUTH_TOKEN` are
 injected as Kubernetes Secrets, not ConfigMap values. They are:
@@ -145,7 +176,7 @@ Set to `false` only for local development; never in production.
 
 ---
 
-## 7. Dependency supply chain
+## 8. Dependency supply chain
 
 Production dependencies are locked via `package-lock.json`. Notable risks:
 
@@ -160,7 +191,7 @@ Production dependencies are locked via `package-lock.json`. Notable risks:
 
 ---
 
-## 8. Data in transit
+## 9. Data in transit
 
 All outbound API calls (Brave, Serper, SearXNG) use HTTPS. The SearXNG instance is
 in-cluster and communicates over HTTP (cluster-internal — not public). No client query
@@ -170,14 +201,16 @@ See `docs/enterprise/DATA_FLOW.md` for a full inventory of what leaves the clust
 
 ---
 
-## 9. Summary of mitigations and residual risks
+## 10. Summary of mitigations and residual risks
 
 | Threat | Mitigation | Residual risk |
 |---|---|---|
 | SSRF via Chromium | `isPrivateIp()` + NetworkPolicy | DNS rebinding bypasses app guard; NetworkPolicy inert on Flannel/kindnet |
 | SSRF via SOCKS5 proxy | Policy check (lexical) | Proxy-resolved DNS, no pinning |
-| Auth bypass | Timing-safe bearer token | Shared secret; no per-user isolation |
+| Auth bypass | Timing-safe bearer token; fail-closed HTTP startup | Shared secret; no per-user isolation |
 | Chromium RCE → container escape | `--no-sandbox` + `runAsNonRoot` + `capabilities: drop ALL` | Renderer RCE still gets container with NetworkPolicy-limited egress |
+| `download_file` path write | UID 1000 — only `/tmp` and `/dev/shm` writable | Accidental containment; a writable volume mount removes it |
+| Missing response security headers | `applyBaseHeaders()` sets `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` | Headers omitted by SDK transport calls before `applyBaseHeaders()` runs |
 | API key exfiltration | K8s Secrets + no logging | K8s Secret access via compromised service account |
 | Query privacy | `LOG_REDACT_QUERIES=true` + no persistent query log | Queries reach configured search providers |
 | TLS MITM (intercept mode) | Not implemented; exits 1 | None |

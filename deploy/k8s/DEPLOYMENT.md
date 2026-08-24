@@ -172,12 +172,31 @@ All variables are set in `base/configmap.yaml` and overridden in overlay patches
 
 | Variable | Default | Description |
 |---|---|---|
-| `RERANK_BACKEND` | `none` | `none` — SERP order only. `local` — ONNX cross-encoder in a worker thread (requires optional deps; image must have model baked in). `tei` — remote TEI endpoint. |
+| `RERANK_BACKEND` | `none` | `none` — SERP order only. `local` — ONNX cross-encoder in a worker thread (requires optional deps). `tei` — remote TEI endpoint. |
 | `RERANK_MODEL` | `Xenova/bge-reranker-base` | HuggingFace model ID for `local` backend. |
 | `RERANK_DTYPE` | `q8` | Quantisation dtype for ONNX (`q8` required for CPU `onnxruntime-node`). |
 | `RERANK_TEI_URL` | — | TEI endpoint URL when `RERANK_BACKEND=tei`. |
 
-When `RERANK_BACKEND=local` the server pod must have the model baked into the image at `$HF_HOME`. If the model is missing at startup the process **fails loudly** rather than silently falling back to SERP order — a degraded-but-passing startup is harder to diagnose than an immediate crash. `/readyz` gates on the reranker reaching ready state, giving the existing 300 s `startupProbe` window for the 280 MB model load.
+When `RERANK_BACKEND=local` the server downloads the model from HuggingFace on first
+startup (~120 s for 280 MB) if it is not already cached, using `$HF_HOME` (defaults to
+`/home/pwuser/.cache/huggingface` under UID 1000). If the download fails or the model
+is corrupt, the process **fails loudly** rather than silently falling back to SERP order.
+`/readyz` gates on the reranker reaching ready state, giving the existing 300 s
+`startupProbe` window for the model load.
+
+For production deployments, bake the model into the image at build time to eliminate the
+startup latency and the HuggingFace dependency at runtime:
+
+```dockerfile
+ARG RERANK_MODEL=Xenova/bge-reranker-base
+RUN python3 -c "from huggingface_hub import snapshot_download; snapshot_download('${RERANK_MODEL}')" \
+  && echo "Model baked at $(python3 -c 'import os; print(os.environ.get(\"HF_HOME\", \"/home/pwuser/.cache/huggingface\"))')"
+```
+
+The ECS task definition (`deploy/ecs/task-definition-server.json`) sets
+`RERANK_BACKEND=local` without a baked model — it relies on the runtime download. Set
+`RERANK_BACKEND=none` if reranking is not required and you want to remove the startup
+dependency on HuggingFace.
 
 ### Search providers (Secrets)
 

@@ -1,14 +1,16 @@
-# gitleaks suppression file
-# Each line is a SHA256 of the finding fingerprint (file:line:rule).
-# Add entries with: gitleaks detect --report-format json | jq '.[] | .Fingerprint'
+# .gitleaksignore — accepted-risk suppression list for gitleaks
 #
-# ONLY add entries that have been verified as test fixtures / dummy values.
-# For real leaked secrets: rotate immediately, THEN add to this file.
+# Format: one SHA256 fingerprint per line (the `Fingerprint` field from
+# gitleaks JSON output). Lines starting with # are comments.
 #
-# Verified dummy API-key fixtures in test files
-# These use the `sk-` prefix which trips generic API-key heuristics, but
-# the values are deliberately synthetic and never used for real API calls.
+# How to add an entry:
+#   1. Run: npm run scan:secrets  (or: gitleaks detect --source . --report-format json)
+#   2. Confirm the flagged value is a dummy / non-sensitive credential
+#   3. Copy the `Fingerprint` field from the JSON report and paste it below
+#   4. Add a comment on the next line explaining why it is safe to suppress
 #
-# src/search/fanout.paid.test.ts — sk-brave-test, sk-serper-test
-# Verified: initializeConfig() test helpers with hardcoded dummy values;
-# gitleaks p/generic-api-key fires on the sk- prefix.
+# No entries currently needed — gitleaks finds no leaks in the codebase.
+# If a future rule change causes test fixtures containing dummy credential-shaped
+# strings to be flagged (e.g. values like `sk-brave-test` in
+# src/search/fanout.paid.test.ts), add the fingerprints here rather than
+# deleting or obfuscating the test data.
