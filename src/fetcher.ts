@@ -6,13 +6,14 @@
 import { chromium, Browser, BrowserContext, Page } from "playwright";
 import { Logger } from "./utils/logger.js";
 import { LRUCache } from "./utils/cache.js";
-import { validateUrl, isDomainBlocked } from "./utils/domainBlacklist.js";
+import { validateUrl } from "./utils/domainBlacklist.js";
 import {
   DomainBlockedError,
   FetchTimeoutError,
   RedirectBlockedError,
   RedirectLoopError,
 } from "./utils/errors.js";
+import { resolveRedirectUrl, assertRedirectPermitted } from "./http/redirect.js";
 import { getConfig } from "./config.js";
 
 /**
@@ -196,35 +197,6 @@ export class Fetcher {
     }
   }
 
-  /**
-   * Check if redirect is allowed (same host only)
-   * Blocks cross-origin redirects and blocked domains
-   */
-  private isPermittedRedirect(originalUrl: string, redirectUrl: string): boolean {
-    try {
-      const original = new URL(originalUrl);
-      const redirect = new URL(redirectUrl);
-
-      // Block cross-origin redirects (hostname mismatch)
-      if (original.hostname !== redirect.hostname) {
-        return false;
-      }
-
-      // Block redirects that change port (e.g. example.com → example.com:8080)
-      if (original.port !== redirect.port) {
-        return false;
-      }
-
-      // Block if redirect domain is on blocklist
-      if (isDomainBlocked(redirect.hostname)) {
-        return false;
-      }
-
-      return true;
-    } catch {
-      return false;
-    }
-  }
 
   /**
    * Fetch a single URL and return rendered HTML content with page title.
@@ -289,19 +261,8 @@ export class Fetcher {
 
           // Handle 3xx redirects manually
           if (status >= 300 && status < 400 && locationHeader) {
-            // Resolve relative redirect URLs
-            let redirectUrl: string;
-            try {
-              redirectUrl = new URL(locationHeader, currentUrl).href;
-            } catch {
-              throw new RedirectBlockedError(currentUrl, locationHeader);
-            }
-
-            // Check if redirect is permitted (same origin, same port, not blocked)
-            if (!this.isPermittedRedirect(currentUrl, redirectUrl)) {
-              throw new RedirectBlockedError(currentUrl, redirectUrl);
-            }
-
+            const redirectUrl = resolveRedirectUrl(locationHeader, currentUrl);
+            assertRedirectPermitted(currentUrl, redirectUrl, false);
             redirectCount++;
             await page.close();
             currentUrl = redirectUrl;

@@ -39,9 +39,17 @@ const configSchema = z.object({
   // HTTP server mode
   HTTP_PORT: z.string().optional().transform(v => v ? Number(v) : undefined),
 
-  // Proxy
+  // Proxy (HTTP_PROXY_URL is canonical; PLAYWRIGHT_PROXY kept as legacy alias)
+  HTTP_PROXY_URL: z.string().optional(),
   PLAYWRIGHT_PROXY: z.string().optional(),
   PLAYWRIGHT_PROXY_BYPASS: z.string().optional(),
+
+  // HTTP client
+  RATE_LIMIT_PER_HOST_RPS: z.string().default('0').transform(Number),
+  RATE_LIMIT_BURST: z.string().default('10').transform(Number),
+  RATE_LIMIT_MAX_WAIT_MS: z.string().default('30000').transform(Number),
+  RESPECT_ROBOTS_TXT: z.string().default('false').transform(val => val === 'true'),
+  HTTP_DEFAULT_CHARSET: z.string().default('utf-8'),
 });
 
 export type Config = z.infer<typeof configSchema>;

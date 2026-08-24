@@ -7,8 +7,9 @@ import { fetcher } from "../fetcher.js";
 import { extract } from "../extract/pipeline.js";
 import { getConfig } from "../config.js";
 import { Logger } from "../utils/logger.js";
-import http from 'http';
-import https from 'https';
+import { BotChallengeError } from "../utils/errors.js";
+import { httpClient as defaultHttpClient } from "../http/client.js";
+import type { HttpClient } from "../http/types.js";
 
 export interface SearchResult {
   title: string;
@@ -162,96 +163,13 @@ export function filterResults(
 }
 
 /**
- * Fetch HTML using plain HTTP (no Playwright) to avoid bot detection
- * @param url - The URL to fetch
- * @param timeout - Request timeout in milliseconds
- * @param redirectCount - Internal redirect counter (default: 0, max: 10)
- * @returns Promise resolving to the HTML content
- * @throws {Error} If request times out or redirect limit exceeded
- */
-export async function fetchHtml(
-  url: string,
-  timeout: number,
-  redirectCount: number = 0
-): Promise<string> {
-  // Prevent infinite redirect loops
-  if (redirectCount >= getConfig().MAX_REDIRECTS) {
-    throw new Error(`Redirect limit exceeded (${getConfig().MAX_REDIRECTS} hops)`);
-  }
-
-  return new Promise((resolve, reject) => {
-    const parsedUrl = new URL(url);
-    const client = parsedUrl.protocol === 'https:' ? https : http;
-
-    const options = {
-      hostname: parsedUrl.hostname,
-      port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
-      path: parsedUrl.pathname + parsedUrl.search,
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-      },
-    };
-
-    const chunks: Buffer[] = [];
-
-    const req = client.request(options, (res: http.IncomingMessage) => {
-      // Handle redirects with counter - recursively call fetchHtml for 3xx responses
-      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        res.resume();
-        fetchHtml(res.headers.location, timeout, redirectCount + 1).then(resolve).catch(reject);
-        return;
-      }
-
-      res.on('data', (chunk: Buffer) => {
-        chunks.push(chunk);
-      });
-
-      res.on('end', async () => {
-        let data = Buffer.concat(chunks);
-
-        // Decompress content based on encoding (gzip, brotli, deflate)
-        try {
-          const encoding = res.headers['content-encoding'];
-          const zlib = await import('zlib');
-          if (encoding === 'gzip') {
-            data = zlib.gunzipSync(data);
-          } else if (encoding === 'br') {
-            data = zlib.brotliDecompressSync(data);
-          } else if (encoding === 'deflate') {
-            data = zlib.inflateSync(data);
-          }
-        } catch {
-          // If decompression fails, return raw data
-        }
-
-        resolve(data.toString('utf8'));
-      });
-    });
-
-    req.on('error', reject);
-    req.setTimeout(timeout, () => {
-      req.destroy();
-      reject(new Error(`Request timeout after ${timeout}ms`));
-    });
-
-    req.end();
-  });
-}
-
-/**
- * Perform DuckDuckGo search and return structured results
- * Uses /html endpoint which returns static HTML (no JS rendering required)
- * Uses plain HTTP to avoid Playwright bot detection
+ * Perform DuckDuckGo search and return structured results.
+ * Uses /html endpoint which returns static HTML (no JS rendering required).
+ * The httpClient parameter is injectable for testing.
  */
 export async function duckDuckGoSearch(
   options: SearchOptions,
-  fetchHtmlImpl: (url: string, timeout: number) => Promise<string> = fetchHtml
+  httpClient: HttpClient = defaultHttpClient,
 ): Promise<SearchResponse> {
   const startTime = Date.now();
   const {
@@ -264,71 +182,51 @@ export async function duckDuckGoSearch(
   } = options;
 
   const searchTimeout = timeout ?? getConfig().WEB_SEARCH_DEFAULT_TIMEOUT_MS;
-
-  // Use DuckDuckGo HTML endpoint which returns static results
   const encodedQuery = encodeURIComponent(query);
   const searchUrl = `https://html.duckduckgo.com/html/?q=${encodedQuery}`;
 
   try {
-    // Fetch search results page using plain HTTP (injectable for testing)
-    const html = await fetchHtmlImpl(searchUrl, searchTimeout);
+    const res = await httpClient.request({
+      url: searchUrl,
+      purpose: 'search',
+      timeoutMs: searchTimeout,
+      requestId: Logger.generateRequestId(),
+    });
 
-    // Check for bot-challenge page (DDG anomaly modal)
+    const html = res.text();
+
     if (html.includes('anomaly-modal') || html.includes('DDoS protection') || html.length < 2000) {
-      Logger.warn('Response looks like a bot-challenge page — results may be empty.');
+      throw new BotChallengeError(searchUrl);
     }
 
-    // Parse results from HTML
     let results = parseSearchResults(html);
-
-    // Filter by domain lists
     results = filterResults(results, allowedDomains, blockedDomains);
-
-    // Limit to maxResults
     results = results.slice(0, maxResults);
 
     let markdownResults: { url: string; markdown: string }[] | undefined;
 
-    // Fetch and convert top results if requested (hybrid mode)
-    // Use fetchMultiple to respect MAX_CONCURRENT_FETCHES batching
     if (fetchResults && results.length > 0) {
       const urls = results.map((r) => r.url);
       const fetchedResults = await fetcher.fetchMultiple(urls, searchTimeout);
       markdownResults = fetchedResults.map((r) => {
         if (!r.success) {
-          return {
-            url: r.url,
-            markdown: `# Error fetching ${r.url}\n\n${r.error ?? 'Unknown error'}\n`,
-          };
+          return { url: r.url, markdown: `# Error fetching ${r.url}\n\n${r.error ?? 'Unknown error'}\n` };
         }
-        return {
-          url: r.url,
-          markdown: extract(r.markdown, { url: r.url, title: r.title ?? '' }).markdown,
-        };
+        return { url: r.url, markdown: extract(r.markdown, { url: r.url, title: r.title ?? '' }).markdown };
       });
     }
 
-    const durationMs = Date.now() - startTime;
-
-    return {
-      query,
-      results,
-      markdownResults,
-      durationMs,
-    };
+    return { query, results, markdownResults, durationMs: Date.now() - startTime };
   } catch (error) {
     const durationMs = Date.now() - startTime;
-
     return {
       query,
       results: [],
       durationMs,
-      markdownResults: [
-        {
-          url: searchUrl,
-          markdown: `# Search Error\n\nFailed to perform search: ${getErrorMessage(error)}\n`,
-        },
-      ],
+      markdownResults: [{
+        url: searchUrl,
+        markdown: `# Search Error\n\nFailed to perform search: ${getErrorMessage(error)}\n`,
+      }],
     };
   }
 }

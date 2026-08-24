@@ -36,3 +36,47 @@ export class RedirectLoopError extends Error {
     this.name = 'RedirectLoopError';
   }
 }
+
+export class SsrfViolationError extends Error {
+  constructor(hostname: string, resolvedIp: string) {
+    super(`SSRF violation: ${hostname} resolved to private address ${resolvedIp}`);
+    this.name = 'SsrfViolationError';
+  }
+}
+
+export class RobotsDeniedError extends Error {
+  constructor(url: string) {
+    super(`robots.txt disallows: ${url}`);
+    this.name = 'RobotsDeniedError';
+  }
+}
+
+export class RateLimitTimeoutError extends Error {
+  constructor(maxWaitMs: number) {
+    super(`Rate limit wait exceeded ${maxWaitMs}ms`);
+    this.name = 'RateLimitTimeoutError';
+  }
+}
+
+export class SearchProviderError extends Error {
+  constructor(provider: string, cause: string) {
+    super(`${provider}: ${cause}`);
+    this.name = 'SearchProviderError';
+  }
+}
+
+export class BotChallengeError extends Error {
+  constructor(url: string) {
+    super(`Bot challenge detected at ${url}`);
+    this.name = 'BotChallengeError';
+  }
+}
+
+export class AllProvidersFailedError extends Error {
+  readonly causes: Record<string, string>;
+  constructor(causes: Record<string, string>) {
+    super(`All search providers failed: ${JSON.stringify(causes)}`);
+    this.name = 'AllProvidersFailedError';
+    this.causes = causes;
+  }
+}
