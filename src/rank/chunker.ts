@@ -4,13 +4,14 @@ const TARGET_TOKENS = 400;
 const OVERLAP_TOKENS = 64;
 const HEADING_RE = /^(#{1,6})\s+(.+)$/;
 const FENCE_RE = /^```/;
+const TABLE_ROW_RE = /^\s*\|/;
 
 function estimateTokens(text: string): number {
   return Math.ceil(text.split(/\s+/).filter(Boolean).length * 1.3);
 }
 
 interface Block {
-  type: 'heading' | 'fence' | 'text';
+  type: 'heading' | 'fence' | 'table' | 'text';
   level?: number;
   text: string;
 }
@@ -20,9 +21,18 @@ function parseBlocks(markdown: string): Block[] {
   const blocks: Block[] = [];
   let inFence = false;
   let fenceBuffer: string[] = [];
+  let tableBuffer: string[] = [];
+
+  function flushTable(): void {
+    if (tableBuffer.length > 0) {
+      blocks.push({ type: 'table', text: tableBuffer.join('\n') });
+      tableBuffer = [];
+    }
+  }
 
   for (const line of lines) {
     if (FENCE_RE.test(line)) {
+      flushTable();
       if (inFence) {
         fenceBuffer.push(line);
         blocks.push({ type: 'fence', text: fenceBuffer.join('\n') });
@@ -38,6 +48,12 @@ function parseBlocks(markdown: string): Block[] {
       fenceBuffer.push(line);
       continue;
     }
+    if (TABLE_ROW_RE.test(line)) {
+      tableBuffer.push(line);
+      continue;
+    }
+    // Non-table line: flush accumulated table rows first
+    flushTable();
     const headingMatch = HEADING_RE.exec(line);
     if (headingMatch) {
       blocks.push({ type: 'heading', level: headingMatch[1]!.length, text: headingMatch[2]! });
@@ -46,6 +62,7 @@ function parseBlocks(markdown: string): Block[] {
     }
   }
 
+  flushTable();
   // Unclosed fence: treat as text
   if (fenceBuffer.length) {
     blocks.push({ type: 'text', text: fenceBuffer.join('\n') });
@@ -67,7 +84,7 @@ export function chunkMarkdown(markdown: string, sourceUrl: string): Chunk[] {
   let bufferTokens = 0;
   let chunkIndex = 0;
 
-  function flushBuffer(): void {
+  function flushBuffer(clearAll = false): void {
     const text = buffer.join('\n').trim();
     if (!text) return;
     const headingPath = headingPathFor(headingStack);
@@ -80,6 +97,11 @@ export function chunkMarkdown(markdown: string, sourceUrl: string): Chunk[] {
       index: chunkIndex++,
       tokenEstimate: estimateTokens(fullText),
     });
+    if (clearAll) {
+      buffer = [];
+      bufferTokens = 0;
+      return;
+    }
     // Overlap: keep last OVERLAP_TOKENS worth of buffer lines
     const lines = buffer;
     let kept: string[] = [];
@@ -96,8 +118,8 @@ export function chunkMarkdown(markdown: string, sourceUrl: string): Chunk[] {
 
   for (const block of blocks) {
     if (block.type === 'heading') {
-      // Flush on section boundary
-      if (bufferTokens > 0) flushBuffer();
+      // Flush on section boundary — no overlap carry across heading boundaries
+      if (bufferTokens > 0) flushBuffer(true);
 
       // Update heading stack
       while (headingStack.length > 0 && headingStack[headingStack.length - 1]!.level >= block.level!) {
@@ -107,8 +129,8 @@ export function chunkMarkdown(markdown: string, sourceUrl: string): Chunk[] {
       continue;
     }
 
-    // Fence blocks: always emit as their own chunk if they exceed target
-    if (block.type === 'fence') {
+    // Fence and table blocks: always emit as their own chunk if they exceed target
+    if (block.type === 'fence' || block.type === 'table') {
       const tokens = estimateTokens(block.text);
       if (bufferTokens + tokens > TARGET_TOKENS && bufferTokens > 0) {
         flushBuffer();

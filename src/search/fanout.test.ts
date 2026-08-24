@@ -110,6 +110,34 @@ describe('fanout', () => {
     expect(results[0]!.url).toBe('https://fallback.com');
   });
 
+  // RED (Phase 4): dedup currently discards UTM variant before RRF sees it,
+  // so the cross-provider agreement vote is lost and the agreed page ranks lower
+  test('UTM variant from second provider contributes to RRF — canonical URL wins', async () => {
+    // brave: winner.com/page at rank 3 (below also.com and other.com)
+    // serper: winner.com/page?utm_source=serper at rank 1 → cross-provider agreement should boost it
+    const brave = fakeProvider('brave', 1, [
+      makeResult('brave', 'https://also.com', 1),
+      makeResult('brave', 'https://other.com', 2),
+      makeResult('brave', 'https://winner.com/page', 3),
+    ]);
+    const serper = fakeProvider('serper', 1, [
+      makeResult('serper', 'https://winner.com/page?utm_source=serper', 1),
+      makeResult('serper', 'https://other.com', 2),
+    ]);
+    const results = await fanout(Q, [brave, serper], OPTS);
+    // After fix: both providers voted for winner.com → outranks also.com (single provider)
+    expect(results[0]!.url).toBe('https://winner.com/page');
+  });
+
+  test('fetched URL is the original (non-canonical) form — canonicalisation is for ranking only', async () => {
+    const p = fakeProvider('brave', 1, [
+      makeResult('brave', 'https://example.com/page?utm_source=brave', 1),
+    ]);
+    const results = await fanout(Q, [p], OPTS);
+    // The URL in the result should be the original, not the stripped canonical
+    expect(results[0]!.url).toBe('https://example.com/page?utm_source=brave');
+  });
+
   // RED: circuit breaker not wired into fanout yet — open breaker must skip the provider
   test('skips a provider whose circuit breaker is open', async () => {
     // searchCount tracks how many times the provider is called

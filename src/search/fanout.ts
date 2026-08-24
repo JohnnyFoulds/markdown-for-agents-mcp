@@ -1,6 +1,6 @@
 import { AllProvidersFailedError } from '../utils/errors.js';
 import { Logger } from '../utils/logger.js';
-import { deduplicateByCanonical } from './canonicalize.js';
+import { canonicalizeUrl } from './canonicalize.js';
 import { passesAllowedList, passesBlockedList, passesSystemBlocklist } from './filter.js';
 import { searchProviderRequestsTotal, searchDegradedTotal } from '../obs/metrics.js';
 import { CircuitBreaker } from './breaker.js';
@@ -32,25 +32,23 @@ export function resetBreakers(): void {
   breakers.clear();
 }
 
-// Reciprocal Rank Fusion — rewards agreement across providers without calibration
-function rrfScore(results: ProviderResult[]): Map<string, number> {
-  const scores = new Map<string, number>();
-  for (const r of results) {
-    const key = r.url;
-    scores.set(key, (scores.get(key) ?? 0) + 1 / (60 + r.rank));
-  }
-  return scores;
-}
-
+// Reciprocal Rank Fusion — canonicalise first so cross-provider agreement is
+// detected even when URLs differ by tracking params (e.g. ?utm_source=).
+// The original URL is preserved in the output so fetching uses the real link.
 function applyRRF(candidates: ProviderResult[]): ProviderResult[] {
-  const scores = rrfScore(candidates);
-  const seen = new Map<string, ProviderResult>();
+  // Group by canonical URL: accumulate RRF score from ALL provider ranks
+  const rrfScores = new Map<string, number>();
+  const firstSeen = new Map<string, ProviderResult>();
 
   for (const r of candidates) {
-    if (!seen.has(r.url)) seen.set(r.url, r);
+    const key = canonicalizeUrl(r.url);
+    rrfScores.set(key, (rrfScores.get(key) ?? 0) + 1 / (60 + r.rank));
+    if (!firstSeen.has(key)) firstSeen.set(key, r);
   }
 
-  return [...seen.values()].sort((a, b) => (scores.get(b.url) ?? 0) - (scores.get(a.url) ?? 0));
+  return [...firstSeen.values()].sort(
+    (a, b) => (rrfScores.get(canonicalizeUrl(b.url)) ?? 0) - (rrfScores.get(canonicalizeUrl(a.url)) ?? 0),
+  );
 }
 
 async function runProvider(
@@ -128,10 +126,7 @@ export async function fanout(
 
     if (results.length === 0) continue;
 
-    // Dedup, filter, RRF
-    const deduped = deduplicateByCanonical(results);
-
-    const filtered = deduped.filter(r => {
+    const filtered = results.filter(r => {
       if (!passesSystemBlocklist(r.domain)) return false;
       if (!passesAllowedList(r.domain, includeDomains)) return false;
       if (!passesBlockedList(r.domain, excludeDomains)) return false;

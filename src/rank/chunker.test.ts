@@ -60,4 +60,36 @@ describe('chunkMarkdown', () => {
     const chunks = chunkMarkdown(md, URL);
     expect(chunks.length).toBeGreaterThan(1);
   });
+
+  // RED (Phase 4): table rows are currently treated as plain text lines and split
+  // at the token budget boundary — a table that exceeds 400 tokens is split mid-row
+  test('markdown table is emitted as a single atomic chunk', () => {
+    const rows = Array.from({ length: 40 }, (_, i) => `| Item ${i} | Description for row ${i} with extra text | ${i * 10} |`);
+    const table = ['| Name | Description | Value |', '|---|---|---|', ...rows].join('\n');
+    const md = `# Data\n\n${table}`;
+    const chunks = chunkMarkdown(md, URL);
+    // The separator row should appear in exactly one chunk (table not split)
+    const tableChunks = chunks.filter(c => c.text.includes('|---|'));
+    expect(tableChunks).toHaveLength(1);
+    // First and last data rows must be in the same chunk
+    expect(tableChunks[0]!.text).toContain('Item 0');
+    expect(tableChunks[0]!.text).toContain('Item 39');
+  });
+
+  // RED (Phase 4): overlap lines from Section A are carried into the first
+  // Section B chunk with Section B's heading path — wrong provenance
+  test('overlap lines do not cross heading boundaries with wrong heading path', () => {
+    const longContent = Array.from({ length: 200 }, (_, i) =>
+      `Section A content line ${i} with enough words to fill the buffer.`).join('\n');
+    const md = `## Section A\n\n${longContent}\n\n## Section B\n\nSection B specific content only.`;
+    const chunks = chunkMarkdown(md, URL);
+    const sectionBChunks = chunks.filter(c => c.headingPath === 'Section B');
+    expect(sectionBChunks.length).toBeGreaterThan(0);
+    // No Section B chunk should contain Section A content lines
+    const leakedLines = sectionBChunks
+      .flatMap(c => c.text.split('\n'))
+      .filter(l => l.includes('Section A content line'));
+    // RED today: overlap from Section A bleeds into first Section B chunk
+    expect(leakedLines).toHaveLength(0);
+  });
 });
