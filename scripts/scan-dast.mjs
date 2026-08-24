@@ -67,9 +67,32 @@ function pass(note) {
   console.log(`  [PASS] ${note}`);
 }
 
+/**
+ * Returns true when body is a valid JSON-RPC 2.0 envelope.
+ * A transport-layer rejection (e.g. 406 for a missing Accept header) never
+ * produces an envelope — so any probe whose response fails this check never
+ * reached a tool handler and cannot be recorded as a security PASS.
+ */
+function isJsonRpcEnvelope(body) {
+  try {
+    const j = JSON.parse(body);
+    return typeof j === 'object' && j !== null &&
+           j.jsonrpc === '2.0' && ('result' in j || 'error' in j);
+  } catch {
+    return false;
+  }
+}
+
 async function probe(method, path, opts = {}) {
   const url = `${BASE}${path}`;
-  const headers = { 'Content-Type': 'application/json', ...(opts.headers ?? {}) };
+  // Accept is required by the MCP Streamable HTTP transport — the SDK rejects
+  // requests without it with 406 (webStandardStreamableHttp.js:380). It must
+  // be in the default headers so every probe reaches the application layer.
+  const headers = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json, text/event-stream',
+    ...(opts.headers ?? {}),
+  };
   try {
     const res = await fetch(url, {
       method,
@@ -97,6 +120,32 @@ if (health.status !== 200) {
   process.exit(2);
 }
 console.log('[DAST] Server is up.\n');
+
+// ── Positive control: MCP transport reachability ──────────────────────────────
+// Issue a well-formed tools/list call and require a valid JSON-RPC envelope
+// back. If this fails, every subsequent "PASS" would be meaningless — exit 2
+// rather than write a report full of phantom security assurances.
+// (This guard would have caught the original bug: missing Accept → every probe
+//  returned 406, which our code silently recorded as "SSRF blocked".)
+console.log('[DAST] Positive control: confirming MCP transport...');
+const positiveControlRes = await probe('POST', '/mcp', {
+  headers: { ...authHeaders },
+  body: { jsonrpc: '2.0', method: 'tools/list', id: 'pc-1' },
+});
+if (!isJsonRpcEnvelope(positiveControlRes.body)) {
+  console.error('[DAST] PROBE HARNESS FAILURE: tools/list did not return a JSON-RPC envelope.');
+  console.error(`       Status: ${positiveControlRes.status}  Body: ${positiveControlRes.body.slice(0, 300)}`);
+  if (positiveControlRes.status === 406) {
+    console.error('       Cause: server rejected the Accept header — probe transport is broken.');
+  } else if (positiveControlRes.status === 401 || positiveControlRes.status === 403) {
+    console.error('       Cause: authentication required. Provide --token $MCP_AUTH_TOKEN.');
+  }
+  console.error('       Aborting — cannot verify security properties without a working probe transport.');
+  process.exit(2);
+}
+const positiveControlBody = JSON.parse(positiveControlRes.body);
+const availableTools = positiveControlBody.result?.tools ?? [];
+console.log(`[DAST] Positive control passed — ${availableTools.length} tools available.\n`);
 
 // ── Layer 1: OWASP ZAP ────────────────────────────────────────────────────────
 
@@ -177,6 +226,10 @@ if (!args['skip-zap']) {
 
 console.log('[DAST] Layer 2: MCP application probes\n');
 
+// HTTP statuses of every tool-call probe. After all probes complete, if every
+// status is identical and non-200, the payloads never reached tool handlers.
+const toolCallProbeStatuses = [];
+
 const mcpPost = (body) => probe('POST', '/mcp', {
   headers: { ...authHeaders, 'Content-Type': 'application/json' },
   body,
@@ -225,13 +278,20 @@ for (const { label, url } of ssrfTargets) {
     jsonrpc: '2.0', method: 'tools/call', id: 1,
     params: { name: 'fetch_url', arguments: { url } },
   });
+  toolCallProbeStatuses.push(r.status);
+  if (!isJsonRpcEnvelope(r.body)) {
+    finding(probeFindings, 'CRITICAL', `PROBE_NO_ENVELOPE_SSRF_${label}`,
+      `SSRF probe (${label}) got no JSON-RPC envelope — probe did not reach the tool handler`,
+      `Status: ${r.status}  Body: ${r.body.slice(0, 200)}`);
+    continue;
+  }
   const hit = r.body.includes('ami-id') || r.body.includes('instance-type') ||
               r.body.includes('project-id') || r.body.includes('computeMetadata');
   if (hit) {
     finding(probeFindings, 'CRITICAL', `SSRF_${label}`,
       `SSRF succeeded — internal metadata retrieved via ${url}`, r.body.slice(0, 300));
   } else {
-    pass(`SSRF blocked: ${label} → ${r.status}`);
+    pass(`SSRF blocked: ${label}`);
   }
 }
 
@@ -250,6 +310,13 @@ for (const { label, payload } of injections) {
     jsonrpc: '2.0', method: 'tools/call', id: 1,
     params: { name: 'web_search', arguments: { query: payload } },
   });
+  toolCallProbeStatuses.push(r.status);
+  if (!isJsonRpcEnvelope(r.body)) {
+    finding(probeFindings, 'CRITICAL', `PROBE_NO_ENVELOPE_INJ_${label}`,
+      `Injection probe (${label}) got no JSON-RPC envelope — probe did not reach the tool handler`,
+      `Status: ${r.status}  Body: ${r.body.slice(0, 200)}`);
+    continue;
+  }
   const reflected = r.body.includes('<script>') && r.body.includes('alert(');
   const lfi       = r.body.includes('root:x:0:0') || r.body.includes('/bin/bash');
   const ssti      = payload.includes('7*7') && r.body.includes('49') && !r.body.includes('7*7');
@@ -257,6 +324,29 @@ for (const { label, payload } of injections) {
   else if (lfi)  finding(probeFindings, 'CRITICAL', `LFI_${label}`,              'Local file inclusion succeeded',   r.body.slice(0, 300));
   else if (ssti) finding(probeFindings, 'HIGH',     `SSTI_${label}`,             'Server-side template injection',   r.body.slice(0, 300));
   else           pass(`Injection safe: ${label}`);
+}
+
+// Uniform-rejection guard: if every tool-call probe returned the same non-200
+// status, the positive control failed to catch a harness problem (e.g. auth
+// token was accepted for tools/list but rejected for tools/call). Fail loudly
+// rather than produce a report whose PASSes are all false negatives.
+if (toolCallProbeStatuses.length > 0) {
+  const uniqueStatuses = new Set(toolCallProbeStatuses);
+  if (uniqueStatuses.size === 1) {
+    const onlyStatus = [...uniqueStatuses][0];
+    if (onlyStatus !== 200) {
+      finding(probeFindings, 'CRITICAL', 'PROBE_HARNESS_FAILURE',
+        `All ${toolCallProbeStatuses.length} tool-call probes returned identical status ${onlyStatus} — probes are not reaching tool handlers`,
+        'All SSRF and injection results are unreliable. Fix the probe transport before interpreting any PASSes.');
+      writeFileSync(`${OUT}/dast-probes.json`, JSON.stringify({
+        target: BASE, zapSkipped: args['skip-zap'], probeFindings, probesPassed,
+        harnessFailure: true,
+      }, null, 2));
+      console.error(`[DAST] PROBE HARNESS FAILURE: all ${toolCallProbeStatuses.length} tool-call probes returned ${onlyStatus}.`);
+      console.error('       Cannot verify security properties — aborting.');
+      process.exit(2);
+    }
+  }
 }
 
 // 2.4 Error disclosure
@@ -275,15 +365,23 @@ if (/\/home\/|\/app\/|\/Users\//.test(malformed.body)) {
 
 // 2.5 HTTP method enforcement
 console.log('[DAST] 2.5 HTTP method enforcement');
-for (const method of ['GET', 'PUT', 'PATCH', 'DELETE']) {
+for (const method of ['GET', 'PUT', 'PATCH']) {
   const r = await probe(method, '/mcp', { headers: authHeaders });
   [405, 404, 400].includes(r.status)
     ? pass(`${method} /mcp rejected → ${r.status}`)
-    : r.status === 200 && method !== 'POST'
+    : r.status === 200
       ? finding(probeFindings, 'MODERATE', `METHOD_${method}_ACCEPTED`,
           `${method} /mcp returned 200 — only POST should be accepted`)
       : pass(`${method} /mcp → ${r.status}`);
 }
+// DELETE /mcp → 200 is correct per the MCP Streamable HTTP spec: DELETE is
+// the session teardown method and MUST return 200. Do not treat it as a
+// method-enforcement violation.
+const deleteRes = await probe('DELETE', '/mcp', { headers: authHeaders });
+deleteRes.status === 200
+  ? pass('DELETE /mcp → 200 (correct — MCP Streamable HTTP session teardown)')
+  : finding(probeFindings, 'LOW', 'MCP_DELETE_UNEXPECTED',
+      `DELETE /mcp returned ${deleteRes.status} — expected 200 per MCP session teardown spec`);
 
 // 2.6 CORS
 console.log('[DAST] 2.6 CORS misconfiguration');
