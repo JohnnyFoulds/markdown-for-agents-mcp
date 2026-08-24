@@ -77,6 +77,62 @@ Legend: ✅ implemented · 🔲 planned · ❌ not available · ⚠️ supersede
 
 ---
 
+## Search API Comparison
+
+The fetching-capability matrix above does not include paid search APIs because they are a different product category — they serve results from a pre-crawled index rather than fetching arbitrary URLs. This section covers the direct comparison for web search specifically.
+
+### Current state
+
+| Dimension | This project (`clean`) | This project (`full`) | Tavily | Exa | Brave Search API | Serper |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| `fast` p95 latency | < 1 s | < 1 s | ~0.5 s | ~0.5 s | ~0.3 s | ~0.3 s |
+| `advanced` p95 latency | 10–20 s ⚠️ | 10–20 s ⚠️ | ~2 s | ~2 s | N/A | N/A |
+| Index freshness | Live (no lag) | Live (no lag) | Hours–days | Hours–days | Hours–days | Hours–days |
+| Recall on ambiguous queries | Lower ⚠️ | Moderate | High | High | High | High |
+| Cost | Free | Free | ~$0.01/search | ~$0.01/search | ~$0.003/search | ~$0.001/search |
+| API key required | ❌ | ❌ | ✅ required | ✅ required | ✅ required | ✅ required |
+| Self-hosted | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| MCP native | ✅ | ✅ | Via wrapper | Via wrapper | Via wrapper | Via wrapper |
+| Data stays in cluster | ✅ | Partial ⚠️ | ❌ US SaaS | ❌ US SaaS | ❌ US SaaS | ❌ US SaaS |
+| ToS-compliant automation | ✅ | ❌ ⚠️ | ✅ | ✅ | ✅ | ✅ |
+| POPIA: no query retention | ✅ | ✅ | Contractual only | Contractual only | Contractual only | Contractual only |
+| Page content returned | ✅ full markdown | ✅ full markdown | Snippets / extract | Highlights | Snippets | Snippets |
+| Cross-encoder reranking | ✅ ONNX local | ✅ ONNX local | Proprietary (click data) | Proprietary | ❌ | ❌ |
+
+⚠️ **Honest gap disclosures:**
+
+- **`advanced` latency is structural.** Every `advanced` search renders live pages via Chromium and runs cross-encoder scoring. Tavily and Exa serve from a pre-crawled corpus — they are ~10× faster on this dimension. This gap is not closable without building an index, which is a different product. See `docs/enterprise/SLO.md` Ceiling #1.
+- **`clean` profile has lower recall.** Mojeek + Marginalia + Brave free have narrower coverage than Google/Bing. The cross-encoder recovers much of the ranking quality but cannot retrieve pages the engines never indexed. See `docs/enterprise/SLO.md` Ceiling #2.
+- **`full` profile breaches ToS.** Adding Google/Bing/DDG improves recall to match paid services for most queries, but automated access violates those engines' terms. Do not enable without legal sign-off. See `docs/enterprise/TERMS_OF_SERVICE.md`.
+- **Reranker relevance ceiling.** `bge-reranker-base` is trained on MS MARCO; Tavily's and Exa's scorers are trained on proprietary click data. Gap narrows on unambiguous queries, widens on domain-specific ones. Closing it requires fine-tuning on Vodacom's own query traffic. See `docs/enterprise/SLO.md` Ceiling #6.
+
+### When to use each
+
+| Use case | Recommendation |
+|---|---|
+| Agent pipeline with data-sovereignty requirement | This project (`clean`) |
+| Maximum recall, budget available | Add `BRAVE_API_KEY` (tier-1 preemption, no code change) |
+| Sub-second latency at any cost | Tavily or Exa via a thin MCP wrapper |
+| High volume, lowest cost per query | Serper (with `SERPER_API_KEY`) |
+| Regulatory: queries must not leave the cluster | This project (`clean`) only |
+| Most reliable free tier | This project + Brave API key as paid fallback |
+
+### After implementing all planned work
+
+Phases 0–6 (`TAVILY_PARITY_PLAN.md`) close most of the gaps above for the use cases this project targets:
+
+| Dimension | Gap now | After Phase 0–6 |
+|---|---|---|
+| `fast` recall | Lower than Tavily | Improved (paid tier preemption, SearXNG multi-engine) |
+| `advanced` latency | 10–20 s vs Tavily's ~2 s | Unchanged ⚠️ — structural, requires a warm index |
+| Reranker relevance | Generic MS MARCO baseline | Unchanged until fine-tuned on Vodacom traffic |
+| Data residency | ✅ already | ✅ maintained |
+| Cost at 1k–10k/day | Free | Free (paid tier optional) |
+
+The remaining gap that planning cannot close is the warm-index latency advantage. The correct framing is not "this tool vs Tavily" but "full-page markdown extraction with local execution and data sovereignty vs fast snippets from a US SaaS" — they serve different needs.
+
+---
+
 ## Gaps to Address
 
 ### 1. Content Pagination
