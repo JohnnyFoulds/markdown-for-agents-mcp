@@ -34,12 +34,12 @@ describe('TOOLS registry invariants', () => {
 
   it('contains all expected tools', () => {
     const names = new Set(TOOLS.map(d => d.name));
-    expect(names.has('fetch_url')).toBe(true);
-    expect(names.has('fetch_urls')).toBe(true);
-    expect(names.has('web_search')).toBe(true);
-    expect(names.has('health_check')).toBe(true);
-    expect(names.has('download_file')).toBe(true);
-    expect(names.has('extract_urls')).toBe(true);
-    expect(names.has('map_site')).toBe(true);
+    for (const expected of [
+      'fetch_url', 'fetch_urls', 'web_search', 'health_check', 'download_file',
+      'extract_urls', 'map_site',
+      'crawl_site', 'crawl_start', 'crawl_status', 'crawl_results', 'crawl_cancel', 'crawl_list',
+    ]) {
+      expect(names.has(expected), `tool ${expected} missing`).toBe(true);
+    }
   });
 });

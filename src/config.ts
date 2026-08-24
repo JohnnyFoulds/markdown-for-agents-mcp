@@ -77,6 +77,26 @@ const configSchema = z.object({
   RERANK_DTYPE: z.string().default('q8'),
   RERANK_DEVICE: z.string().default('cpu'),
   RERANK_TEI_URL: z.string().optional(),
+
+  // Stores (Phase 6)
+  // 'auto' = memory for stdio, sqlite for http
+  STORE_BACKEND: z.string().default('auto').refine(v => ['auto', 'memory', 'sqlite', 'redis'].includes(v), {
+    message: 'STORE_BACKEND must be auto, memory, sqlite, or redis',
+  }),
+  STORE_SQLITE_PATH: z.string().default('crawl.db'),
+  STORE_REDIS_URL: z.string().optional(),
+
+  // Crawl engine (Phase 6)
+  CRAWL_MAX_PAGES: z.string().default('1000').transform(Number),
+  CRAWL_MAX_DEPTH: z.string().default('10').transform(Number),
+  CRAWL_MAX_CONCURRENCY: z.string().default('5').transform(Number),
+  CRAWL_QUEUE_LEASE_MS: z.string().default('30000').transform(Number),
+  CRAWL_WORKER_POLL_MS: z.string().default('1000').transform(Number),
+
+  // Process role (Phase 6)
+  MCP_ROLE: z.string().default('server').refine(v => ['server', 'worker', 'both'].includes(v), {
+    message: 'MCP_ROLE must be server, worker, or both',
+  }),
 });
 
 export type Config = z.infer<typeof configSchema>;

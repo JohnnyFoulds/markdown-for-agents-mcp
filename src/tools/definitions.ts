@@ -5,6 +5,7 @@ import { webSearch } from "./webSearch.js";
 import { downloadFile } from "../services/downloadFile.js";
 import { extractUrls } from "../services/extractUrls.js";
 import { mapSite } from "../services/mapSite.js";
+import { crawlSync, startAsyncCrawl } from "../crawl/engine.js";
 import { Logger } from "../utils/logger.js";
 import type { ToolDefinition } from "../server/registry.js";
 
@@ -101,6 +102,73 @@ const mapSiteOutputSchema = {
   total: z.number(),
   fromSitemap: z.boolean(),
   fromCrawl: z.boolean(),
+};
+
+const crawlPageSchema = z.object({
+  url: z.string(),
+  title: z.string(),
+  content: z.string(),
+  contentSize: z.number(),
+  depth: z.number(),
+  success: z.boolean(),
+  error: z.string().optional(),
+});
+
+const crawlSiteOutputSchema = {
+  rootUrl: z.string(),
+  pages: z.array(crawlPageSchema),
+  summary: z.object({ total: z.number(), succeeded: z.number(), failed: z.number() }),
+};
+
+const crawlStartOutputSchema = {
+  jobId: z.string(),
+  status: z.string(),
+  rootUrl: z.string(),
+};
+
+const crawlStatusOutputSchema = {
+  id: z.string(),
+  rootUrl: z.string(),
+  status: z.string(),
+  total: z.number(),
+  completed: z.number(),
+  failed: z.number(),
+  pending: z.number(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+};
+
+const crawlResultsOutputSchema = {
+  jobId: z.string(),
+  pages: z.array(z.object({
+    url: z.string(),
+    title: z.string().optional(),
+    content: z.string().optional(),
+    contentFormat: z.string().optional(),
+    contentSize: z.number().optional(),
+    depth: z.number(),
+    status: z.string(),
+    error: z.string().optional(),
+    crawledAt: z.number().optional(),
+  })),
+  total: z.number(),
+  offset: z.number(),
+};
+
+const crawlCancelOutputSchema = { jobId: z.string(), cancelled: z.boolean() };
+
+const crawlListOutputSchema = {
+  jobs: z.array(z.object({
+    id: z.string(),
+    rootUrl: z.string(),
+    status: z.string(),
+    total: z.number(),
+    completed: z.number(),
+    failed: z.number(),
+    pending: z.number(),
+    createdAt: z.number(),
+    updatedAt: z.number(),
+  })),
 };
 
 // ── Text formatters ───────────────────────────────────────────────────────────
@@ -285,5 +353,171 @@ export const TOOLS: ToolDefinition[] = [
       return downloadFile(String(a.url), path) as unknown as Promise<Record<string, unknown>>;
     },
     toText: (r: any) => JSON.stringify(r, null, 2),
+  },
+
+  // ── Crawl tools (Phase 6) ────────────────────────────────────────────────────
+
+  {
+    name: 'crawl_site',
+    description:
+      "Crawl a website synchronously using BFS link traversal and return all discovered pages. " +
+      "Respects maxPages/maxDepth limits. For large sites, use crawl_start instead. " +
+      "Strips navigation and boilerplate. Returns page content in the specified format.",
+    inputSchema: {
+      url: z.string().describe("Root URL to start crawling from"),
+      maxPages: z.number().optional().describe("Maximum pages to crawl (default: 50)"),
+      maxDepth: z.number().optional().describe("Maximum link depth from root (default: 3)"),
+      allowedDomains: z.array(z.string()).optional().describe("Only crawl these domains (default: same origin as root)"),
+      blockedDomains: z.array(z.string()).optional().describe("Domains to exclude"),
+      includeSelector: z.string().optional().describe("CSS selector to extract from each page"),
+      excludeSelectors: z.array(z.string()).optional().describe("CSS selectors to strip from each page"),
+      outputFormat: z.enum(['markdown', 'html', 'text']).optional().describe("Output format (default: markdown)"),
+      timeout: z.number().optional().describe("Per-page timeout ms (default: 30000)"),
+    },
+    outputSchema: crawlSiteOutputSchema,
+    annotations: { readOnlyHint: true, idempotentHint: false },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    handler: async (a: any) => crawlSync({
+      rootUrl: String(a.url),
+      maxPages: (a.maxPages as number | undefined) ?? 50,
+      maxDepth: (a.maxDepth as number | undefined) ?? 3,
+      allowedDomains: a.allowedDomains as string[] | undefined,
+      blockedDomains: a.blockedDomains as string[] | undefined,
+      includeSelector: a.includeSelector as string | undefined,
+      excludeSelectors: a.excludeSelectors as string[] | undefined,
+      outputFormat: a.outputFormat as 'markdown' | 'html' | 'text' | undefined,
+      timeout: a.timeout as number | undefined,
+    }) as unknown as Promise<Record<string, unknown>>,
+    toText: (r: any) => {
+      const pages = r.pages as any[];
+      const lines: string[] = [`# Crawl: ${r.rootUrl}`, `**${r.summary.succeeded}/${r.summary.total} pages**\n`];
+      for (const p of pages) {
+        if (p.success) lines.push(`## ${p.url}\n${p.content}\n\n---`);
+        else lines.push(`## ${p.url}\n**Error:** ${p.error}\n\n---`);
+      }
+      return lines.join('\n');
+    },
+  },
+
+  {
+    name: 'crawl_start',
+    description:
+      "Start an asynchronous crawl job for a website. Returns a jobId immediately. " +
+      "Use crawl_status to monitor progress and crawl_results to retrieve pages when done.",
+    inputSchema: {
+      url: z.string().describe("Root URL to crawl"),
+      maxPages: z.number().optional().describe("Maximum pages (default: 1000)"),
+      maxDepth: z.number().optional().describe("Maximum link depth (default: 10)"),
+      allowedDomains: z.array(z.string()).optional(),
+      blockedDomains: z.array(z.string()).optional(),
+      includeSelector: z.string().optional(),
+      excludeSelectors: z.array(z.string()).optional(),
+      outputFormat: z.enum(['markdown', 'html', 'text']).optional(),
+      query: z.string().optional().describe("Relevance query — pages scored below relevanceThreshold are skipped"),
+      relevanceThreshold: z.number().optional().describe("Minimum relevance score 0–1 (requires query)"),
+      timeout: z.number().optional(),
+    },
+    outputSchema: crawlStartOutputSchema,
+    annotations: { readOnlyHint: false, idempotentHint: false },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    handler: async (a: any) => {
+      const { getStores } = await import('../store/factory.js');
+      getStores(); // ensure initialized
+      const jobId = await startAsyncCrawl({
+        rootUrl: String(a.url),
+        maxPages: (a.maxPages as number | undefined) ?? 1000,
+        maxDepth: (a.maxDepth as number | undefined) ?? 10,
+        allowedDomains: a.allowedDomains as string[] | undefined,
+        blockedDomains: a.blockedDomains as string[] | undefined,
+        includeSelector: a.includeSelector as string | undefined,
+        excludeSelectors: a.excludeSelectors as string[] | undefined,
+        outputFormat: a.outputFormat as 'markdown' | 'html' | 'text' | undefined,
+        query: a.query as string | undefined,
+        relevanceThreshold: a.relevanceThreshold as number | undefined,
+        timeout: a.timeout as number | undefined,
+      });
+      return { jobId, status: 'running', rootUrl: String(a.url) };
+    },
+    toText: (r: any) => `Crawl started. Job ID: ${r.jobId}\nStatus: ${r.status}`,
+  },
+
+  {
+    name: 'crawl_status',
+    description: "Get the status and progress of an async crawl job.",
+    inputSchema: { jobId: z.string().describe("Job ID returned by crawl_start") },
+    outputSchema: crawlStatusOutputSchema,
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    handler: async (a: any) => {
+      const { getStores } = await import('../store/factory.js');
+      const status = await getStores().queue.status(String(a.jobId));
+      if (!status) throw new Error(`Job not found: ${a.jobId}`);
+      return status as unknown as Record<string, unknown>;
+    },
+    toText: (r: any) => `Job ${r.id}: ${r.status} — ${r.completed}/${r.total} pages (${r.failed} failed)`,
+  },
+
+  {
+    name: 'crawl_results',
+    description: "Retrieve page results from an async crawl job with pagination.",
+    inputSchema: {
+      jobId: z.string().describe("Job ID"),
+      offset: z.number().optional().describe("Pagination offset (default: 0)"),
+      limit: z.number().optional().describe("Max pages to return (default: 50)"),
+      filter: z.enum(['all', 'completed', 'failed']).optional().describe("Filter by page status (default: all)"),
+    },
+    outputSchema: crawlResultsOutputSchema,
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    handler: async (a: any) => {
+      const { getStores } = await import('../store/factory.js');
+      const offset = (a.offset as number | undefined) ?? 0;
+      const limit = (a.limit as number | undefined) ?? 50;
+      const filter = (a.filter as 'all' | 'completed' | 'failed' | undefined) ?? 'all';
+      const pages = await getStores().queue.results(String(a.jobId), offset, limit, filter);
+      return { jobId: String(a.jobId), pages, total: pages.length, offset };
+    },
+    toText: (r: any) => {
+      const pages = r.pages as any[];
+      const lines: string[] = [`# Results for job ${r.jobId} (offset ${r.offset})`];
+      for (const p of pages) {
+        if (p.status === 'completed' && p.content) lines.push(`## ${p.url}\n${p.content}\n\n---`);
+        else lines.push(`## ${p.url}\n**Status:** ${p.status}${p.error ? ` — ${p.error}` : ''}\n\n---`);
+      }
+      return lines.join('\n');
+    },
+  },
+
+  {
+    name: 'crawl_cancel',
+    description: "Cancel a running async crawl job.",
+    inputSchema: { jobId: z.string() },
+    outputSchema: crawlCancelOutputSchema,
+    annotations: { readOnlyHint: false, idempotentHint: true },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    handler: async (a: any) => {
+      const { getStores } = await import('../store/factory.js');
+      await getStores().queue.cancel(String(a.jobId));
+      return { jobId: String(a.jobId), cancelled: true };
+    },
+    toText: (r: any) => `Job ${r.jobId} cancelled.`,
+  },
+
+  {
+    name: 'crawl_list',
+    description: "List all crawl jobs with their current status.",
+    inputSchema: {},
+    outputSchema: crawlListOutputSchema,
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    handler: async () => {
+      const { getStores } = await import('../store/factory.js');
+      const jobs = await getStores().queue.list();
+      return { jobs } as unknown as Record<string, unknown>;
+    },
+    toText: (r: any) => {
+      const jobs = r.jobs as any[];
+      if (jobs.length === 0) return 'No crawl jobs.';
+      return jobs.map((j: any) => `- ${j.id} [${j.status}] ${j.rootUrl} — ${j.completed}/${j.total} pages`).join('\n');
+    },
   },
 ];
