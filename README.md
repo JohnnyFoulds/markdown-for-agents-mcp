@@ -29,6 +29,7 @@ Powered by [Playwright](https://playwright.dev) and the [`markdown-for-agents`](
 - [Architecture](#architecture)
 - [Development](#development)
 - [Troubleshooting](#troubleshooting)
+- [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [Changelog](#changelog)
 - [License](#license)
@@ -557,6 +558,14 @@ rm -rf node_modules dist
 npm install
 npm run build
 ```
+
+---
+
+## Roadmap
+
+See [TAVILY_PARITY_PLAN.md](TAVILY_PARITY_PLAN.md) for the full implementation roadmap toward Tavily parity and enterprise scale — covering the 10-phase plan, 3-tier render ladder, reranking pipeline, pluggable-store scale design, ECS Fargate deployment, and SOCKS5 gateway.
+
+See [FUTURE_WORK.md](FUTURE_WORK.md) for the gap catalogue and competitive analysis against Tavily and Firecrawl.
 
 ---
 
