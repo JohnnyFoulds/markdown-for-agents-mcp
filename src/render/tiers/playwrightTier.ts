@@ -1,6 +1,5 @@
 import { getConfig } from '../../config.js';
-import { browserPool } from '../browserPool.js';
-import type { BrowserPool } from '../browserPool.js';
+import { poolRegistry, type PoolRegistry } from '../poolRegistry.js';
 import type { RenderTierImpl, RenderRequest, RenderResult } from '../types.js';
 
 function cfg() {
@@ -14,28 +13,28 @@ function cfg() {
 export class PlaywrightTier implements RenderTierImpl {
   readonly tier = 'playwright' as const;
 
-  constructor(private readonly pool: BrowserPool = browserPool) {}
+  constructor(private readonly registry: PoolRegistry = poolRegistry) {}
 
   async isAvailable(): Promise<boolean> { return true; }
 
-  async warmup(): Promise<void> { await this.pool.warmup(); }
-  async drain(): Promise<void> { await this.pool.drain(); }
+  async warmup(): Promise<void> { await this.registry.warmupAll(); }
+  async drain(): Promise<void> { await this.registry.drain(); }
 
   async render(req: RenderRequest): Promise<RenderResult> {
     const config = cfg();
     const start = Date.now();
-    const lease = await this.pool.acquire();
+    const pool = this.registry.nextPool();
+    const lease = await pool.acquire();
 
     try {
       const { page } = lease;
 
-      // domcontentloaded + bounded settle — avoids networkidle hanging on long-poll/analytics
       const response = await page.goto(req.url, {
         waitUntil: 'domcontentloaded',
         timeout: req.timeoutMs,
       });
 
-      // Bounded settle: wait for networkidle but don't block longer than RENDER_SETTLE_MS
+      // Bounded settle: wait for networkidle but cap at RENDER_SETTLE_MS
       await Promise.race([
         page.waitForLoadState('networkidle').catch(() => {}),
         new Promise(r => setTimeout(r, config.RENDER_SETTLE_MS)),

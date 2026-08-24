@@ -73,6 +73,8 @@
     "node": ">=22.0.0"
   },
   "optionalDependencies": {
-    "ioredis": "^5.0.0"
+    "ioredis": "^5.0.0",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }

@@ -98,6 +98,12 @@ const configSchema = z.object({
     message: 'MCP_ROLE must be server, worker, or both',
   }),
 
+  // Stealth + proxy rotation (Phase 8)
+  // STEALTH_ENABLED: use playwright-extra + puppeteer-extra-plugin-stealth for Tier 3
+  STEALTH_ENABLED: z.string().default('false').transform(val => val === 'true'),
+  // PROXY_PINS: JSON array of proxy URLs for round-robin rotation, e.g. '["http://p1:3128","http://p2:3128"]'
+  PROXY_PINS: z.string().optional(),
+
   // HTTP transport mode (Phase 7)
   // 'stateless' = no session affinity, any replica serves any request (default for N-replica)
   // 'session'   = stateful sessions, requires Ingress affinity on Mcp-Session-Id
