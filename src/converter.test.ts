@@ -67,11 +67,34 @@ describe('Converter', () => {
   });
 
   describe('convertWithMetadata', () => {
-    test('includes URL as title', () => {
+    test('uses URL as heading when no title is provided', () => {
       const html = '<h1>Article</h1>';
       const url = 'https://example.com/article';
       const result = converter.convertWithMetadata(html, url);
       expect(result).toContain(`# ${url}`);
+    });
+
+    test('uses page title as heading when title is provided', () => {
+      const html = '<h1>Article</h1>';
+      const url = 'https://example.com/article';
+      const title = 'My Awesome Article';
+      const result = converter.convertWithMetadata(html, url, title);
+      expect(result).toContain(`# ${title}`);
+      expect(result).not.toContain(`# ${url}`);
+    });
+
+    test('includes Source: url line when title is provided', () => {
+      const html = '<p>Content</p>';
+      const url = 'https://example.com';
+      const result = converter.convertWithMetadata(html, url, 'Page Title');
+      expect(result).toContain(`Source: ${url}`);
+    });
+
+    test('does not include Source: line when no title is provided', () => {
+      const html = '<p>Content</p>';
+      const url = 'https://example.com';
+      const result = converter.convertWithMetadata(html, url);
+      expect(result).not.toContain('Source:');
     });
 
     test('includes converted markdown content', () => {

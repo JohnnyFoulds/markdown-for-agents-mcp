@@ -11,7 +11,7 @@ describe('webSearch', () => {
     vi.clearAllMocks();
   });
 
-  test('performs search and returns formatted results', async () => {
+  test('performs search and returns WebSearchResult', async () => {
     vi.mocked(duckDuckGoSearch).mockResolvedValue({
       query: 'test query',
       results: [
@@ -28,15 +28,14 @@ describe('webSearch', () => {
       maxResults: 10,
       fetchResults: false,
     });
-    expect(result).toContain('# Web Search Results');
-    expect(result).toContain('test query');
-    expect(result).toContain('Result 1');
-    expect(result).toContain('Result 2');
-    expect(result).toContain('https://example.com/1');
-    expect(result).toContain('https://example.com/2');
+    expect(result.query).toBe('test query');
+    expect(result.results).toHaveLength(2);
+    expect(result.results[0].title).toBe('Result 1');
+    expect(result.results[0].url).toBe('https://example.com/1');
+    expect(result.durationMs).toBe(500);
   });
 
-  test('includes snippet in output', async () => {
+  test('includes snippet in results', async () => {
     vi.mocked(duckDuckGoSearch).mockResolvedValue({
       query: 'test',
       results: [{ title: 'Title', url: 'https://example.com', snippet: 'Snippet text', domain: 'example.com' }],
@@ -45,10 +44,10 @@ describe('webSearch', () => {
 
     const result = await webSearch({ query: 'test' });
 
-    expect(result).toContain('Snippet text');
+    expect(result.results[0].snippet).toBe('Snippet text');
   });
 
-  test('includes duration in output', async () => {
+  test('includes durationMs in result', async () => {
     vi.mocked(duckDuckGoSearch).mockResolvedValue({
       query: 'test',
       results: [],
@@ -57,7 +56,7 @@ describe('webSearch', () => {
 
     const result = await webSearch({ query: 'test' });
 
-    expect(result).toContain('123ms');
+    expect(result.durationMs).toBe(123);
   });
 
   test('throws when search fails', async () => {
@@ -128,7 +127,7 @@ describe('webSearch', () => {
     });
   });
 
-  test('includes fetched content when fetchResults is true', async () => {
+  test('includes fetchedContent when markdownResults returned', async () => {
     vi.mocked(duckDuckGoSearch).mockResolvedValue({
       query: 'test',
       results: [{ title: 'A', url: 'https://example.com', snippet: '', domain: 'example.com' }],
@@ -141,9 +140,9 @@ describe('webSearch', () => {
       fetchResults: true,
     });
 
-    expect(result).toContain('## Fetched Content:');
-    expect(result).toContain('# Title');
-    expect(result).toContain('Content');
+    expect(result.fetchedContent).toHaveLength(1);
+    expect(result.fetchedContent![0].url).toBe('https://example.com');
+    expect(result.fetchedContent![0].markdown).toContain('# Title');
   });
 
   test('handles empty results', async () => {
@@ -155,7 +154,7 @@ describe('webSearch', () => {
 
     const result = await webSearch({ query: 'test' });
 
-    expect(result).toContain('Found 0 results');
+    expect(result.results).toHaveLength(0);
   });
 
   test('handles timeout parameter', async () => {

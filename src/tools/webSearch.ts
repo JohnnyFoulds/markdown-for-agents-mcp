@@ -1,48 +1,7 @@
-import { duckDuckGoSearch, SearchResponse, SearchOptions } from "../services/webSearch.js";
+import { duckDuckGoSearch, SearchOptions } from "../services/webSearch.js";
+import { WebSearchResult } from "./types.js";
 
-function formatSearchResults(
-  response: SearchResponse
-): string {
-  const { query, results, markdownResults, durationMs } = response;
-
-  let output = `# Web Search Results
-
-## Query: ${query}
-**Found ${results.length} results in ${durationMs}ms**
-
-### Results:
-
-`;
-
-  results.forEach((result, index) => {
-    output += `${index + 1}. [${result.title}](${result.url})\n`;
-    if (result.snippet) {
-      output += `   ${result.snippet}\n`;
-    }
-    output += `\n`;
-  });
-
-  if (markdownResults && markdownResults.length > 0) {
-    output += `---
-
-## Fetched Content:
-
-`;
-
-    markdownResults.forEach((item) => {
-      output += `### ${item.url}
-${item.markdown}
-
----
-
-`;
-    });
-  }
-
-  return output.trim();
-}
-
-export async function webSearch(options: SearchOptions): Promise<string> {
+export async function webSearch(options: SearchOptions): Promise<WebSearchResult> {
   const { query, maxResults, allowedDomains, blockedDomains, fetchResults, timeout } = options;
 
   const response = await duckDuckGoSearch({
@@ -54,5 +13,10 @@ export async function webSearch(options: SearchOptions): Promise<string> {
     timeout,
   });
 
-  return formatSearchResults(response);
+  return {
+    query: response.query,
+    results: response.results as WebSearchResult['results'],
+    fetchedContent: response.markdownResults,
+    durationMs: response.durationMs,
+  };
 }

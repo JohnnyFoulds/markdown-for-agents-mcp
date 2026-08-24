@@ -1,0 +1,77 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.JohnnyFoulds/markdown-for-agents-mcp",
+  "description": "MCP server for AI agents — fetch any URL with full JavaScript rendering (Playwright/Chromium) and convert to clean, token-efficient markdown. Works on React, Vue, Angular, and any JS-heavy page. Includes web search, batch fetching, binary file download, LRU cache, SSRF protection, and structured output.",
+  "repository": {
+    "url": "https://github.com/JohnnyFoulds/markdown-for-agents-mcp",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "markdown-for-agents-mcp",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "FETCH_TIMEOUT_MS",
+          "description": "Timeout per fetch request in milliseconds",
+          "isRequired": false,
+          "format": "number"
+        },
+        {
+          "name": "MAX_CONCURRENT_FETCHES",
+          "description": "Max parallel fetches in batch operations",
+          "isRequired": false,
+          "format": "number"
+        },
+        {
+          "name": "MAX_CONTENT_LENGTH",
+          "description": "Max content size in characters before truncation",
+          "isRequired": false,
+          "format": "number"
+        },
+        {
+          "name": "LOG_LEVEL",
+          "description": "Log level: DEBUG, INFO, WARN, or ERROR",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "USE_ALLOWLIST_MODE",
+          "description": "When true, only domains listed in BLOCKLIST_DOMAINS are allowed",
+          "isRequired": false,
+          "format": "boolean"
+        },
+        {
+          "name": "BLOCKLIST_DOMAINS",
+          "description": "Comma-separated domains to block (or allow in allowlist mode)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "HTTP_PORT",
+          "description": "When set, starts an HTTP server on this port instead of stdio",
+          "isRequired": false,
+          "format": "number"
+        },
+        {
+          "name": "MCP_AUTH_TOKEN",
+          "description": "Bearer token required on all HTTP requests (HTTP mode only)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "PLAYWRIGHT_PROXY",
+          "description": "Proxy server URL for Playwright (e.g. http://proxy.example.com:8080)",
+          "isRequired": false,
+          "format": "string"
+        }
+      ]
+    }
+  ]
+}
