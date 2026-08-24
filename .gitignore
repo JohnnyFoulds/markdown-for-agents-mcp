@@ -24,3 +24,6 @@ npm-debug.log*
 # Environment
 .env
 .env.local
+
+# Security scan reports (generated artifacts — contain raw CVE and secret data)
+security-reports/

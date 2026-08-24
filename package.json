@@ -24,7 +24,12 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "test:smoke": "node scripts/smoke-tests.mjs",
-    "test:k8s": "node scripts/k8s-smoke-tests.mjs"
+    "test:k8s": "node scripts/k8s-smoke-tests.mjs",
+    "scan": "node scripts/security-scan.mjs",
+    "scan:sca": "node scripts/scan-sca.mjs",
+    "scan:sast": "node scripts/scan-sast.mjs",
+    "scan:secrets": "node scripts/scan-secrets.mjs",
+    "scan:dast": "node scripts/scan-dast.mjs"
   },
   "keywords": [
     "mcp",
