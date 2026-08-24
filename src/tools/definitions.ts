@@ -3,6 +3,8 @@ import { fetchUrl } from "./fetchUrl.js";
 import { fetchUrls } from "./fetchUrls.js";
 import { webSearch } from "./webSearch.js";
 import { downloadFile } from "../services/downloadFile.js";
+import { extractUrls } from "../services/extractUrls.js";
+import { mapSite } from "../services/mapSite.js";
 import { Logger } from "../utils/logger.js";
 import type { ToolDefinition } from "../server/registry.js";
 
@@ -71,6 +73,34 @@ const downloadFileOutputSchema = {
   sizeBytes: z.number(),
   mimeType: z.string(),
   filename: z.string(),
+};
+
+const extractUrlsOutputSchema = {
+  results: z.array(z.object({
+    url: z.string(),
+    title: z.string(),
+    content: z.string(),
+    format: z.enum(['markdown', 'html', 'text']),
+    totalLength: z.number(),
+    truncated: z.boolean(),
+    contentSize: z.number(),
+    success: z.boolean(),
+    error: z.string().optional(),
+    fetchedAt: z.string(),
+  })),
+  summary: z.object({
+    total: z.number(),
+    succeeded: z.number(),
+    failed: z.number(),
+  }),
+};
+
+const mapSiteOutputSchema = {
+  rootUrl: z.string(),
+  urls: z.array(z.string()),
+  total: z.number(),
+  fromSitemap: z.boolean(),
+  fromCrawl: z.boolean(),
 };
 
 // ── Text formatters ───────────────────────────────────────────────────────────
@@ -172,6 +202,66 @@ export const TOOLS: ToolDefinition[] = [
     annotations: { readOnlyHint: true, idempotentHint: true },
     handler: async () => Logger.getHealth(),
     toText: (r: any) => JSON.stringify(r, null, 2),
+  },
+
+  {
+    name: 'extract_urls',
+    description:
+      "Fetch one or more URLs and extract their content in a specified format. " +
+      "Supports markdown (default), HTML, and plain text output. " +
+      "Supports CSS selector targeting to extract specific page sections, " +
+      "and pagination via maxChars/offset to handle large pages. " +
+      "Returns per-URL results with title, content, and truncation metadata.",
+    inputSchema: {
+      urls: z.array(z.string()).describe("URLs to fetch and extract content from"),
+      timeout: z.number().optional().describe("Request timeout in milliseconds (default: 30000)"),
+      outputFormat: z.enum(['markdown', 'html', 'text']).optional().describe("Output format (default: markdown)"),
+      includeSelector: z.string().optional().describe("CSS selector to extract a specific element (e.g. 'main', '#content', '.article')"),
+      excludeSelectors: z.array(z.string()).optional().describe("CSS selectors of elements to remove before extraction"),
+      maxChars: z.number().optional().describe("Maximum characters to return per URL (enables pagination)"),
+      offset: z.number().optional().describe("Character offset to start from (for pagination)"),
+    },
+    outputSchema: extractUrlsOutputSchema,
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    handler: async (a: any) => extractUrls({
+      urls: (a.urls as string[]).map(String),
+      timeout: a.timeout as number | undefined,
+      outputFormat: a.outputFormat as 'markdown' | 'html' | 'text' | undefined,
+      includeSelector: a.includeSelector as string | undefined,
+      excludeSelectors: a.excludeSelectors as string[] | undefined,
+      maxChars: a.maxChars as number | undefined,
+      offset: a.offset as number | undefined,
+    }) as unknown as Promise<Record<string, unknown>>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    toText: (r: any) => (r.results as any[]).map((item: any) =>
+      item.success
+        ? `${item.content}\n\n---`
+        : `## URL: ${item.url}\n\n**Error:** ${item.error ?? 'Unknown error'}\n\n---`
+    ).join('\n\n'),
+  },
+
+  {
+    name: 'map_site',
+    description:
+      "Discover all URLs on a website by checking sitemap.xml and optionally crawling HTML links. " +
+      "Returns a deduplicated list of same-origin URLs. Useful before crawling a site to understand its structure.",
+    inputSchema: {
+      url: z.string().describe("URL of the website to map (any page on the site; the root origin is used for sitemap discovery)"),
+      maxUrls: z.number().optional().describe("Maximum number of URLs to return (default: 100)"),
+      followLinks: z.boolean().optional().describe("Crawl HTML links in addition to sitemap.xml (default: true)"),
+      timeout: z.number().optional().describe("Request timeout in milliseconds per page (default: 30000)"),
+    },
+    outputSchema: mapSiteOutputSchema,
+    annotations: { readOnlyHint: true, idempotentHint: true },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    handler: async (a: any) => mapSite({
+      url: String(a.url),
+      maxUrls: a.maxUrls as number | undefined,
+      followLinks: a.followLinks as boolean | undefined,
+      timeout: a.timeout as number | undefined,
+    }) as unknown as Promise<Record<string, unknown>>,
+    toText: (r: any) => `# Site Map: ${r.rootUrl}\n\n**${r.total} URLs found** (sitemap: ${r.fromSitemap}, crawl: ${r.fromCrawl})\n\n${(r.urls as string[]).map((u: string) => `- ${u}`).join('\n')}`,
   },
 
   {
