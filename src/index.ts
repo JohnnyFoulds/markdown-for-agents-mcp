@@ -12,6 +12,7 @@ import { registerAll } from "./server/registry.js";
 import { TOOLS } from "./tools/definitions.js";
 import { initStores, closeStores, getStores } from "./store/factory.js";
 import { gracefulDrain, setReady, isReady } from "./server/lifecycle.js";
+import { Socks5Server } from "./proxy/socks5Server.js";
 import { registry as metricsRegistry } from "./obs/metrics.js";
 
 const require = createRequire(import.meta.url);
@@ -221,6 +222,29 @@ async function main() {
     );
   }
 
+  // Start SOCKS5 listener if configured
+  let socks5Server: Socks5Server | undefined;
+  if (config.SOCKS5_LISTEN_ENABLED) {
+    if (config.SOCKS5_LISTEN_MODE === 'intercept') {
+      Logger.error(
+        '[socks5] SOCKS5_LISTEN_MODE=intercept is a TLS MITM appliance. ' +
+        'It is not implemented — use tunnel mode or call the MCP tools directly.'
+      );
+      process.exit(1);
+    }
+    socks5Server = new Socks5Server({
+      host: config.SOCKS5_LISTEN_HOST,
+      port: config.SOCKS5_LISTEN_PORT,
+      auth: config.SOCKS5_LISTEN_AUTH as 'none' | 'userpass',
+      user: config.SOCKS5_LISTEN_USER,
+      pass: config.SOCKS5_LISTEN_PASS,
+      upstreamUrl: config.SOCKS5_UPSTREAM_URL,
+      upstreamUser: config.SOCKS5_UPSTREAM_USER,
+      upstreamPass: config.SOCKS5_UPSTREAM_PASS,
+    });
+    await socks5Server.listen();
+  }
+
   let httpServer: ReturnType<typeof createServer> | undefined;
   let metricsServer: ReturnType<typeof createServer> | undefined;
 
@@ -255,7 +279,10 @@ async function main() {
     workerAbort,
     drainMs: config.SHUTDOWN_DRAIN_MS,
     timeoutMs: config.SHUTDOWN_TIMEOUT_MS,
-    closeStores,
+    closeStores: async () => {
+      if (socks5Server) await socks5Server.close();
+      await closeStores();
+    },
     closeBrowserPool: async () => {
       const { browserPool } = await import('./render/browserPool.js').catch(() => ({ browserPool: null }));
       if (browserPool) await browserPool.drain(5000);

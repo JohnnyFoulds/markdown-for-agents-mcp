@@ -82,8 +82,10 @@ export class BrowserPool {
     const config = cfg();
     const launcher = await this.getLauncher();
 
-    // Resolve proxy: explicit pool proxy takes precedence over env vars
+    // Resolve proxy: explicit pool proxy takes precedence; SOCKS5_UPSTREAM_URL
+    // is used when set so all three tiers share the same egress path.
     const proxyUrl = this.proxyUrl
+      ?? process.env['SOCKS5_UPSTREAM_URL']
       ?? process.env['HTTP_PROXY_URL']
       ?? process.env['PLAYWRIGHT_PROXY']
       ?? undefined;

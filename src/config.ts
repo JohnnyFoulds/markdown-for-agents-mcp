@@ -98,6 +98,30 @@ const configSchema = z.object({
     message: 'MCP_ROLE must be server, worker, or both',
   }),
 
+  // SOCKS5 gateway (Phase 10)
+  // Ingress listener — a policy-enforcing SOCKS5 relay on loopback
+  SOCKS5_LISTEN_ENABLED: z.string().default('false').transform(val => val === 'true'),
+  SOCKS5_LISTEN_HOST: z.string().default('127.0.0.1'),
+  SOCKS5_LISTEN_PORT: z.string().default('1080').transform(Number),
+  // 'tunnel' = CONNECT relay (recommended); 'intercept' = TLS MITM (requires CA)
+  SOCKS5_LISTEN_MODE: z.string().default('tunnel').refine(v => ['tunnel', 'intercept'].includes(v), {
+    message: 'SOCKS5_LISTEN_MODE must be tunnel or intercept',
+  }),
+  // 'none' = no auth required; 'userpass' = RFC 1929 username/password
+  SOCKS5_LISTEN_AUTH: z.string().default('none').refine(v => ['none', 'userpass'].includes(v), {
+    message: 'SOCKS5_LISTEN_AUTH must be none or userpass',
+  }),
+  SOCKS5_LISTEN_USER: z.string().optional(),
+  SOCKS5_LISTEN_PASS: z.string().optional(),
+  // intercept mode only — operator must supply the CA; never auto-generated
+  SOCKS5_INTERCEPT_CA_CERT: z.string().optional(),
+  SOCKS5_INTERCEPT_CA_KEY: z.string().optional(),
+
+  // Upstream SOCKS5 egress — used by all three render tiers
+  SOCKS5_UPSTREAM_URL: z.string().optional(),
+  SOCKS5_UPSTREAM_USER: z.string().optional(),
+  SOCKS5_UPSTREAM_PASS: z.string().optional(),
+
   // Stealth + proxy rotation (Phase 8)
   // STEALTH_ENABLED: use playwright-extra + puppeteer-extra-plugin-stealth for Tier 3
   STEALTH_ENABLED: z.string().default('false').transform(val => val === 'true'),

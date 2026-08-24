@@ -1,6 +1,7 @@
 export interface ProxyConfig {
   url: string;
   bypass?: string;
+  isSocks5?: boolean;
 }
 
 let rotationIndex = 0;
@@ -21,10 +22,27 @@ function loadPins(): string[] {
 
 /**
  * Resolve a single proxy config for a one-off request (e.g. HttpClient).
- * Returns the next entry from PROXY_PINS (round-robin), falling back to
- * HTTP_PROXY_URL / PLAYWRIGHT_PROXY env vars.
+ *
+ * Priority:
+ *   1. SOCKS5_UPSTREAM_URL (with optional SOCKS5_UPSTREAM_USER/PASS embedded)
+ *   2. PROXY_PINS round-robin
+ *   3. HTTP_PROXY_URL / PLAYWRIGHT_PROXY env vars
  */
 export function resolveProxy(envProxy?: string, envBypass?: string): ProxyConfig | undefined {
+  const socks5Upstream = process.env['SOCKS5_UPSTREAM_URL'];
+  if (socks5Upstream) {
+    const u = process.env['SOCKS5_UPSTREAM_USER'];
+    const p = process.env['SOCKS5_UPSTREAM_PASS'];
+    if (u && p) {
+      // Embed credentials in the URL so undici's Socks5ProxyAgent can use them
+      const parsed = new URL(socks5Upstream);
+      parsed.username = u;
+      parsed.password = p;
+      return { url: parsed.toString(), isSocks5: true };
+    }
+    return { url: socks5Upstream, isSocks5: socks5Upstream.startsWith('socks5') };
+  }
+
   const pins = loadPins();
   if (pins.length > 0) {
     const url = pins[rotationIndex % pins.length]!;

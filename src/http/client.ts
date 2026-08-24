@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import zlib from 'node:zlib';
-import { Agent, ProxyAgent, request as undiciRequest } from 'undici';
+import { Agent, ProxyAgent, Socks5ProxyAgent, request as undiciRequest } from 'undici';
 import type { Dispatcher } from 'undici';
 import { getConfig } from '../config.js';
 import { validateUrl } from '../utils/domainBlacklist.js';
@@ -18,9 +18,12 @@ import { assertRobotsAllowed } from './robots.js';
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_BASE_DELAY_MS = 500;
 
-function buildAgent(proxyUrl?: string): Dispatcher {
+function buildAgent(proxyUrl?: string, isSocks5?: boolean): Dispatcher {
   const connectOpts = { lookup: dnsGuardLookup };
   if (proxyUrl) {
+    if (isSocks5 || proxyUrl.startsWith('socks5://') || proxyUrl.startsWith('socks5h://')) {
+      return new Socks5ProxyAgent(proxyUrl);
+    }
     return new ProxyAgent({ uri: proxyUrl, connect: connectOpts });
   }
   return new Agent({ connect: connectOpts });
@@ -56,7 +59,7 @@ class UndiciHttpClient implements HttpClient {
 
   constructor() {
     const proxy = resolveProxy();
-    this.dispatcher = buildAgent(proxy?.url);
+    this.dispatcher = buildAgent(proxy?.url, proxy?.isSocks5);
     const cfg = this.cfg();
     this.rateLimiter = new RateLimiter(
       cfg.RATE_LIMIT_PER_HOST_RPS,
