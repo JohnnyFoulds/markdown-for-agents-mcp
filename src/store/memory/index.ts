@@ -160,10 +160,13 @@ export class MemoryJobQueue implements JobQueue {
     const leaseExpiresAt = Date.now() + leaseMs;
     const result: LeasedItem[] = [];
 
-    for (const entry of this.queue.values()) {
-      if (result.length >= n) break;
-      if (entry.jobId !== jobId || entry.status !== 'pending') continue;
+    // Sort pending items by depth (BFS order) before leasing, matching SQLite/Redis behaviour.
+    const pending = [...this.queue.values()]
+      .filter(e => e.jobId === jobId && e.status === 'pending')
+      .sort((a, b) => a.depth - b.depth);
 
+    for (const entry of pending) {
+      if (result.length >= n) break;
       entry.status = 'leased';
       entry.leaseId = leaseId;
       entry.leaseExpiresAt = leaseExpiresAt;
