@@ -68,22 +68,25 @@ async function handleMetrics(req: IncomingMessage, res: ServerResponse): Promise
 // ---- HTTP server ------------------------------------------------------------
 
 async function startHttpServer(
-  mcpServer: McpServer,
+  serverFactory: () => McpServer,
   port: number,
   mode: string,
 ): Promise<ReturnType<typeof createServer>> {
   const authToken = process.env['MCP_AUTH_TOKEN'];
 
-  let transport: StreamableHTTPServerTransport;
-  if (mode === 'stateless') {
-    transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-      enableJsonResponse: true,
-    });
-  } else {
-    transport = new StreamableHTTPServerTransport({
+  // Stateful mode: one shared server + transport (session affinity required).
+  // Stateless mode: fresh server + transport per request (SDK requirement —
+  // WebStandardStreamableHTTPServerTransport._hasHandledRequest guard rejects
+  // any second call on the same instance with "Stateless transport cannot be
+  // reused across requests").
+  let sharedServer: McpServer | undefined;
+  let sharedTransport: StreamableHTTPServerTransport | undefined;
+  if (mode !== 'stateless') {
+    sharedServer = serverFactory();
+    sharedTransport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
     });
+    await sharedServer.connect(sharedTransport);
   }
 
   const httpServer = createServer(async (req, res) => {
@@ -117,7 +120,22 @@ async function startHttpServer(
       }
 
       if (req.url === '/mcp' || req.url?.startsWith('/mcp?')) {
-        await transport.handleRequest(req, res);
+        if (mode === 'stateless') {
+          // Per-request server + transport — required by the SDK for stateless mode.
+          const reqServer = serverFactory();
+          const reqTransport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: undefined,
+            enableJsonResponse: true,
+          });
+          await reqServer.connect(reqTransport);
+          res.on('close', () => {
+            reqTransport.close().catch(() => {});
+            reqServer.close().catch(() => {});
+          });
+          await reqTransport.handleRequest(req, res);
+        } else {
+          await sharedTransport!.handleRequest(req, res);
+        }
         return;
       }
 
@@ -128,7 +146,6 @@ async function startHttpServer(
     }
   });
 
-  await mcpServer.connect(transport);
   await new Promise<void>(resolve => httpServer.listen(port, resolve));
   Logger.info(`markdown-for-agents-mcp HTTP server listening on port ${port} (mode=${mode})`);
   console.error(`markdown-for-agents-mcp server running on HTTP port ${port}`);
@@ -249,11 +266,14 @@ async function main() {
   let metricsServer: ReturnType<typeof createServer> | undefined;
 
   if (role !== 'worker') {
-    const server = new McpServer({ name: "markdown-for-agents-mcp", version });
-    registerAll(server, {}, TOOLS);
+    const serverFactory = () => {
+      const s = new McpServer({ name: "markdown-for-agents-mcp", version });
+      registerAll(s, {}, TOOLS);
+      return s;
+    };
 
     if (isHttpMode) {
-      httpServer = await startHttpServer(server, httpPort!, config.MCP_HTTP_MODE);
+      httpServer = await startHttpServer(serverFactory, httpPort!, config.MCP_HTTP_MODE);
 
       if (config.METRICS_BIND_PORT) {
         metricsServer = await startMetricsServer(config.METRICS_BIND_PORT);
@@ -262,6 +282,7 @@ async function main() {
       setReady(true);
       Logger.info('Server is ready');
     } else {
+      const server = serverFactory();
       const transport = new StdioServerTransport();
       await server.connect(transport);
       console.error("markdown-for-agents-mcp server running on stdio");

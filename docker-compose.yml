@@ -1,5 +1,3 @@
-version: "3.9"
-
 # Two services from the same image:
 #   mcp-server  — serves MCP over HTTP in stateless mode
 #   mcp-worker  — runs the crawl worker loop, no HTTP listener

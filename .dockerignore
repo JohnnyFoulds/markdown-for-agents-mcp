@@ -14,16 +14,12 @@ coverage
 __fixtures__
 __contract__
 
-# TypeScript sources — dist/ is used at runtime
-src
-
 # Docs and config not needed in image
 *.md
 .env*
 .eslintrc*
 .prettierrc*
 vitest.config*
-tsconfig*.json
 
 # k8s / deploy (baked into image is wrong — mount as ConfigMap or use helm)
 deploy
