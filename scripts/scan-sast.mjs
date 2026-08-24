@@ -60,6 +60,10 @@ const RULESETS = [
   'p/nodejs',
   'p/typescript',
   'p/secrets',
+  // Project-specific invariants: no process.env outside config, shell injection,
+  // no direct fetch() bypassing SSRF guard, sensitive vars in logs, header regression.
+  // Rules are in security/semgrep/; fixtures for semgrep --test are in fixtures/.
+  'security/semgrep/',
 ];
 
 // ── Run semgrep ───────────────────────────────────────────────────────────────

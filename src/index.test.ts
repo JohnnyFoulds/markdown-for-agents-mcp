@@ -216,6 +216,96 @@ describe('HTTP auth fail-closed (source inspection)', () => {
   });
 });
 
+// ── Phase 4.2 — HTTP endpoint auth policy (source inspection) ─────────────────
+//
+// Table-driven: ROUTE_TABLE is the authoritative list of HTTP routes and their
+// auth policy. A new route in index.ts without a ROUTE_TABLE entry fails the
+// coverage assertion — requiring an explicit requiresAuth decision per route.
+//
+// This is source-inspection (structural check), not behavioral (actual HTTP).
+// Behavioral coverage lives in scripts/scan-dast.mjs section 2.1 (auth enforcement).
+describe('Phase 4.2 — HTTP endpoint auth policy (source inspection)', () => {
+  const src = readFileSync(join(__dirname, 'index.ts'), 'utf8');
+
+  // ── Route table ──────────────────────────────────────────────────────────
+  // requiresAuth = true  → must reject requests without valid bearer token
+  // requiresAuth = false → must be reachable without any auth (k8s health probes)
+  interface RoutePolicy { path: string; requiresAuth: boolean; reason: string; }
+  const ROUTE_TABLE: RoutePolicy[] = [
+    { path: '/mcp',     requiresAuth: true,  reason: 'MCP tool calls — user data, SSRF surface' },
+    { path: '/metrics', requiresAuth: false, reason: 'Prometheus — cluster-internal scrape port only' },
+    { path: '/healthz', requiresAuth: false, reason: 'Kubernetes liveness probe — must be public' },
+    { path: '/readyz',  requiresAuth: false, reason: 'Kubernetes readiness probe — must be public' },
+  ];
+
+  it('every route in ROUTE_TABLE exists in index.ts', () => {
+    for (const route of ROUTE_TABLE) {
+      // Match both single and double-quoted forms
+      const found = src.includes(`'${route.path}'`) || src.includes(`"${route.path}"`);
+      expect(found, `Route "${route.path}" is in ROUTE_TABLE but not found in index.ts`).toBe(true);
+    }
+  });
+
+  it('all known route strings in index.ts appear in ROUTE_TABLE', () => {
+    // Routes we watch for — if one of these appears in the source but is absent from
+    // ROUTE_TABLE, the test fails, requiring an explicit auth policy decision.
+    const watchlist = [
+      '/mcp', '/metrics', '/healthz', '/readyz',
+      // Paths that would be alarming if added — must appear in ROUTE_TABLE first:
+      '/debug', '/admin', '/api', '/graphql', '/oauth',
+    ];
+    const knownPaths = new Set(ROUTE_TABLE.map(r => r.path));
+    for (const path of watchlist) {
+      const appearsInSource = src.includes(`'${path}'`) || src.includes(`"${path}"`);
+      if (appearsInSource) {
+        expect(knownPaths.has(path),
+          `Route "${path}" is referenced in index.ts but not in ROUTE_TABLE. ` +
+          `Add it with an explicit requiresAuth policy.`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('protected routes have a 401 response path in the handler', () => {
+    for (const route of ROUTE_TABLE.filter(r => r.requiresAuth)) {
+      // The handler must contain a 401 response — auth enforcement exists
+      expect(src, `Protected route "${route.path}" must have a 401 response in its handler`
+        + ` — no auth enforcement found`).toContain('sendJson(res, 401');
+    }
+  });
+
+  it('health probe routes come before any authToken check in the request flow', () => {
+    // /healthz and /readyz must be served before the auth guard runs, so that
+    // Kubernetes probes work even when MCP_AUTH_TOKEN is set.
+    const healthzIdx  = src.indexOf("'/healthz'");
+    const readyzIdx   = src.indexOf("'/readyz'");
+    const firstAuthIdx = src.indexOf('sendJson(res, 401');
+
+    expect(healthzIdx, '/healthz not found in index.ts').toBeGreaterThan(-1);
+    expect(readyzIdx,  '/readyz not found in index.ts').toBeGreaterThan(-1);
+
+    // The first 401 response must come AFTER the health probe route definitions
+    if (firstAuthIdx > -1) {
+      const firstProbeIdx = Math.min(healthzIdx, readyzIdx);
+      expect(firstAuthIdx).toBeGreaterThan(firstProbeIdx);
+    }
+  });
+
+  it('assertHttpAuthPolicy call-site precedes startHttpServer call-site (fail-closed startup)', () => {
+    // Compare CALL SITES, not function definitions — startHttpServer is defined
+    // earlier in the file but called after assertHttpAuthPolicy.
+    // assertHttpAuthPolicy(config.  → the call with the config argument
+    // await startHttpServer(        → the awaited call in main()
+    const assertIdx = src.indexOf('assertHttpAuthPolicy(config.');
+    const startIdx  = src.indexOf('await startHttpServer(');
+    expect(assertIdx, 'assertHttpAuthPolicy(config.) call not found in index.ts').toBeGreaterThan(-1);
+    expect(startIdx,  'await startHttpServer( call not found in index.ts').toBeGreaterThan(-1);
+    expect(assertIdx,
+      'assertHttpAuthPolicy must be called before await startHttpServer — fail-closed startup',
+    ).toBeLessThan(startIdx);
+  });
+});
+
 describe('validateAndInitializeConfig', () => {
   beforeEach(() => {
     resetConfig();

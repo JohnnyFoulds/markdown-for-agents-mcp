@@ -26,3 +26,8 @@ scripts/install-security-tools.sh
 # Generated / vendored
 *.min.js
 *.bundle.js
+
+# Semgrep rule fixtures are tested via `semgrep --test`, not the main scan.
+# They intentionally contain violation patterns so the rule fires — excluding
+# them prevents false positives in the regular scan run.
+security/semgrep/fixtures/

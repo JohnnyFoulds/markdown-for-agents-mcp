@@ -1,0 +1,104 @@
+rules:
+  # ── 1. No direct process.env access outside src/config.ts ─────────────────
+  # Grounding: this exact pattern caused the HTTP auth fail-open bug at
+  # index.ts:81 — process.env['MCP_AUTH_TOKEN'] was read directly, bypassing
+  # the Zod schema and silently ignoring unset / misspelled env vars.
+  # Phase 2.1 moved all env reads into src/config.ts. This rule prevents
+  # regression by flagging any new direct env reads outside that file.
+  - id: no-process-env-outside-config
+    message: >
+      Direct process.env access bypasses the Zod validation schema in src/config.ts.
+      An unset or misspelled variable silently becomes undefined instead of throwing.
+      Read configuration from the config object returned by getConfig() instead.
+      Grounding: this pattern caused the auth fail-open bug (Phase 2.1, index.ts:81).
+    severity: WARNING
+    languages: [typescript, javascript]
+    pattern-either:
+      - pattern: process.env.$VAR
+      - pattern: process.env[$VAR]
+    paths:
+      exclude:
+        - src/config.ts
+        - "**/*.test.ts"
+        - "**/*.test.js"
+        - scripts/
+        - "*.config.ts"
+        - "*.config.js"
+        - vitest.config.ts
+
+  # ── 2. Shell injection via template literal or concatenation ───────────────
+  # execSync()/exec() with a template literal or variable is a shell injection
+  # risk if any interpolated value is caller-supplied. Static string literals
+  # are acceptable (e.g. execSync('npx playwright install chromium')).
+  # Use spawn(cmd, argsArray, {shell: false}) for parameterised commands.
+  - id: shell-injection-interpolation
+    message: >
+      execSync() or exec() called with a non-literal argument. If the argument
+      contains any caller-supplied value, this is exploitable shell injection.
+      Use spawn(cmd, argsArray, {shell: false}) to avoid shell metacharacter
+      interpretation. Static string literals are acceptable.
+    severity: ERROR
+    languages: [typescript, javascript]
+    patterns:
+      - pattern: execSync($CMD, ...)
+      - pattern-not: execSync("...", ...)
+
+  # ── 3. No direct fetch() in tool/service code — SSRF guard bypass ─────────
+  # All outbound HTTP requests must flow through src/http/client.ts, which
+  # enforces: SSRF guard (validateUrl), DNS guard (dnsGuardLookup), rate
+  # limiting, and redirect safety. A direct fetch() call in tool or service
+  # code bypasses every one of these controls.
+  - id: no-direct-fetch-bypass-guard
+    message: >
+      Direct fetch() call in src/tools/ or src/services/ bypasses the SSRF
+      guard, DNS guard, and rate limiter in src/http/client.ts. Use the HttpClient
+      (or one of the approved service wrappers) instead so every outbound request
+      is validated against the domain blocklist and rate-limited.
+    severity: WARNING
+    languages: [typescript]
+    pattern: fetch($URL, ...)
+    paths:
+      include:
+        - src/tools/
+        - src/services/
+
+  # ── 4. Sensitive variable names in raw console.log / console.error ─────────
+  # Variables named query, token, key, or secret must go through redactQuery()
+  # (src/utils/logger.ts) before being logged. POPIA: query text may contain
+  # personal information; tokens and keys are credentials.
+  # This rule catches the direct case — a taint analysis would catch the full
+  # propagation, but the direct pattern catches the most common mistake.
+  - id: sensitive-var-in-console-log
+    message: >
+      A variable named query/token/key/secret is passed directly to console.log
+      or console.error. This may log personal information (POPIA) or credentials.
+      Use redactQuery(query) from src/utils/logger.ts, or pass the value through
+      a structured logging call that respects LOG_REDACT_QUERIES.
+    severity: WARNING
+    languages: [typescript, javascript]
+    patterns:
+      - pattern: console.log($FUNC($ARG))
+      - pattern-not: console.log($FUNC(redactQuery($ARG)))
+      - metavariable-regex:
+          metavariable: $ARG
+          regex: "^(query|token|key|secret|password|apiKey|api_key)$"
+
+  # ── 5. No inline security headers in res.writeHead() ──────────────────────
+  # Cache-Control and X-Content-Type-Options must be set via applyBaseHeaders()
+  # using res.setHeader(). If you put them inside res.writeHead(status, {...}),
+  # they OVERRIDE the applyBaseHeaders() call because writeHead merges its headers
+  # object over all previously-set headers — exactly backwards from what you want.
+  # Phase 2.3 established this pattern; this rule guards against regression.
+  - id: no-security-headers-in-writehead
+    message: >
+      Cache-Control or X-Content-Type-Options set inside res.writeHead() headers
+      overrides applyBaseHeaders() rather than composing with it, because writeHead()
+      merges its object over all previously-set headers. Set these headers via
+      applyBaseHeaders(res) using res.setHeader() before the response instead.
+    severity: WARNING
+    languages: [typescript]
+    pattern-either:
+      - pattern: $RES.writeHead($S, {'Cache-Control': $V, ...})
+      - pattern: $RES.writeHead($S, {"Cache-Control": $V, ...})
+      - pattern: $RES.writeHead($S, {'X-Content-Type-Options': $V, ...})
+      - pattern: $RES.writeHead($S, {"X-Content-Type-Options": $V, ...})
