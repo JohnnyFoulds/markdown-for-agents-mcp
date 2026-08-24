@@ -67,9 +67,9 @@ export async function webSearch(options: SearchOptions): Promise<SearchResponse>
     maxResults = 10,
     allowedDomains,
     blockedDomains,
-    fetchResults = false,
+    fetchResults,
     timeout,
-    searchDepth = 'basic',
+    searchDepth = 'fast',
     chunksPerSource = 1,
   } = options;
 
@@ -95,7 +95,8 @@ export async function webSearch(options: SearchOptions): Promise<SearchResponse>
     }));
 
     let markdownResults: { url: string; markdown: string }[] | undefined;
-    const shouldFetch = fetchResults || searchDepth === 'basic' || searchDepth === 'advanced';
+    // fetchResults: true → always fetch; false → never; undefined → derive from depth
+    const shouldFetch = fetchResults === true || (fetchResults !== false && searchDepth !== 'fast');
 
     if (shouldFetch && results.length > 0) {
       const titleMap = new Map(results.map(r => [r.url, r.title]));

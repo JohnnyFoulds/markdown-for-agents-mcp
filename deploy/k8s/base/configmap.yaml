@@ -10,6 +10,11 @@ data:
   # in your overlay's configmap patch.
   STORE_BACKEND: "sqlite"
 
+  # Search locale defaults — tune for your user population
+  SEARCH_DEFAULT_COUNTRY: "za"
+  SEARCH_DEFAULT_LANGUAGE: "en"
+  LOG_REDACT_QUERIES: "true"
+
   MCP_HTTP_MODE: "stateless"
   LOG_FORMAT: "json"
   LOG_LEVEL: "INFO"

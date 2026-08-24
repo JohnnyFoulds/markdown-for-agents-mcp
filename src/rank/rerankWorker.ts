@@ -55,6 +55,6 @@ async function init() {
 }
 
 init().catch(err => {
-  parentPort!.postMessage({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+  parentPort!.postMessage({ type: 'error', error: err instanceof Error ? err.message : String(err) });
   process.exit(1);
 });

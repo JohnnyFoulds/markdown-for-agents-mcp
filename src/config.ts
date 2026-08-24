@@ -68,6 +68,9 @@ const configSchema = z.object({
   SERPER_API_KEY: z.string().optional(),
   SEARXNG_URL: z.string().optional(),
   SEARCH_FANOUT_RESULTS: z.string().default('20').transform(Number),
+  SEARCH_DEFAULT_COUNTRY: z.string().default('za'),
+  SEARCH_DEFAULT_LANGUAGE: z.string().default('en'),
+  LOG_REDACT_QUERIES: z.string().default('true').transform(val => val === 'true'),
 
   // Reranker
   RERANK_BACKEND: z.string().default('none').refine(v => ['none', 'local', 'tei'].includes(v), {

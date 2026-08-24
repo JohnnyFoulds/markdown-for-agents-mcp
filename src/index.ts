@@ -14,12 +14,17 @@ import { initStores, closeStores, getStores } from "./store/factory.js";
 import { gracefulDrain, setReady, isReady } from "./server/lifecycle.js";
 import { Socks5Server } from "./proxy/socks5Server.js";
 import { registry as metricsRegistry } from "./obs/metrics.js";
+import { getReranker } from "./rank/index.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
 
 // Probe paths that bypass bearer-token auth
 const UNAUTHED_PATHS = new Set(['/healthz', '/readyz']);
+
+// Set during HTTP mode startup when RERANK_BACKEND !== 'none'.
+// /readyz gates on this so k8s holds traffic until the model is loaded.
+let rerankerGuard: { isReady: () => boolean } | null = null;
 
 /** Timing-safe bearer comparison — prevents timing side-channel on the token. */
 function isValidBearer(authHeader: string, token: string): boolean {
@@ -46,7 +51,8 @@ function handleProbe(req: IncomingMessage, res: ServerResponse): boolean {
     return true;
   }
   if (path === '/readyz') {
-    if (isReady()) {
+    const rerankerReady = !rerankerGuard || rerankerGuard.isReady();
+    if (isReady() && rerankerReady) {
       sendJson(res, 200, { status: 'ok' });
     } else {
       sendJson(res, 503, { status: 'not_ready' });
@@ -281,8 +287,20 @@ async function main() {
         metricsServer = await startMetricsServer(config.METRICS_BIND_PORT);
       }
 
+      if (config.RERANK_BACKEND !== 'none') {
+        const reranker = getReranker();
+        rerankerGuard = reranker;
+        reranker.warmup().catch(err =>
+          Logger.error(`[reranker] Warmup failed: ${err instanceof Error ? err.message : String(err)}`)
+        );
+      }
+
       setReady(true);
-      Logger.info('Server is ready');
+      Logger.info(
+        config.RERANK_BACKEND !== 'none'
+          ? 'HTTP server ready — reranker warming up in background'
+          : 'Server is ready'
+      );
     } else {
       const server = serverFactory();
       const transport = new StdioServerTransport();

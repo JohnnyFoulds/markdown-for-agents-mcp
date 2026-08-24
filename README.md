@@ -576,6 +576,10 @@ The full reference is in `.env.example`. Key variables:
 | `RESPECT_ROBOTS_TXT` | `false` | Honour robots.txt crawl rules |
 | `HTTP_PROXY_URL` | _(unset)_ | Outbound proxy for all tiers |
 | `PROXY_PINS` | _(unset)_ | JSON array of proxy URLs for round-robin rotation |
+| `SEARCH_FANOUT_RESULTS` | `20` | Max URLs returned from search fan-out |
+| `SEARCH_DEFAULT_COUNTRY` | `za` | Default country code for results (ISO 3166-1 alpha-2) |
+| `SEARCH_DEFAULT_LANGUAGE` | `en` | Default language code for results (BCP 47) |
+| `LOG_REDACT_QUERIES` | `true` | Hash query text in logs (POPIA compliance) |
 | `RERANK_BACKEND` | `none` | `none` \| `local` \| `tei` |
 | `MCP_ROLE` | `server` | `server` \| `worker` \| `both` |
 | `SHUTDOWN_DRAIN_MS` | `5000` | Grace period before closing HTTP |
@@ -604,9 +608,21 @@ When multiple providers are configured, they are queried in parallel with result
 
 Set `RERANK_BACKEND=local` to rank search results by actual content relevance rather than SERP position. The local backend runs `bge-reranker-base` (ONNX, q8, CPU) in a worker thread to keep the event loop free.
 
+The `web_search` tool exposes three depth modes via the `searchDepth` parameter:
+
+| `searchDepth` | Behaviour | Typical latency |
+|---|---|---|
+| `fast` (default) | Snippet-only — zero page fetches | ~500 ms |
+| `basic` | Fetch and render each result page | ~3–5 s |
+| `advanced` | Fetch pages + rerank chunks by cross-encoder relevance | ~10–15 s |
+
+Use `chunksPerSource` (default 1, `advanced` only) to control how many ranked content chunks are returned per source page.
+
 ```bash
-RERANK_BACKEND=local web_search(query="...", searchDepth="advanced", maxResults=10)
+RERANK_BACKEND=local web_search(query="...", searchDepth="advanced", maxResults=10, chunksPerSource=3)
 ```
+
+When `RERANK_BACKEND=local` the server holds `/readyz` until the model finishes loading (the 300 s k8s startup probe covers this). If the model is absent at startup the process fails loudly instead of silently falling back to SERP order.
 
 For GPU-accelerated reranking, point `RERANK_TEI_URL` at a TEI endpoint and set `RERANK_BACKEND=tei`.
 

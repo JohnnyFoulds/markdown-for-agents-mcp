@@ -155,6 +155,27 @@ All variables are set in `base/configmap.yaml` and overridden in overlay patches
 
 `terminationGracePeriodSeconds: 90` in the Deployment specs must exceed `SHUTDOWN_DRAIN_MS + SHUTDOWN_TIMEOUT_MS` (35 s default). Do not reduce it below 60 s.
 
+### Search
+
+| Variable | Default | Description |
+|---|---|---|
+| `SEARCH_FANOUT_RESULTS` | `20` | Max URLs returned from the fan-out across all providers. |
+| `SEARCH_DEFAULT_COUNTRY` | `za` | ISO 3166-1 alpha-2 country code injected into every query (e.g. `za` = South Africa). |
+| `SEARCH_DEFAULT_LANGUAGE` | `en` | BCP 47 language code for result ranking. |
+| `LOG_REDACT_QUERIES` | `true` | Hash query text in logs (POPIA compliance). Set `false` only for debugging — never in production. |
+| `SEARXNG_URL` | — | SearXNG instance URL; enables the free Tier-2 search provider. |
+
+### Reranker
+
+| Variable | Default | Description |
+|---|---|---|
+| `RERANK_BACKEND` | `none` | `none` — SERP order only. `local` — ONNX cross-encoder in a worker thread (requires optional deps; image must have model baked in). `tei` — remote TEI endpoint. |
+| `RERANK_MODEL` | `Xenova/bge-reranker-base` | HuggingFace model ID for `local` backend. |
+| `RERANK_DTYPE` | `q8` | Quantisation dtype for ONNX (`q8` required for CPU `onnxruntime-node`). |
+| `RERANK_TEI_URL` | — | TEI endpoint URL when `RERANK_BACKEND=tei`. |
+
+When `RERANK_BACKEND=local` the server pod must have the model baked into the image at `$HF_HOME`. If the model is missing at startup the process **fails loudly** rather than silently falling back to SERP order — a degraded-but-passing startup is harder to diagnose than an immediate crash. `/readyz` gates on the reranker reaching ready state, giving the existing 300 s `startupProbe` window for the 280 MB model load.
+
 ### Search providers (Secrets)
 
 | Variable | Default | Description |

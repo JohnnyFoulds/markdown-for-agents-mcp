@@ -3,8 +3,42 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { initializeConfig, resetConfig, validateAndInitializeConfig, getConfig } from './config.js';
 import { Logger } from './utils/logger.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+describe('warmup wiring (source inspection)', () => {
+  const src = readFileSync(join(__dirname, 'index.ts'), 'utf8');
+
+  it('/readyz gates on rerankerGuard.isReady()', () => {
+    // handleProbe must check the guard before returning 200
+    expect(src).toContain('rerankerGuard.isReady()');
+    expect(src).toContain('isReady() && rerankerReady');
+  });
+
+  it('warmup() is only called in the HTTP mode branch', () => {
+    // Warmup must not be called for stdio — it would slow a one-shot CLI by 120s
+    const httpModeIdx = src.indexOf('if (isHttpMode)');
+    expect(httpModeIdx).toBeGreaterThan(-1);
+    const beforeHttpMode = src.slice(0, httpModeIdx);
+    expect(beforeHttpMode).not.toContain('.warmup()');
+    // The call must exist somewhere after the HTTP mode check
+    const afterHttpMode = src.slice(httpModeIdx);
+    expect(afterHttpMode).toContain('.warmup()');
+  });
+
+  it('warmup() is kicked off without awaiting (non-blocking)', () => {
+    // Must use .catch() rather than await so model load does not block startup
+    expect(src).toContain('warmup().catch(');
+    // Must NOT use 'await reranker.warmup()' or 'await getReranker().warmup()'
+    expect(src).not.toContain('await reranker.warmup()');
+    expect(src).not.toContain('await getReranker().warmup()');
+  });
+});
 
 describe('MCP Server Configuration', () => {
   beforeEach(() => {

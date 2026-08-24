@@ -90,9 +90,18 @@ export class TransformersReranker implements Reranker {
         });
       });
     } catch (err) {
-      Logger.warn(`[TransformersReranker] Falling back to noop: ${err instanceof Error ? err.message : String(err)}`);
       this.worker = null;
       this.failed = true;
+      // When the operator explicitly requested local reranking, a silent fallback
+      // hides broken deployments. Re-throw so the startup probe fails loudly.
+      try {
+        const cfg = getConfig();
+        if (cfg.RERANK_BACKEND === 'local') throw err;
+      } catch (cfgErr) {
+        if (cfgErr === err) throw err;
+        // getConfig() itself failed (no config); fall through to noop
+      }
+      Logger.warn(`[TransformersReranker] Falling back to noop: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

@@ -2,15 +2,17 @@ import { duckDuckGoSearch, SearchOptions } from "../services/webSearch.js";
 import { WebSearchResult } from "./types.js";
 
 export async function webSearch(options: SearchOptions): Promise<WebSearchResult> {
-  const { query, maxResults, allowedDomains, blockedDomains, fetchResults, timeout } = options;
+  const { query, maxResults, allowedDomains, blockedDomains, fetchResults, timeout, searchDepth, chunksPerSource } = options;
 
   const response = await duckDuckGoSearch({
     query,
     maxResults: maxResults ?? 10,
     allowedDomains,
     blockedDomains,
-    fetchResults: fetchResults ?? false,
+    fetchResults,
     timeout,
+    searchDepth,
+    chunksPerSource,
   });
 
   return {

@@ -23,11 +23,9 @@ describe('webSearch', () => {
 
     const result = await webSearch({ query: 'test query' });
 
-    expect(duckDuckGoSearch).toHaveBeenCalledWith({
-      query: 'test query',
-      maxResults: 10,
-      fetchResults: false,
-    });
+    expect(duckDuckGoSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ query: 'test query', maxResults: 10 }),
+    );
     expect(result.query).toBe('test query');
     expect(result.results).toHaveLength(2);
     expect(result.results[0].title).toBe('Result 1');
@@ -80,11 +78,9 @@ describe('webSearch', () => {
 
     await webSearch({ query: 'test', maxResults: 5 });
 
-    expect(duckDuckGoSearch).toHaveBeenCalledWith({
-      query: 'test',
-      maxResults: 5,
-      fetchResults: false,
-    });
+    expect(duckDuckGoSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ query: 'test', maxResults: 5 }),
+    );
   });
 
   test('passes allowedDomains parameter', async () => {
@@ -99,12 +95,9 @@ describe('webSearch', () => {
       allowedDomains: ['example.com', 'other.com'],
     });
 
-    expect(duckDuckGoSearch).toHaveBeenCalledWith({
-      query: 'test',
-      allowedDomains: ['example.com', 'other.com'],
-      maxResults: 10,
-      fetchResults: false,
-    });
+    expect(duckDuckGoSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ query: 'test', allowedDomains: ['example.com', 'other.com'], maxResults: 10 }),
+    );
   });
 
   test('passes blockedDomains parameter', async () => {
@@ -119,12 +112,9 @@ describe('webSearch', () => {
       blockedDomains: ['blocked.com'],
     });
 
-    expect(duckDuckGoSearch).toHaveBeenCalledWith({
-      query: 'test',
-      blockedDomains: ['blocked.com'],
-      maxResults: 10,
-      fetchResults: false,
-    });
+    expect(duckDuckGoSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ query: 'test', blockedDomains: ['blocked.com'], maxResults: 10 }),
+    );
   });
 
   test('includes fetchedContent when markdownResults returned', async () => {
@@ -169,11 +159,8 @@ describe('webSearch', () => {
       timeout: 60000,
     });
 
-    expect(duckDuckGoSearch).toHaveBeenCalledWith({
-      query: 'test',
-      timeout: 60000,
-      maxResults: 10,
-      fetchResults: false,
-    });
+    expect(duckDuckGoSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ query: 'test', timeout: 60000, maxResults: 10 }),
+    );
   });
 });

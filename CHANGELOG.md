@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — Phases 0–10 (Tavily Parity)
 
+### Fixed — Phase 2: Activate search quality (was silently noop-ing)
+- `src/tools/definitions.ts` — expose `searchDepth` (`fast`/`basic`/`advanced`) and `chunksPerSource` in the `web_search` input schema; update description from single-provider to multi-provider fan-out language
+- `src/tools/webSearch.ts` — thread `searchDepth` and `chunksPerSource` through to the services layer (both were silently dropped)
+- `src/services/webSearch.ts` — change default depth from `basic` to `fast`; fix `shouldFetch` logic so `fast` performs zero fetches, explicit `fetchResults: true/false` overrides depth
+- `src/rank/rerankWorker.ts` — fix error field name: worker posted `{type:'error', message}` but parent read `msg.error`, surfacing every init failure as `Error(undefined)`
+- `src/rank/transformersReranker.ts` — fail loudly when `RERANK_BACKEND=local` and the optional dep or model is absent; silent noop was indistinguishable from a working reranker
+- `src/index.ts` — wire `getReranker().warmup()` in HTTP mode (non-blocking); `/readyz` gates on `rerankerGuard.isReady()` so k8s holds traffic until the 280 MB model finishes loading; stdio mode skips warmup
+
+### Added — Phase 2: Config, locale, compliance
+- `SEARCH_DEFAULT_COUNTRY` (default `za`) and `SEARCH_DEFAULT_LANGUAGE` (default `en`) — ZA locale default for Vodacom user population
+- `LOG_REDACT_QUERIES` (default `true`) — hash query text in logs for POPIA compliance
+- All three vars added to `src/config.ts`, `.env.example`, `deploy/k8s/base/configmap.yaml`, and `deploy/k8s/DEPLOYMENT.md`
+
 ### Added — Phase 10: SOCKS5 Gateway
 - `src/proxy/socks5Server.ts` — RFC 1928/1929 SOCKS5 listener (`tunnel` and `intercept` modes)
 - `src/proxy/policy.ts` — allow/deny policy enforcing existing domain blocklist + SSRF guard

@@ -237,15 +237,27 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: 'web_search',
     description:
-      "Search the web using DuckDuckGo and optionally fetch results to markdown. " +
-      "Returns structured search results with title, URL, and snippet. " +
+      "Search the web using multiple providers (SearXNG, Brave, Serper, DuckDuckGo) with " +
+      "automatic failover. Three depth modes: fast = SERP snippets only (~500ms); " +
+      "basic = fetch and convert top pages to markdown; " +
+      "advanced = fetch + rerank chunks by relevance to the query (best quality, ~10-15s). " +
       "Supports domain filtering via allowedDomains and blockedDomains.",
     inputSchema: {
       query: z.string().describe("The search query to perform"),
       maxResults: z.number().optional().describe("Maximum number of search results to return (default: 10)"),
+      searchDepth: z.enum(['fast', 'basic', 'advanced']).optional().describe(
+        "fast = snippets only (fastest, no page fetching); " +
+        "basic = fetch and render top pages; " +
+        "advanced = fetch + rerank chunks by relevance (default: fast)",
+      ),
+      chunksPerSource: z.number().optional().describe(
+        "Top-N reranked chunks to include per source URL (advanced only, default: 1)",
+      ),
       allowedDomains: z.array(z.string()).optional().describe("Only include results from these domains"),
       blockedDomains: z.array(z.string()).optional().describe("Exclude results from these domains"),
-      fetchResults: z.boolean().optional().describe("Fetch and convert top results to markdown (hybrid mode)"),
+      fetchResults: z.boolean().optional().describe(
+        "Explicitly enable (true) or disable (false) page fetching, overriding searchDepth",
+      ),
       timeout: z.number().optional().describe("Request timeout in milliseconds (default: 30000)"),
     },
     outputSchema: webSearchOutputSchema,
@@ -254,6 +266,8 @@ export const TOOLS: ToolDefinition[] = [
     handler: async (a: any) => webSearch({
       query: String(a.query),
       maxResults: a.maxResults as number | undefined,
+      searchDepth: a.searchDepth as 'fast' | 'basic' | 'advanced' | undefined,
+      chunksPerSource: a.chunksPerSource as number | undefined,
       allowedDomains: a.allowedDomains as string[] | undefined,
       blockedDomains: a.blockedDomains as string[] | undefined,
       fetchResults: a.fetchResults as boolean | undefined,
