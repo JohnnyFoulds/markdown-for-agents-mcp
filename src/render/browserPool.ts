@@ -1,6 +1,13 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { getConfig } from '../config.js';
 import { generateBrowserUA, BROWSER_HEADERS } from '../http/fingerprint.js';
+import {
+  browserPoolBrowsers,
+  browserPoolInUse,
+  browserPoolQueued,
+  browserRecyclesTotal,
+  browserLaunchDurationSeconds,
+} from '../obs/metrics.js';
 
 export interface PageLease {
   readonly page: Page;
@@ -90,7 +97,8 @@ export class BrowserPool {
       ?? undefined;
     const proxyBypass = process.env['PLAYWRIGHT_PROXY_BYPASS'] ?? undefined;
 
-    return launcher.launch({
+    const launchStart = Date.now();
+    const browser = await launcher.launch({
       headless: true,
       args: [
         '--no-sandbox',
@@ -102,6 +110,8 @@ export class BrowserPool {
       ],
       ...(proxyUrl ? { proxy: { server: proxyUrl, bypass: proxyBypass } } : {}),
     });
+    browserLaunchDurationSeconds.observe((Date.now() - launchStart) / 1000);
+    return browser;
   }
 
   async warmup(): Promise<void> {
@@ -112,6 +122,7 @@ export class BrowserPool {
       const browser = await this.launchBrowser();
       this.slots.push({ id: `b${i}`, browser, jobs: 0, createdAt: Date.now(), replacing: false });
     }
+    browserPoolBrowsers.set(this.slots.length);
   }
 
   private async ensureInitialized(): Promise<void> {
@@ -124,14 +135,16 @@ export class BrowserPool {
       .sort((a, b) => a.jobs - b.jobs)[0];
   }
 
-  private async replaceSlot(slot: BrowserSlot): Promise<void> {
+  private async replaceSlot(slot: BrowserSlot, reason: 'max_jobs' | 'crash'): Promise<void> {
     slot.replacing = true;
+    browserRecyclesTotal.inc({ reason });
     try { await slot.browser.close(); } catch { /* ignore */ }
     const browser = await this.launchBrowser();
     slot.browser = browser;
     slot.jobs = 0;
     slot.createdAt = Date.now();
     slot.replacing = false;
+    browserPoolBrowsers.set(this.slots.filter(s => !s.replacing).length);
   }
 
   async acquire(signal?: AbortSignal): Promise<PageLease> {
@@ -140,11 +153,14 @@ export class BrowserPool {
 
     while (this.inUse >= RENDER_MAX_CONCURRENCY) {
       if (signal?.aborted) throw new Error('Render cancelled');
+      browserPoolQueued.set(this.waitQueue.length + 1);
       await new Promise<void>(resolve => this.waitQueue.push(resolve));
     }
     if (signal?.aborted) throw new Error('Render cancelled');
 
     this.inUse++;
+    browserPoolInUse.set(this.inUse);
+    browserPoolQueued.set(this.waitQueue.length);
     const slot = this.leastLoadedSlot();
     if (!slot) throw new Error('BrowserPool: no slots available');
 
@@ -181,10 +197,14 @@ export class BrowserPool {
     const release = async (outcome: 'ok' | 'error' | 'crash') => {
       try { await context.close(); } catch { /* ignore */ }
       this.inUse = Math.max(0, this.inUse - 1);
+      browserPoolInUse.set(this.inUse);
       this.waitQueue.shift()?.();
+      browserPoolQueued.set(this.waitQueue.length);
 
-      if (outcome === 'crash' || slot.jobs >= config.BROWSER_MAX_JOBS) {
-        this.replaceSlot(slot).catch(() => {});
+      if (outcome === 'crash') {
+        this.replaceSlot(slot, 'crash').catch(() => {});
+      } else if (slot.jobs >= config.BROWSER_MAX_JOBS) {
+        this.replaceSlot(slot, 'max_jobs').catch(() => {});
       }
     };
 

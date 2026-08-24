@@ -5,6 +5,7 @@ import { LightpandaTier } from './tiers/lightpandaTier.js';
 import { PlaywrightTier } from './tiers/playwrightTier.js';
 import type { RenderTier, RenderTierImpl, RenderRequest, RenderResult, EscalationRecord } from './types.js';
 import { TIER_ORDER } from './types.js';
+import { fetchRequestsTotal, fetchDurationSeconds, fetchEscalationsTotal } from '../obs/metrics.js';
 
 const TIER_INDEX: Record<RenderTier, number> = { http: 0, lightpanda: 1, playwright: 2 };
 
@@ -57,8 +58,11 @@ export class RenderLadder {
         continue;
       }
 
+      const tierStart = Date.now();
       try {
         const result = await impl.render(req);
+        const elapsed = (Date.now() - tierStart) / 1000;
+        fetchDurationSeconds.observe({ tier }, elapsed);
 
         // Check if the result needs escalation
         const { escalate, targetTier } = needsEscalation(result.html, result.status, {});
@@ -68,6 +72,7 @@ export class RenderLadder {
           if (targetIdx > currentTierIdx && targetIdx <= maxTierIdx) {
             const record: EscalationRecord = { from: tier, to: targetTier, reason: 'heuristic' };
             escalations.push(record);
+            fetchEscalationsTotal.inc({ from_tier: tier, to_tier: targetTier, reason: 'heuristic' });
             Logger.debug(`[Ladder] Escalating ${req.url}: ${tier} → ${targetTier}`);
             currentTierIdx = targetIdx;
             continue;
@@ -75,14 +80,20 @@ export class RenderLadder {
         }
 
         // Success — update memo and return
+        fetchRequestsTotal.inc({ tier, outcome: 'success' });
         this.tierMemo.set(key, tier);
         return { ...result, escalations: [...escalations, ...result.escalations] };
 
       } catch (err) {
+        const elapsed = (Date.now() - tierStart) / 1000;
+        fetchDurationSeconds.observe({ tier }, elapsed);
+        fetchRequestsTotal.inc({ tier, outcome: 'error' });
         const nextTierIdx = currentTierIdx + 1;
         if (nextTierIdx <= maxTierIdx) {
           const nextTier = TIER_ORDER[nextTierIdx]!;
-          escalations.push({ from: tier, to: nextTier, reason: `error:${err instanceof Error ? err.message.slice(0, 60) : String(err)}` });
+          const reason = `error:${err instanceof Error ? err.message.slice(0, 60) : String(err)}`;
+          escalations.push({ from: tier, to: nextTier, reason });
+          fetchEscalationsTotal.inc({ from_tier: tier, to_tier: nextTier, reason: 'error' });
           currentTierIdx = nextTierIdx;
         } else {
           throw err;
