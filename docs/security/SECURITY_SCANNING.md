@@ -17,7 +17,7 @@ All output goes to `security-reports/` (gitignored — contains raw CVE and cred
 
 | Tool | Required for | Install |
 |---|---|---|
-| Node.js ≥ 18 | SCA, SAST, secrets, DAST | pre-installed |
+| Node.js ≥ 22 | SCA, SAST, secrets, DAST | pre-installed |
 | [semgrep](https://semgrep.dev) | SAST | see below |
 | [gitleaks](https://github.com/gitleaks/gitleaks) | Secrets scanning | see below |
 | [Docker](https://docs.docker.com/get-docker/) | DAST (OWASP ZAP) | install manually |
@@ -99,7 +99,7 @@ node scripts/scan-sast.mjs --offline
 
 `--offline` passes `--disable-version-check` to semgrep and uses only locally cached rules. Requires at least one prior online run.
 
-**Ignore file**: `.semgrepignore` (root of repo) excludes `node_modules/`, `dist/`, `coverage/`, test files, and `scripts/` (the scan scripts themselves contain intentional shell-exec patterns).
+**Ignore file**: `.semgrepignore` (root of repo) excludes `node_modules/`, `dist/`, `coverage/`, test files, and the specific scan scripts (`scripts/scan-*.mjs`, `scripts/security-scan.mjs`, `scripts/install-security-tools.sh`). `scripts/install-playwright.js` is intentionally NOT excluded — it ships in the published package as the `postinstall` hook and must remain under SAST coverage. Rule fixtures in `security/semgrep/fixtures/` are also excluded (they contain intentional violations).
 
 Output: `security-reports/sast-semgrep.json`, `security-reports/sast-report.md`
 
@@ -166,16 +166,20 @@ ZAP takes 2–5 minutes. The HTML report (`security-reports/dast-zap.html`) is h
 
 **Layer 2 — MCP application probes**
 
-Active HTTP probes specific to the MCP API surface that ZAP cannot discover automatically:
+Active HTTP probes specific to the MCP JSON-RPC surface that ZAP cannot discover automatically. **Note on ZAP's boundary:** ZAP does not speak JSON-RPC; `zap-api-scan.py` consumes OpenAPI/SOAP/GraphQL, none of which MCP is. ZAP's role is the HTTP envelope only (headers, TLS, CORS, cache directives, info disclosure). Layer 2 is the application-layer engine.
 
-| Probe | What it checks |
-|---|---|
-| Auth enforcement | `/mcp` rejects unauthenticated POST; `/healthz`/`/readyz` allow unauthenticated GET |
-| SSRF via tool arguments | `fetch_url` tool with AWS metadata, GCP metadata, RFC 1918, and link-local targets |
-| Injection via tool arguments | XSS, SSTI, command injection, path traversal, null byte, Log4Shell payloads in `web_search` |
-| Error disclosure | Stack traces and internal paths in error responses |
-| HTTP method enforcement | `GET/PUT/PATCH/DELETE /mcp` rejected |
-| CORS misconfiguration | Arbitrary `Origin` header not reflected back |
+Probes are **generated automatically from the live `tools/list` response** — every tool returned by the server is probed according to its parameter types. A coverage gate exits the scan with code 2 if any tool has zero generated probes. This prevents the false-confidence failure where a new tool is silently unprobed.
+
+| Probe category | Tools covered | Payload class |
+|---|---|---|
+| SSRF | fetch_url, fetch_urls, extract_urls, map_site, download_file, crawl_site, crawl_start | AWS/GCP metadata, RFC1918, link-local, file://, gopher:// |
+| Path traversal / arbitrary write | download_file.outputPath | /etc/passwd, /app/dist/index.js, relative traversal, null byte |
+| Header injection (CRLF) | fetch_url.headers, fetch_urls.headers | CRLF injection, forwarded Authorization, Host override |
+| Injection | web_search.query, crawl_start.query, crawl_{status,results,cancel}.jobId | XSS, SSTI, command, path traversal, null byte, Log4Shell |
+| Auth enforcement | /mcp (all methods) | Unauthenticated request with token set → 401 |
+| Error disclosure | /mcp (malformed body) | Stack traces and internal paths in error responses |
+| HTTP method enforcement | /mcp | GET/PUT/PATCH rejected; DELETE → 200 (correct: session teardown) |
+| CORS misconfiguration | /mcp | Arbitrary Origin header not reflected back |
 
 Exits 1 on `CRITICAL` or `HIGH` findings.
 
@@ -282,21 +286,23 @@ The DAST report is separate (`security-reports/dast-report.md`) and should be in
 
 ## Adding rules
 
-**SAST custom rules** — add a `.semgrep.yml` at the repo root or create `scripts/semgrep-local/`. Then extend `RULESETS` in `scripts/scan-sast.mjs`:
+**SAST custom rules** — add YAML rule files to `security/semgrep/`. They are already in `RULESETS` in `scripts/scan-sast.mjs`. Each rule **must** ship with a positive fixture (code that should fire) and a negative fixture (correct code that should not fire) in `security/semgrep/fixtures/`. Verify with `semgrep --test security/semgrep/`.
 
-```js
-const RULESETS = [
-  'p/owasp-top-ten',
-  'p/nodejs',
-  'p/typescript',
-  'p/secrets',
-  './scripts/semgrep-local',  // custom rules
-];
-```
+The five project invariants in `security/semgrep/project-invariants.yaml` are:
+1. `no-process-env-outside-config` — all env reads must go through `src/config.ts`
+2. `shell-injection-interpolation` — `execSync()` with non-literal argument
+3. `no-direct-fetch-bypass-guard` — direct `fetch()` in tools/services bypasses SSRF guard
+4. `sensitive-var-in-console-log` — query/token/key/secret in raw `console.log`
+5. `no-security-headers-in-writehead` — security headers in `res.writeHead()` override `applyBaseHeaders()`
 
 **Secrets custom patterns** — add to the `PATTERNS` array in `scripts/scan-secrets.mjs`.
 
-**DAST probes** — extend the Layer 2 section of `scripts/scan-dast.mjs`. Each probe follows the `probe(method, path, opts)` → `finding()/pass()` pattern.
+**DAST probes** — probes are **generated automatically** from the live `tools/list` response (Phase 4.1). Do NOT hand-extend the probe list. Instead:
+- To add probes for a **new parameter name**: add a `classifyParam` case in `buildProbesForTool()` in `scripts/scan-dast.mjs`
+- To add probes for a **new payload class**: add a payload constant (e.g. `NEW_PAYLOADS`) and handle the class in `evaluateProbeResponse()`
+- To whitelist a **no-attack-surface tool**: add it to `NO_ATTACK_SURFACE_TOOLS` in both `scripts/scan-dast.mjs` and `src/tools/definitions.test.ts`
+
+The coverage gate automatically fails the scan when a new tool appears in `tools/list` with no probe mapping. The vitest contract test in `src/tools/definitions.test.ts` catches the same gap at build time.
 
 ---
 

@@ -9,3 +9,22 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: "development"
+
+  # GitHub Actions — updates actions/checkout, setup-node, upload-artifact, etc.
+  # Targets main (development branch is the working branch; PRs merge to main).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+
+  # Docker — updates the Playwright base image tag in the Dockerfile.
+  # Tag-pinned images silently fall behind on security patches; version bumps
+  # surface here rather than waiting for a manual audit.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3

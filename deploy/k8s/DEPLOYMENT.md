@@ -112,7 +112,8 @@ All variables are set in `base/configmap.yaml` and overridden in overlay patches
 
 | Variable | Default | Description |
 |---|---|---|
-| `STORE_BACKEND` | `sqlite` | `auto \| memory \| sqlite \| redis`. `sqlite` writes to a temp file per pod (single-replica only). `redis` requires `STORE_REDIS_URL`. |
+| `STORE_BACKEND` | `sqlite` | `auto \| memory \| sqlite \| redis`. `sqlite` writes to `STORE_SQLITE_PATH` (default `/tmp/crawl.db` — see below) per pod (single-replica only). `redis` requires `STORE_REDIS_URL`. |
+| `STORE_SQLITE_PATH` | `/tmp/crawl.db` | Absolute path for the SQLite database. **Must be under `/tmp`** — the container runs as UID 1000 (`pwuser`) which cannot write to the root-owned `/app` directory. Both `deploy/k8s/base/` and `docker-compose.yml` set this explicitly. |
 | `STORE_REDIS_URL` | — | Redis/Valkey URL, e.g. `redis://valkey:6379`. Required when `STORE_BACKEND=redis`. |
 
 ### HTTP server
