@@ -125,6 +125,12 @@ export const rerankDurationSeconds = new Histogram({
   registers: [registry],
 });
 
+export const rerankerReady = new Gauge({
+  name: 'reranker_ready',
+  help: '1 when the reranker has completed warmup and is ready to score; 0 otherwise',
+  registers: [registry],
+});
+
 // Store layer
 export const storeOperationsTotal = new Counter({
   name: 'store_operations_total',

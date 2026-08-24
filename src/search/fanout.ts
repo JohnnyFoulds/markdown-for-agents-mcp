@@ -1,4 +1,4 @@
-import { AllProvidersFailedError } from '../utils/errors.js';
+import { AllProvidersFailedError, BotChallengeError } from '../utils/errors.js';
 import { Logger } from '../utils/logger.js';
 import { canonicalizeUrl } from './canonicalize.js';
 import { passesAllowedList, passesBlockedList, passesSystemBlocklist } from './filter.js';
@@ -78,6 +78,9 @@ async function runProvider(
   } catch (err) {
     breaker.recordFailure();
     searchProviderRequestsTotal.inc({ provider: provider.name, outcome: 'error' });
+    if (err instanceof BotChallengeError) {
+      searchDegradedTotal.inc({ reason: 'bot_challenge' });
+    }
     Logger.warn(`[fanout] ${provider.name} failed: ${err instanceof Error ? err.message : String(err)}`);
     return { provider: provider.name, error: err };
   }

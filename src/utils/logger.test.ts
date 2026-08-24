@@ -2,8 +2,8 @@
  * Logger unit tests
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Logger, LogLevel } from './logger.js';
+import { describe, it, test, expect, beforeEach, afterEach, vi } from 'vitest';
+import { Logger, LogLevel, redactQuery } from './logger.js';
 import { initializeConfig, resetConfig } from '../config.js';
 
 describe('Logger', () => {
@@ -254,6 +254,30 @@ describe('Logger', () => {
       const health = Logger.getHealth();
       expect(health.status).toBe('unhealthy');
       expect(health.metrics.errorCount).toBe(1);
+    });
+  });
+
+  // RED (doc-fix): LOG_REDACT_QUERIES config flag is declared but logger never reads it.
+  // redactQuery() must be implemented and exported from logger.ts.
+  describe('redactQuery — LOG_REDACT_QUERIES', () => {
+    test('returns a hashed/truncated value (not original) when LOG_REDACT_QUERIES=true', () => {
+      initializeConfig({ LOG_REDACT_QUERIES: 'true' });
+      const original = 'my very sensitive search query';
+      const result = redactQuery(original);
+      expect(result).not.toBe(original);
+      expect(result).not.toContain('sensitive');
+    });
+
+    test('returns the original string when LOG_REDACT_QUERIES=false', () => {
+      initializeConfig({ LOG_REDACT_QUERIES: 'false' });
+      const original = 'my query text';
+      expect(redactQuery(original)).toBe(original);
+    });
+
+    test('defaults to redacting (true) when config is not initialised', () => {
+      resetConfig();
+      const result = redactQuery('secret query');
+      expect(result).not.toContain('secret');
     });
   });
 

@@ -1,6 +1,7 @@
 import dns from 'node:dns';
 import { isPrivateIp } from '../utils/domainBlacklist.js';
 import { SsrfViolationError } from '../utils/errors.js';
+import { ssrfViolationsTotal } from '../obs/metrics.js';
 
 export type LookupFn = (
   hostname: string,
@@ -14,6 +15,7 @@ export const dnsGuardLookup: LookupFn = (hostname, options, callback) => {
     const addrs = Array.isArray(addresses) ? addresses : [{ address: addresses as unknown as string, family: 4 }];
     for (const { address } of addrs) {
       if (isPrivateIp(address)) {
+        ssrfViolationsTotal.labels({ stage: 'dns_guard' }).inc();
         return callback(new SsrfViolationError(hostname, address) as NodeJS.ErrnoException, '', 4);
       }
     }
@@ -28,7 +30,10 @@ export async function guardDns(hostname: string): Promise<string[]> {
       if (err) return reject(err);
       const addrs = Array.isArray(addresses) ? addresses : [{ address: addresses as unknown as string }];
       for (const { address } of addrs) {
-        if (isPrivateIp(address)) return reject(new SsrfViolationError(hostname, address));
+        if (isPrivateIp(address)) {
+          ssrfViolationsTotal.labels({ stage: 'dns_guard' }).inc();
+          return reject(new SsrfViolationError(hostname, address));
+        }
       }
       resolve(addrs.map(a => a.address));
     });

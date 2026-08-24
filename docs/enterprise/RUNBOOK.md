@@ -413,8 +413,9 @@ kubectl logs -n mcp-system deployment/mcp-server --tail=100 \
   | grep -i 'ssrf\|private\|blocked'
 ```
 
-The violation counter increments when the app-level `isPrivateIp()` guard fires — a
-request was attempted to a private/loopback/metadata IP.
+The violation counter increments when the `isPrivateIp()` guard fires — either in
+the HTTP DNS guard (`stage="dns_guard"`) or in the SOCKS5 CONNECT handler
+(`stage="socks5_connect"`). Check which stage to narrow the source.
 
 **Important:** The app-level guard is detect-and-discard. The authoritative SSRF
 control is the `mcp-egress` NetworkPolicy which blocks RFC1918/link-local at the

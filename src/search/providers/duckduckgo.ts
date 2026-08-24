@@ -1,7 +1,7 @@
 import { getConfig } from '../../config.js';
 import { httpClient as defaultHttpClient } from '../../http/client.js';
 import type { HttpClient } from '../../http/types.js';
-import { Logger } from '../../utils/logger.js';
+import { Logger, redactQuery } from '../../utils/logger.js';
 import { BotChallengeError } from '../../utils/errors.js';
 import { domainOf } from '../filter.js';
 import type { SearchProvider, SearchProviderQuery, ProviderResult } from '../types.js';
@@ -85,7 +85,7 @@ export class DuckDuckGoProvider implements SearchProvider {
       throw new BotChallengeError(searchUrl);
     }
 
-    Logger.debug(`[DDG] ${html.length} chars for "${q.query}"`);
+    Logger.debug(`[DDG] ${html.length} chars for "${redactQuery(q.query)}"`);
     return parseDuckDuckGoHtml(html).slice(0, q.maxResults);
   }
 }

@@ -73,7 +73,7 @@ Budget is **not** consumed by:
 | Search degraded | `increase(search_degraded_total[10m]) > 5` | warn |
 | Cache hit rate collapse | `rate(search_cache_total{result="hit"}[30m]) / rate(search_cache_total[30m]) < 0.1` (after warm-up) | warn |
 | All providers failing | `increase(search_degraded_total{reason="breaker_open"}[5m]) > 0 for all providers` | page |
-| Reranker not ready | `reranker_ready == 0 for > 120s` (needs gauge — Phase 1 work) | warn |
+| Reranker not ready | `reranker_ready == 0 for > 120s` | warn |
 | Browser pool saturated | `crawl_queue_depth > 50 for > 2m` | warn |
 
 ## Latency percentiles (measured — TBD)

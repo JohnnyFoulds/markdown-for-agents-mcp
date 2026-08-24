@@ -1,7 +1,17 @@
 import { describe, test, expect, beforeEach } from 'vitest';
 import { fanout, resetBreakers } from './fanout.js';
 import { AllProvidersFailedError, BotChallengeError } from '../utils/errors.js';
+import { registry } from '../obs/metrics.js';
 import type { SearchProvider, SearchProviderQuery, ProviderResult } from './types.js';
+
+async function getDegradedCount(reason: string): Promise<number> {
+  const metrics = await registry.getMetricsAsJSON();
+  const metric = metrics.find(m => m.name === 'search_degraded_total');
+  if (!metric) return 0;
+  const values = (metric as { values: Array<{ labels: Record<string, string>; value: number }> }).values;
+  const v = values.find(x => x.labels.reason === reason);
+  return v?.value ?? 0;
+}
 
 function fakeProvider(
   name: string,
@@ -101,6 +111,16 @@ describe('fanout', () => {
   test('BotChallengeError from a provider is treated as provider failure', async () => {
     const t1 = fakeProvider('ddg', 3, new BotChallengeError('https://duckduckgo.com'));
     await expect(fanout(Q, [t1], OPTS)).rejects.toBeInstanceOf(AllProvidersFailedError);
+  });
+
+  // RED (doc-fix): BotChallengeError must increment search_degraded_total{reason="bot_challenge"}
+  // so runbook §3 Case B alert fires. Currently only searchProviderRequestsTotal is incremented.
+  test('BotChallengeError increments search_degraded_total{reason="bot_challenge"}', async () => {
+    const before = await getDegradedCount('bot_challenge');
+    const t1 = fakeProvider('ddg', 3, new BotChallengeError('https://duckduckgo.com'));
+    await fanout(Q, [t1], OPTS).catch(() => {});
+    const after = await getDegradedCount('bot_challenge');
+    expect(after).toBe(before + 1);
   });
 
   test('falls back when tier-1 returns empty results', async () => {

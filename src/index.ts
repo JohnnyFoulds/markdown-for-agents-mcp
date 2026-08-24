@@ -13,7 +13,7 @@ import { TOOLS } from "./tools/definitions.js";
 import { initStores, closeStores, getStores } from "./store/factory.js";
 import { gracefulDrain, setReady, isReady } from "./server/lifecycle.js";
 import { Socks5Server } from "./proxy/socks5Server.js";
-import { registry as metricsRegistry } from "./obs/metrics.js";
+import { registry as metricsRegistry, rerankerReady as rerankerReadyGauge } from "./obs/metrics.js";
 import { getReranker } from "./rank/index.js";
 
 const require = createRequire(import.meta.url);
@@ -290,9 +290,12 @@ async function main() {
       if (config.RERANK_BACKEND !== 'none') {
         const reranker = getReranker();
         rerankerGuard = reranker;
-        reranker.warmup().catch(err =>
-          Logger.error(`[reranker] Warmup failed: ${err instanceof Error ? err.message : String(err)}`)
-        );
+        reranker.warmup()
+          .then(() => rerankerReadyGauge.set(1))
+          .catch(err => {
+            Logger.error(`[reranker] Warmup failed: ${err instanceof Error ? err.message : String(err)}`);
+            rerankerReadyGauge.set(0);
+          });
       }
 
       setReady(true);

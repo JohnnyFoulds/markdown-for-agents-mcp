@@ -65,8 +65,9 @@ DNS record that resolves to a public IP at check time but to a private IP at con
 time (DNS rebinding) bypasses `isPrivateIp()`. The guard is detect-and-discard on the
 hostname string, not on the resolved IP.
 
-The `ssrf_violations_total` metric counts detections by this guard. A spike in this
-metric is evidence that a DNS rebinding attempt is in progress, not that it was blocked.
+The `ssrf_violations_total{stage="dns_guard"}` metric counts detections by this guard.
+A spike is evidence that a DNS rebinding attempt is in progress, not necessarily that
+it was blocked (see §3.2 for the kernel-level control).
 
 ### 3.2 NetworkPolicy (`mcp-egress`)
 
@@ -123,8 +124,8 @@ blast radius; they do not eliminate it.
 
 ## 5. SOCKS5 `intercept` mode
 
-`intercept` mode (TLS MITM proxy) is **not implemented**. A request for `intercept`
-mode exits with error code 1 (`src/index.ts`, `--mode intercept` handler). This is a
+`intercept` mode (TLS MITM proxy) is **not implemented**. When `SOCKS5_LISTEN_MODE=intercept`
+is set in the environment, the server exits with code 1 (`src/index.ts`). This is a
 deliberate refusal to ship a TLS-MITM appliance; the functionality gap is a security
 positive. Do not implement it.
 

@@ -32,8 +32,9 @@ describe('warmup wiring (source inspection)', () => {
   });
 
   it('warmup() is kicked off without awaiting (non-blocking)', () => {
-    // Must use .catch() rather than await so model load does not block startup
-    expect(src).toContain('warmup().catch(');
+    // warmup() must not be awaited — it should use .then()/.catch() chaining
+    expect(src).toContain('.warmup()');
+    expect(src).toContain('.catch(');
     // Must NOT use 'await reranker.warmup()' or 'await getReranker().warmup()'
     expect(src).not.toContain('await reranker.warmup()');
     expect(src).not.toContain('await getReranker().warmup()');

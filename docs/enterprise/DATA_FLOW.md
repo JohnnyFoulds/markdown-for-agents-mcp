@@ -94,8 +94,9 @@ in some configurations. The domain LRU is bounded to prevent cardinality explosi
 
 - **Query text**: queries are used to build the search request and then discarded.
   They are not written to any persistent store. The result cache key is a SHA-256 hash
-  of the query (first 16 hex chars) — the original query string is not recoverable from
-  the cache key.
+  of the full options object `{query, maxResults, allowedDomains, blockedDomains,
+  searchDepth, chunksPerSource}` (first 16 hex chars), prefixed by the engine profile.
+  The original query string is not recoverable from the cache key.
 - **Full page content**: fetched Markdown is held in memory for the duration of the
   tool call, returned to the agent, and then garbage-collected. It is never written to
   disk or a database.

@@ -2,7 +2,21 @@
  * Logger utility for fetch performance metrics
  */
 
+import { createHash } from 'node:crypto';
 import { getConfig } from '../config.js';
+
+/**
+ * Returns a privacy-safe representation of a query string.
+ * When LOG_REDACT_QUERIES=true (default), returns the first 8 hex chars of
+ * its SHA-256 hash so queries are identifiable for debugging without storing
+ * the original text. When false, returns the query unchanged.
+ */
+export function redactQuery(query: string): string {
+  let redact = true;
+  try { redact = getConfig().LOG_REDACT_QUERIES; } catch { /* config not initialised — default true */ }
+  if (!redact) return query;
+  return `[redacted:${createHash('sha256').update(query).digest('hex').slice(0, 8)}]`;
+}
 
 /**
  * Log levels for structured logging
