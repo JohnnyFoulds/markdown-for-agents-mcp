@@ -12,11 +12,23 @@ interface CircuitState {
   openUntil: number;
 }
 
+interface LightpandaConfig {
+  LIGHTPANDA_ENABLED: boolean;
+  LIGHTPANDA_CDP_URL: string;
+  LIGHTPANDA_MAX_FAILURE_RATE: number;
+}
+
 export class LightpandaTier implements RenderTierImpl {
   readonly tier = 'lightpanda' as const;
   private circuit: CircuitState = { failures: 0, total: 0, openUntil: 0 };
+  private readonly injectedCfg: LightpandaConfig | undefined;
 
-  private cfg() {
+  constructor(cfg?: LightpandaConfig) {
+    this.injectedCfg = cfg;
+  }
+
+  private cfg(): LightpandaConfig {
+    if (this.injectedCfg) return this.injectedCfg;
     try {
       return getConfig();
     } catch {

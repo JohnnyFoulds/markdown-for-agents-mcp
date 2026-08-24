@@ -71,7 +71,7 @@ services:
     image: lightpanda/browser:0.3.7
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9222/json"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/9222' 2>/dev/null"]
       interval: 5s
       timeout: 3s
       retries: 5
