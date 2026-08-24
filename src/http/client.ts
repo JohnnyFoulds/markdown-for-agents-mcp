@@ -256,9 +256,13 @@ class UndiciHttpClient implements HttpClient {
     throw new Error(`Exhausted download attempts for ${req.url}`);
   }
 
+  setRateLimitStore(store: import('../store/types.js').RateLimitStore): void {
+    this.rateLimiter.setStore(store);
+  }
+
   async close(): Promise<void> {
     await (this.dispatcher as Agent).close?.();
   }
 }
 
-export const httpClient: HttpClient = new UndiciHttpClient();
+export const httpClient = new UndiciHttpClient();

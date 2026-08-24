@@ -1,0 +1,79 @@
+version: "3.9"
+
+# Two services from the same image:
+#   mcp-server  — serves MCP over HTTP in stateless mode
+#   mcp-worker  — runs the crawl worker loop, no HTTP listener
+#
+# Add Redis and override STORE_BACKEND=redis for multi-replica deployments.
+# Single-replica: default sqlite store works without Redis.
+
+services:
+  mcp-server:
+    build: .
+    image: markdown-for-agents-mcp:local
+    command: ["node", "dist/index.js", "--http", "3000"]
+    ports:
+      - "3000:3000"
+    environment:
+      MCP_ROLE: server
+      MCP_HTTP_MODE: stateless
+      STORE_BACKEND: "${STORE_BACKEND:-sqlite}"
+      STORE_REDIS_URL: "${STORE_REDIS_URL:-}"
+      MCP_AUTH_TOKEN: "${MCP_AUTH_TOKEN:-}"
+      RATE_LIMIT_PER_HOST_RPS: "${RATE_LIMIT_PER_HOST_RPS:-2}"
+      RATE_LIMIT_BURST: "${RATE_LIMIT_BURST:-5}"
+      SHUTDOWN_DRAIN_MS: "5000"
+      SHUTDOWN_TIMEOUT_MS: "30000"
+      LOG_FORMAT: json
+    # Provide 1 GB tmpfs at /dev/shm so Chromium renderers don't exhaust the
+    # Docker default 64 MB and crash under concurrency.
+    shm_size: 1gb
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      redis:
+        condition: service_healthy
+        required: false
+
+  mcp-worker:
+    image: markdown-for-agents-mcp:local
+    command: ["node", "dist/index.js", "--role=worker"]
+    environment:
+      MCP_ROLE: worker
+      STORE_BACKEND: "${STORE_BACKEND:-sqlite}"
+      STORE_REDIS_URL: "${STORE_REDIS_URL:-}"
+      CRAWL_MAX_CONCURRENCY: "${CRAWL_MAX_CONCURRENCY:-5}"
+      CRAWL_QUEUE_LEASE_MS: "30000"
+      CRAWL_WORKER_POLL_MS: "1000"
+      SHUTDOWN_DRAIN_MS: "5000"
+      SHUTDOWN_TIMEOUT_MS: "30000"
+      LOG_FORMAT: json
+    shm_size: 1gb
+    restart: unless-stopped
+    depends_on:
+      - mcp-server
+
+  # Optional Redis — uncomment and set STORE_BACKEND=redis to share state
+  # across multiple mcp-server and mcp-worker replicas.
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    profiles:
+      - redis
+
+volumes:
+  redis-data:

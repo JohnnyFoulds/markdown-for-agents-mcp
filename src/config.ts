@@ -97,6 +97,20 @@ const configSchema = z.object({
   MCP_ROLE: z.string().default('server').refine(v => ['server', 'worker', 'both'].includes(v), {
     message: 'MCP_ROLE must be server, worker, or both',
   }),
+
+  // HTTP transport mode (Phase 7)
+  // 'stateless' = no session affinity, any replica serves any request (default for N-replica)
+  // 'session'   = stateful sessions, requires Ingress affinity on Mcp-Session-Id
+  MCP_HTTP_MODE: z.string().default('stateless').refine(v => ['stateless', 'session'].includes(v), {
+    message: 'MCP_HTTP_MODE must be stateless or session',
+  }),
+
+  // Graceful drain (Phase 7)
+  SHUTDOWN_DRAIN_MS: z.string().default('5000').transform(Number),
+  SHUTDOWN_TIMEOUT_MS: z.string().default('30000').transform(Number),
+
+  // Metrics (Phase 7)
+  METRICS_BIND_PORT: z.string().optional().transform(v => v ? Number(v) : undefined),
 });
 
 export type Config = z.infer<typeof configSchema>;

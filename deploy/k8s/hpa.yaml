@@ -1,0 +1,68 @@
+# HPA for mcp-server: scale on in-flight requests (better signal than CPU for browser workloads)
+# Requires prometheus-adapter with crawl_queue_depth and mcp_inflight_requests custom metrics.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mcp-server-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mcp-server
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    # Primary: in-flight request count. Target 6 per pod.
+    - type: Pods
+      pods:
+        metric:
+          name: mcp_inflight_requests
+        target:
+          type: AverageValue
+          averageValue: "6"
+    # Secondary: CPU as a floor (browser launch spikes are CPU-intensive)
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      # Warm browsers are expensive to lose — hold 5 min before scaling down
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+---
+# HPA for mcp-worker: scale on crawl queue depth
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mcp-worker-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mcp-worker
+  minReplicas: 2
+  maxReplicas: 50
+  metrics:
+    # Primary: queue depth. Target 50 pending items per worker pod.
+    - type: External
+      external:
+        metric:
+          name: crawl_queue_depth
+        target:
+          type: AverageValue
+          averageValue: "50"
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300

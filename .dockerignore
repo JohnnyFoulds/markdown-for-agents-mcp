@@ -1,0 +1,34 @@
+# Version control
+.git
+.gitignore
+
+# Dev tooling
+node_modules
+.npm
+*.log
+
+# Test artefacts
+coverage
+*.test.ts
+*.spec.ts
+__fixtures__
+__contract__
+
+# TypeScript sources — dist/ is used at runtime
+src
+
+# Docs and config not needed in image
+*.md
+.env*
+.eslintrc*
+.prettierrc*
+vitest.config*
+tsconfig*.json
+
+# k8s / deploy (baked into image is wrong — mount as ConfigMap or use helm)
+deploy
+
+# Playwright state dir (downloaded browsers — runtime stage has them)
+.playwright
+playwright-report
+test-results

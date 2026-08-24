@@ -7,9 +7,8 @@ import type { KeyValueStore, RateLimitStore, JobQueue, Stores } from '../types.j
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function loadIoredis(): Promise<any> {
   try {
-    // @ts-expect-error optional dependency not in devDependencies
-    const m = await import('ioredis');
-    return m.default ?? m;
+    const m = await import('ioredis' as string) as { default?: unknown } & Record<string, unknown>;
+    return (m.default ?? m) as unknown;
   } catch {
     throw new Error(
       'STORE_BACKEND=redis requires the ioredis package. Install it with: npm install ioredis'
