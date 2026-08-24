@@ -1,0 +1,67 @@
+name: DAST
+
+# Run on explicit trigger or nightly against the development branch.
+# NEVER run with --active against main/production — active mode sends attack
+# payloads and must only target isolated non-production deployments.
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Target URL (default: http://localhost:3000 via compose)'
+        required: false
+        default: ''
+      active:
+        description: 'Run active ZAP scan (attack payloads — non-production only)'
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    # Nightly at 01:00 UTC against development
+    - cron: '0 1 * * *'
+
+jobs:
+  dast:
+    name: DAST Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - name: Start server via docker compose
+        run: |
+          docker compose up -d
+          # Wait for /healthz to become ready (up to 60s)
+          for i in $(seq 1 12); do
+            curl -sf http://localhost:3000/healthz && break
+            echo "Waiting for server... ($i/12)"
+            sleep 5
+          done
+          curl -sf http://localhost:3000/healthz || (docker compose logs && exit 1)
+        env:
+          # Use anonymous mode for CI — no secrets required for the DAST scan itself
+          MCP_AUTH_ALLOW_ANONYMOUS: 'true'
+
+      - name: Run DAST scan
+        run: |
+          BASE="${{ github.event.inputs.base_url || 'http://localhost:3000' }}"
+          ACTIVE_FLAG="${{ github.event.inputs.active == 'true' && '--active' || '' }}"
+          node scripts/scan-dast.mjs --base "$BASE" $ACTIVE_FLAG
+        env:
+          MCP_AUTH_ALLOW_ANONYMOUS: 'true'
+
+      - name: Upload DAST reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dast-reports
+          path: security-reports/dast-*
+          retention-days: 30
+
+      - name: Shut down server
+        if: always()
+        run: docker compose down

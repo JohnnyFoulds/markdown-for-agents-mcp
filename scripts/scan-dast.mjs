@@ -168,9 +168,15 @@ if (!args['skip-zap']) {
   console.log(`[DAST] ZAP target: ${zapTarget}`);
   console.log('[DAST] This takes 2–5 minutes…\n');
 
+  // Mount the repo security/ directory so the rules-config file is accessible
+  // inside the container at /zap/security/zap-rules.conf.
+  const zapRulesConf = `${process.cwd()}/security/zap-rules.conf`;
+  const hasRulesConf = existsSync(zapRulesConf);
+
   const dockerArgs = [
     'run', '--rm',
     '-v', `${process.cwd()}/${OUT}:/zap/wrk/:rw`,
+    ...(hasRulesConf ? ['-v', `${zapRulesConf}:/zap/security/zap-rules.conf:ro`] : []),
     ...(isLinux ? ['--network', 'host'] : ['--add-host', 'host.docker.internal:host-gateway']),
     'ghcr.io/zaproxy/zaproxy:stable',
     zapScript,
@@ -178,6 +184,7 @@ if (!args['skip-zap']) {
     '-J', 'dast-zap.json',
     '-r', 'dast-zap.html',
     '-I',  // don't fail on warnings — we handle exit codes ourselves
+    ...(hasRulesConf ? ['-c', '/zap/security/zap-rules.conf'] : []),
     ...(args.active ? [] : []),
   ];
 

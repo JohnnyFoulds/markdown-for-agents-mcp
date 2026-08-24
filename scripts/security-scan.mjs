@@ -119,7 +119,16 @@ function countFindings(jsonFile, severities) {
 }
 
 const scaCounts     = countFindings('sca-npm-audit.json', []);
-const sastCounts    = { ...countFindings('sast-semgrep.json', []), ...countFindings('sast-custom.json', []) };
+// Bug fix: spread OVERWRITES keys — sum counts instead so custom-rule findings
+// are added to semgrep findings, not replaced by them.
+const semgrepCounts = countFindings('sast-semgrep.json', []);
+const customCounts  = countFindings('sast-custom.json', []);
+const sastCounts    = {
+  critical: semgrepCounts.critical + customCounts.critical,
+  high:     semgrepCounts.high     + customCounts.high,
+  moderate: semgrepCounts.moderate + customCounts.moderate,
+  low:      semgrepCounts.low      + customCounts.low,
+};
 const secretCounts  = countFindings('secrets-custom.json', []);
 
 function totalHigh(c) { return (c.critical ?? 0) + (c.high ?? 0); }
@@ -156,7 +165,7 @@ const report = `# Security Scan — Consolidated Report
 | SCA (npm audit)    | ${args['skip-sca']     ? '⏭️ SKIPPED' : statusEmoji(results['SCA']?.exitCode)}    | ${scaCounts.critical}  | ${scaCounts.high}  | ${scaCounts.moderate}  | ${scaCounts.low}  |
 | SAST (semgrep+custom) | ${args['skip-sast']  ? '⏭️ SKIPPED' : statusEmoji(results['SAST']?.exitCode)}   | ${sastCounts.critical} | ${sastCounts.high} | ${sastCounts.moderate} | ${sastCounts.low} |
 | Secrets            | ${args['skip-secrets'] ? '⏭️ SKIPPED' : statusEmoji(results['Secrets']?.exitCode)} | — | ${secretCounts.critical + secretCounts.high} | — | — |
-| DAST               | ${dastReport ? '✅ (prior run)' : '⏭️ Not run — requires live server'} | — | — | — | — |
+| DAST               | ${dastReport ? (() => { const m = dastReport.match(/\*\*Scanned:\*\*\s*(\S+)/); return m ? `✅ Prior run (${m[1]})` : '✅ Prior run (timestamp unknown)'; })() : '⏭️ Not run — requires live server'} | — | — | — | — |
 
 **To run DAST:** \`node scripts/scan-dast.mjs --base http://localhost:3000 --token \$MCP_AUTH_TOKEN\`
 

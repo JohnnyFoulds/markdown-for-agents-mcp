@@ -12,8 +12,16 @@ security-reports/
 **/__mocks__/
 **/__fixtures__/
 
-# Scripts — contain intentional shell exec patterns (the scan scripts themselves)
-scripts/
+# Security scan scripts — these intentionally contain shell exec patterns
+# (they ARE the scanners; flagging them would produce pure noise).
+# install-playwright.js is shipped in package.json "files" and runs as
+# postinstall — it is NOT excluded here so SAST covers the published surface.
+scripts/scan-dast.mjs
+scripts/scan-sast.mjs
+scripts/scan-sca.mjs
+scripts/scan-secrets.mjs
+scripts/security-scan.mjs
+scripts/install-security-tools.sh
 
 # Generated / vendored
 *.min.js

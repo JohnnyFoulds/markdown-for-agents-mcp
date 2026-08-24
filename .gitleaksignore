@@ -1,0 +1,14 @@
+# gitleaks suppression file
+# Each line is a SHA256 of the finding fingerprint (file:line:rule).
+# Add entries with: gitleaks detect --report-format json | jq '.[] | .Fingerprint'
+#
+# ONLY add entries that have been verified as test fixtures / dummy values.
+# For real leaked secrets: rotate immediately, THEN add to this file.
+#
+# Verified dummy API-key fixtures in test files
+# These use the `sk-` prefix which trips generic API-key heuristics, but
+# the values are deliberately synthetic and never used for real API calls.
+#
+# src/search/fanout.paid.test.ts — sk-brave-test, sk-serper-test
+# Verified: initializeConfig() test helpers with hardcoded dummy values;
+# gitleaks p/generic-api-key fires on the sk- prefix.
