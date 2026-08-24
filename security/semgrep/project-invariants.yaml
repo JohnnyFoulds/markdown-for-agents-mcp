@@ -18,25 +18,25 @@ rules:
       - pattern: process.env[$VAR]
     paths:
       exclude:
-        - src/config.ts
+        - "**/src/config.ts"
         - "**/*.test.ts"
         - "**/*.test.js"
-        - scripts/
+        - "scripts/"
         - "*.config.ts"
         - "*.config.js"
-        - vitest.config.ts
+        - "vitest.config.ts"
 
-  # ── 2. Shell injection via template literal or concatenation ───────────────
-  # execSync()/exec() with a template literal or variable is a shell injection
-  # risk if any interpolated value is caller-supplied. Static string literals
+  # ── 2. Shell injection via template literal or variable ────────────────────
+  # execSync()/exec() with a non-literal argument is a shell injection risk if
+  # the argument contains any caller-supplied value. Static string literals
   # are acceptable (e.g. execSync('npx playwright install chromium')).
   # Use spawn(cmd, argsArray, {shell: false}) for parameterised commands.
   - id: shell-injection-interpolation
     message: >
-      execSync() or exec() called with a non-literal argument. If the argument
-      contains any caller-supplied value, this is exploitable shell injection.
-      Use spawn(cmd, argsArray, {shell: false}) to avoid shell metacharacter
-      interpretation. Static string literals are acceptable.
+      execSync() called with a non-literal argument. If the argument contains any
+      caller-supplied value, this is exploitable shell injection. Use spawn(cmd,
+      argsArray, {shell: false}) to avoid shell metacharacter interpretation.
+      Static string literals are acceptable (e.g. execSync("npx ...")).
     severity: ERROR
     languages: [typescript, javascript]
     patterns:
@@ -50,55 +50,60 @@ rules:
   # code bypasses every one of these controls.
   - id: no-direct-fetch-bypass-guard
     message: >
-      Direct fetch() call in src/tools/ or src/services/ bypasses the SSRF
-      guard, DNS guard, and rate limiter in src/http/client.ts. Use the HttpClient
-      (or one of the approved service wrappers) instead so every outbound request
-      is validated against the domain blocklist and rate-limited.
+      Direct fetch() call in src/tools/ or src/services/ bypasses the SSRF guard,
+      DNS guard, and rate limiter in src/http/client.ts. Use the HttpClient (or one
+      of the approved service wrappers) so every outbound request is validated
+      against the domain blocklist and rate-limited.
     severity: WARNING
     languages: [typescript]
     pattern: fetch($URL, ...)
     paths:
       include:
-        - src/tools/
-        - src/services/
+        - "**/src/tools/"
+        - "**/src/services/"
 
-  # ── 4. Sensitive variable names in raw console.log / console.error ─────────
+  # ── 4. Sensitive variable names logged directly ────────────────────────────
   # Variables named query, token, key, or secret must go through redactQuery()
-  # (src/utils/logger.ts) before being logged. POPIA: query text may contain
-  # personal information; tokens and keys are credentials.
-  # This rule catches the direct case — a taint analysis would catch the full
-  # propagation, but the direct pattern catches the most common mistake.
+  # (src/utils/logger.ts) before logging. POPIA: query text may contain personal
+  # information; tokens and keys are credentials.
+  # This rule catches the direct-log case: console.log(query).
   - id: sensitive-var-in-console-log
     message: >
-      A variable named query/token/key/secret is passed directly to console.log
-      or console.error. This may log personal information (POPIA) or credentials.
-      Use redactQuery(query) from src/utils/logger.ts, or pass the value through
-      a structured logging call that respects LOG_REDACT_QUERIES.
+      Variable named query/token/key/secret logged directly to console. This may
+      expose personal information (POPIA) or credentials. Call redactQuery(value)
+      from src/utils/logger.ts first, or route through a Logger call that respects
+      LOG_REDACT_QUERIES.
     severity: WARNING
     languages: [typescript, javascript]
     patterns:
-      - pattern: console.log($FUNC($ARG))
-      - pattern-not: console.log($FUNC(redactQuery($ARG)))
+      - pattern: console.log($ARG)
       - metavariable-regex:
           metavariable: $ARG
           regex: "^(query|token|key|secret|password|apiKey|api_key)$"
 
-  # ── 5. No inline security headers in res.writeHead() ──────────────────────
+  # ── 5. Security headers must not be set via res.writeHead() ───────────────
   # Cache-Control and X-Content-Type-Options must be set via applyBaseHeaders()
-  # using res.setHeader(). If you put them inside res.writeHead(status, {...}),
-  # they OVERRIDE the applyBaseHeaders() call because writeHead merges its headers
-  # object over all previously-set headers — exactly backwards from what you want.
+  # using res.setHeader(). Setting them inside res.writeHead(status, headers)
+  # OVERRIDES the applyBaseHeaders() call rather than composing with it, because
+  # writeHead() merges its headers object over all previously-set headers.
   # Phase 2.3 established this pattern; this rule guards against regression.
+  #
+  # Note: patterns containing object literals with colons must use YAML block
+  # scalars (|) to avoid YAML mapping value ambiguity.
   - id: no-security-headers-in-writehead
     message: >
-      Cache-Control or X-Content-Type-Options set inside res.writeHead() headers
-      overrides applyBaseHeaders() rather than composing with it, because writeHead()
-      merges its object over all previously-set headers. Set these headers via
-      applyBaseHeaders(res) using res.setHeader() before the response instead.
+      Cache-Control or X-Content-Type-Options in res.writeHead() headers object
+      overrides applyBaseHeaders() rather than composing with it. Use
+      applyBaseHeaders(res) via res.setHeader() before the response instead.
+      Phase 2.3 established this pattern; do not bypass it.
     severity: WARNING
     languages: [typescript]
     pattern-either:
-      - pattern: $RES.writeHead($S, {'Cache-Control': $V, ...})
-      - pattern: $RES.writeHead($S, {"Cache-Control": $V, ...})
-      - pattern: $RES.writeHead($S, {'X-Content-Type-Options': $V, ...})
-      - pattern: $RES.writeHead($S, {"X-Content-Type-Options": $V, ...})
+      - pattern: |
+          $RES.writeHead($S, {'Cache-Control': $V, ...})
+      - pattern: |
+          $RES.writeHead($S, {"Cache-Control": $V, ...})
+      - pattern: |
+          $RES.writeHead($S, {'X-Content-Type-Options': $V, ...})
+      - pattern: |
+          $RES.writeHead($S, {"X-Content-Type-Options": $V, ...})
