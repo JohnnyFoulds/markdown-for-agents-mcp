@@ -138,8 +138,11 @@ describe('Phase 4.1 — DAST probe coverage contract', () => {
     }
   });
 
-  it('injection-surface tools include web_search, crawl_start, and crawl job management tools', () => {
-    const expected = ['web_search', 'crawl_start', 'crawl_status', 'crawl_results', 'crawl_cancel'];
+  it('injection-surface tools include web_search and crawl job management tools', () => {
+    // crawl_start is no longer in this list: it previously had a `query` field that was accepted,
+    // persisted, and never read (POPIA Phase 0 dead-field removal). The injection surface was the
+    // dead field. crawl_start is still probed for SSRF via its `url` parameter.
+    const expected = ['web_search', 'crawl_status', 'crawl_results', 'crawl_cancel'];
     const injectionTools = TOOLS.filter(t => getProbeClasses(t).includes('injection')).map(t => t.name);
     for (const name of expected) {
       expect(injectionTools, `Tool "${name}" should be classified as injection`).toContain(name);

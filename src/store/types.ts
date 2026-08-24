@@ -31,8 +31,6 @@ export interface JobSpec {
   includeSelector?: string;
   excludeSelectors?: string[];
   outputFormat?: 'markdown' | 'html' | 'text';
-  query?: string;
-  relevanceThreshold?: number;
   timeout?: number;
 }
 

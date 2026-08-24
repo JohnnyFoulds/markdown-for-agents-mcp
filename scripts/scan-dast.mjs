@@ -481,7 +481,7 @@ for (const path of ['/healthz', '/readyz']) {
 //   ssrf      → url / urls parameters
 //   path      → *Path / filename parameters (e.g. download_file.outputPath)
 //   headers   → z.record(string,string) header maps (e.g. fetch_url.headers)
-//   injection → query / jobId string parameters
+//   injection → jobId string parameters (query removed in POPIA Phase 0 — dead field)
 //
 // Coverage gate: any tool from tools/list with zero generated probes that is
 // NOT in NO_ATTACK_SURFACE_TOOLS causes the scan to exit 2. This converts

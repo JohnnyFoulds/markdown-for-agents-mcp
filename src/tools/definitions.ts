@@ -429,8 +429,6 @@ export const TOOLS: ToolDefinition[] = [
       includeSelector: z.string().optional(),
       excludeSelectors: z.array(z.string()).optional(),
       outputFormat: z.enum(['markdown', 'html', 'text']).optional(),
-      query: z.string().optional().describe("Relevance query — pages scored below relevanceThreshold are skipped"),
-      relevanceThreshold: z.number().optional().describe("Minimum relevance score 0–1 (requires query)"),
       timeout: z.number().optional(),
     },
     outputSchema: crawlStartOutputSchema,
@@ -448,8 +446,6 @@ export const TOOLS: ToolDefinition[] = [
         includeSelector: a.includeSelector as string | undefined,
         excludeSelectors: a.excludeSelectors as string[] | undefined,
         outputFormat: a.outputFormat as 'markdown' | 'html' | 'text' | undefined,
-        query: a.query as string | undefined,
-        relevanceThreshold: a.relevanceThreshold as number | undefined,
         timeout: a.timeout as number | undefined,
       });
       return { jobId, status: 'running', rootUrl: String(a.url) };

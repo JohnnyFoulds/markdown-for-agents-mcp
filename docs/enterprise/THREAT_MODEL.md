@@ -146,10 +146,13 @@ blast radius; they do not eliminate it.
 
 **`download_file.outputPath` filesystem write constraint:** The tool accepts an
 arbitrary absolute path and writes fetched content there. Under UID 1000 (`pwuser`),
-the only writable locations are `/tmp` and `/dev/shm` (both bound `emptyDir` volumes).
-A caller passing `/app/dist/index.js` or `/etc/cron.d/x` gets `EACCES` — this is an
-accidental control, not a designed one. A deployment that adds a persistent volume
-mounted at a path writable by UID 1000 removes this containment.
+writable locations include `/tmp` and `/dev/shm` (bound `emptyDir` volumes) **and
+`/home/pwuser`** — `readOnlyRootFilesystem` is omitted in both `server.yaml` and
+`worker.yaml`, so the container rootfs is entirely writable by UID 1000. A caller
+passing `/etc/cron.d/x` gets `EACCES` (root-owned), but `/home/pwuser/.profile`
+or `/app/dist/index.js` (group-writable build artefacts) may not. This is an
+accidental partial control, not a designed one. A deployment that adds a persistent
+volume mounted at a path writable by UID 1000 expands this surface further.
 
 ---
 
@@ -209,7 +212,7 @@ See `docs/enterprise/DATA_FLOW.md` for a full inventory of what leaves the clust
 | SSRF via SOCKS5 proxy | Policy check (lexical) | Proxy-resolved DNS, no pinning |
 | Auth bypass | Timing-safe bearer token; fail-closed HTTP startup | Shared secret; no per-user isolation |
 | Chromium RCE → container escape | `--no-sandbox` + `runAsNonRoot` + `capabilities: drop ALL` | Renderer RCE still gets container with NetworkPolicy-limited egress |
-| `download_file` path write | UID 1000 — only `/tmp` and `/dev/shm` writable | Accidental containment; a writable volume mount removes it |
+| `download_file` path write | UID 1000 — `/tmp`, `/dev/shm`, `/home/pwuser` writable (rootfs not read-only) | No directory allowlist; no designed containment |
 | Missing response security headers | `applyBaseHeaders()` sets `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` | Headers omitted by SDK transport calls before `applyBaseHeaders()` runs |
 | API key exfiltration | K8s Secrets + no logging | K8s Secret access via compromised service account |
 | Query privacy | `LOG_REDACT_QUERIES=true` + no persistent query log | Queries reach configured search providers |
