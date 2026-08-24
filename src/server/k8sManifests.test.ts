@@ -1,14 +1,13 @@
 /**
- * Phase 1 — k8s security posture (TDD — these tests are RED before the fix).
+ * k8s security posture — static manifest assertions.
  *
- * Asserts that server.yaml and worker.yaml have container-level securityContext
- * fields, and that networkpolicy.yaml declares an Ingress rule, and that
- * Dockerfile sets USER pwuser before CMD.
+ * Phase 1: container securityContext, Ingress NetworkPolicy, Dockerfile USER.
+ * Phase 2.2: STORE_SQLITE_PATH must be set to an absolute /tmp path in both
+ *   the k8s configmap and docker-compose.yml, or UID 1000 cannot write the db.
  *
- * RED reason (before fix):
- *   server.yaml and worker.yaml have no securityContext at all.
- *   networkpolicy.yaml has only policyTypes:[Egress].
- *   Dockerfile has no USER directive.
+ * Phase 2.2 RED reason (before fix):
+ *   configmap.yaml has no STORE_SQLITE_PATH at all; app defaults to 'crawl.db'
+ *   relative to WORKDIR /app — UID 1000 cannot write there → CrashLoopBackOff.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -18,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const K8S_BASE = join(__dirname, '../../deploy/k8s/base');
+const REPO_ROOT = join(__dirname, '../..');
 
 function readManifest(file: string): string {
   return readFileSync(join(K8S_BASE, file), 'utf8');
@@ -56,6 +56,21 @@ describe('k8s manifests — Ingress NetworkPolicy', () => {
 
   it('allows traffic to port 3000', () => {
     expect(content).toMatch(/port:\s*3000/);
+  });
+});
+
+describe('k8s + compose — SQLite write path (Phase 2.2)', () => {
+  it('configmap.yaml sets STORE_SQLITE_PATH to an absolute /tmp path', () => {
+    const content = readManifest('configmap.yaml');
+    // Must be absolute — UID 1000 cannot write to the default 'crawl.db'
+    // relative to /app (root-owned WORKDIR). /tmp is writable by all users.
+    expect(content).toMatch(/STORE_SQLITE_PATH:\s*["']?\/tmp\//);
+  });
+
+  it('docker-compose.yml sets STORE_SQLITE_PATH to an absolute /tmp path', () => {
+    const compose = readFileSync(join(REPO_ROOT, 'docker-compose.yml'), 'utf8');
+    // The compose fix (commit 5ffb0dd) also needs to be guarded against revert.
+    expect(compose).toMatch(/STORE_SQLITE_PATH:.*\/tmp\//);
   });
 });
 

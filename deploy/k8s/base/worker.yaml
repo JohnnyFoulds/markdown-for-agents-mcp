@@ -28,6 +28,9 @@ spec:
                 - ALL
             seccompProfile:
               type: RuntimeDefault
+            # readOnlyRootFilesystem omitted: Chromium writes to /tmp at runtime.
+            # Mitigated by runAsNonRoot + caps drop + NetworkPolicy egress controls.
+            # See server.yaml for the same comment on the server securityContext.
           envFrom:
             - configMapRef:
                 name: mcp-config
@@ -48,6 +51,9 @@ spec:
           volumeMounts:
             - name: dshm
               mountPath: /dev/shm
+            # /tmp — SQLite db (STORE_SQLITE_PATH=/tmp/crawl.db) and Chromium temp files
+            - name: tmp
+              mountPath: /tmp
           livenessProbe:
             exec:
               command: ["node", "-e", "process.exit(0)"]
@@ -58,3 +64,6 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 1Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi

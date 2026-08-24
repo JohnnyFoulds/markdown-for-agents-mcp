@@ -74,6 +74,11 @@ spec:
             # 1 GiB tmpfs — Chrome exhausts the default 64 MiB /dev/shm under concurrency
             - name: dshm
               mountPath: /dev/shm
+            # /tmp — SQLite db (STORE_SQLITE_PATH=/tmp/crawl.db) and Chromium
+            # temp files; bounded emptyDir prevents charges to node ephemeral
+            # storage and keeps writes within the pod lifecycle.
+            - name: tmp
+              mountPath: /tmp
           lifecycle:
             preStop:
               exec:
@@ -103,6 +108,9 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 1Gi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 2Gi
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone

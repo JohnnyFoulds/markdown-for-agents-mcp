@@ -9,6 +9,12 @@ data:
   # For an external Redis/Valkey instance, set STORE_BACKEND and STORE_REDIS_URL
   # in your overlay's configmap patch.
   STORE_BACKEND: "sqlite"
+  # STORE_SQLITE_PATH must be absolute and writable by UID 1000 (pwuser).
+  # The default 'crawl.db' is relative to WORKDIR /app, which is root-owned
+  # and causes CrashLoopBackOff before the startup probe passes.
+  # /tmp is writable by all users; the emptyDir volume in server.yaml and
+  # worker.yaml ensures it is always present and bounded.
+  STORE_SQLITE_PATH: "/tmp/crawl.db"
 
   # Search locale defaults — tune for your user population
   SEARCH_DEFAULT_COUNTRY: "za"
