@@ -50,6 +50,18 @@ const configSchema = z.object({
   RATE_LIMIT_MAX_WAIT_MS: z.string().default('30000').transform(Number),
   RESPECT_ROBOTS_TXT: z.string().default('false').transform(val => val === 'true'),
   HTTP_DEFAULT_CHARSET: z.string().default('utf-8'),
+
+  // Render ladder
+  BROWSER_POOL_SIZE: z.string().default('1').transform(Number),
+  RENDER_MAX_CONCURRENCY: z.string().default('4').transform(Number),
+  RENDER_SETTLE_MS: z.string().default('2000').transform(Number),
+  BROWSER_MAX_JOBS: z.string().default('50').transform(Number),
+  RENDER_BLOCK_RESOURCES: z.string().default('true').transform(val => val === 'true'),
+
+  // Lightpanda (Tier 2)
+  LIGHTPANDA_ENABLED: z.string().default('false').transform(val => val === 'true'),
+  LIGHTPANDA_CDP_URL: z.string().default('ws://127.0.0.1:9222'),
+  LIGHTPANDA_MAX_FAILURE_RATE: z.string().default('0.4').transform(Number),
 });
 
 export type Config = z.infer<typeof configSchema>;

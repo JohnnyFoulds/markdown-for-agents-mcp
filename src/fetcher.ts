@@ -1,9 +1,8 @@
 /**
- * URL Fetcher with Playwright
- * Handles JavaScript rendering and content extraction
+ * URL Fetcher — thin public API over the 3-tier render ladder.
+ * Caching and URL validation live here; rendering is delegated to renderLadder.
  */
 
-import { chromium, Browser, BrowserContext, Page } from "playwright";
 import { Logger } from "./utils/logger.js";
 import { LRUCache } from "./utils/cache.js";
 import { validateUrl } from "./utils/domainBlacklist.js";
@@ -13,8 +12,8 @@ import {
   RedirectBlockedError,
   RedirectLoopError,
 } from "./utils/errors.js";
-import { resolveRedirectUrl, assertRedirectPermitted } from "./http/redirect.js";
 import { getConfig } from "./config.js";
+import { renderLadder } from "./render/ladder.js";
 
 /**
  * Lazy wrapper: initialises the inner LRUCache from config on first use so
@@ -64,15 +63,10 @@ export interface PageResult {
   title: string;
 }
 
-/**
- * Get fetcher configuration with fallback for initialization order
- * Used to handle cases where config is accessed before initialization
- */
 function getFetcherConfig() {
   try {
     return getConfig();
   } catch {
-    // Fallback if config not initialized yet
     return {
       FETCH_TIMEOUT_MS: 30000,
       MAX_CONCURRENT_FETCHES: 5,
@@ -80,8 +74,6 @@ function getFetcherConfig() {
       MAX_CONTENT_LENGTH: 100000,
       CACHE_MAX_BYTES: 50 * 1024 * 1024,
       CACHE_TTL_MS: 15 * 60 * 1000,
-      PLAYWRIGHT_PROXY: undefined as string | undefined,
-      PLAYWRIGHT_PROXY_BYPASS: undefined as string | undefined,
     };
   }
 }
@@ -95,133 +87,31 @@ export interface FetchResult {
   requestId?: string;
 }
 
-/**
- * Generates a generic user agent that blends in with regular browsers.
- * Randomizes the Chrome version to reduce fingerprinting consistency.
- */
-function generateUserAgent(): string {
-  const versions = ['132.0.0.0', '133.0.0.0', '134.0.0.0', '135.0.0.0'];
-  const version = versions[Math.floor(Math.random() * versions.length)];
-  return `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version} Safari/537.36`;
-}
-
 export class Fetcher {
-  private browser: Browser | null = null;
-  private context: BrowserContext | null = null;
-  private readonly userAgent = generateUserAgent();
-
   private getConfig() {
     return getFetcherConfig();
   }
 
-  /**
-   * Initialize browser and context once for reuse across fetches
-   */
   async initialize(): Promise<void> {
-    if (!this.browser) {
-      const config = this.getConfig();
-      const proxyServer = process.env['PLAYWRIGHT_PROXY'] ?? process.env['HTTP_PROXY'] ?? config.PLAYWRIGHT_PROXY;
-
-      this.browser = await chromium.launch({
-        headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-gpu",
-        ],
-        ...(proxyServer ? { proxy: { server: proxyServer, bypass: config.PLAYWRIGHT_PROXY_BYPASS } } : {}),
-      });
-
-      this.context = await this.browser.newContext({
-        userAgent: this.userAgent,
-        extraHTTPHeaders: {
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'DNT': '1',
-          'Connection': 'keep-alive',
-          'Cache-Control': 'no-cache',
-        },
-        viewport: { width: 1920, height: 1080 },
-        deviceScaleFactor: 1,
-        isMobile: false,
-        hasTouch: false,
-        javaScriptEnabled: true,
-        bypassCSP: true,
-        colorScheme: 'light',
-        reducedMotion: 'no-preference',
-      });
-
-      await this.context.addInitScript(() => {
-        Object.defineProperty(navigator, 'webdriver', {
-          get: () => false,
-        });
-
-        Object.defineProperty(navigator, 'plugins', {
-          get: () => [],
-        });
-
-        Object.defineProperty(navigator, 'languages', {
-          get: () => ['en-US', 'en'],
-        });
-      });
-    }
+    await renderLadder.warmup();
   }
 
-  /**
-   * Get or create a new page for fetching
-   * Creates a fresh page for each fetch to isolate state
-   */
-  private async getPage(): Promise<Page> {
-    await this.initialize();
-
-    if (!this.context) {
-      throw new Error("Browser context not initialized");
-    }
-
-    return await this.context.newPage();
-  }
-
-  /**
-   * Close browser and context
-   */
   async close(): Promise<void> {
-    if (this.context) {
-      await this.context.close();
-      this.context = null;
-    }
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
-    }
+    await renderLadder.drain();
   }
 
-
-  /**
-   * Fetch a single URL and return rendered HTML content with page title.
-   * Checks the LRU cache first; on a miss, renders the page with Playwright,
-   * handles same-origin redirects, truncates oversized content, and caches the result.
-   * @param url - The URL to fetch
-   * @param timeout - Optional request timeout in milliseconds (overrides config)
-   * @param requestId - Optional request ID for correlated logging
-   * @returns PageResult with rendered HTML and extracted page title
-   */
   async fetch(url: string, timeout?: number, requestId?: string): Promise<PageResult> {
     const config = this.getConfig();
     const requestTimeout = timeout ?? config.FETCH_TIMEOUT_MS;
     const startTime = Date.now();
 
-    // Validate URL format and check blocklist
     const validation = validateUrl(url);
     if (!validation.valid) {
       throw new Error(validation.error);
     }
 
-    // Extract hostname once for logging and caching
     const hostname = new URL(url).hostname;
 
-    // Try cache first (avoids redundant network requests)
     const cached = urlCache.get(url);
     if (cached) {
       Logger.logCacheHit(hostname, Buffer.byteLength(cached, 'utf8'), requestId);
@@ -232,64 +122,11 @@ export class Fetcher {
 
     Logger.logCacheMiss(hostname, requestId);
 
-    let currentUrl = url;
-    let redirectCount = 0;
-    let html = '';
-    let pageTitle = '';
-
     try {
-      while (redirectCount < config.MAX_REDIRECTS) {
-        const page = await this.getPage();
+      const result = await renderLadder.render({ url, timeoutMs: requestTimeout, requestId });
 
-        try {
-          // Navigate to URL with configurable timeout
-          const pageResponse = await page.goto(currentUrl, {
-            waitUntil: "networkidle",
-            timeout: requestTimeout,
-          });
-
-          // Get response status and location header
-          let status = 200;
-          let locationHeader = '';
-
-          if (pageResponse) {
-            status = pageResponse.status();
-            // headers() is always a function in Playwright's Response API
-            const headers = pageResponse.headers();
-            locationHeader = headers['location'] || '';
-          }
-
-          // Handle 3xx redirects manually
-          if (status >= 300 && status < 400 && locationHeader) {
-            const redirectUrl = resolveRedirectUrl(locationHeader, currentUrl);
-            assertRedirectPermitted(currentUrl, redirectUrl, false);
-            redirectCount++;
-            await page.close();
-            currentUrl = redirectUrl;
-            continue;
-          }
-
-          // Return the full page HTML — all extraction (nav stripping, content
-          // selection, relative-link resolution) runs host-side in
-          // src/extract/pipeline.ts so it is identical for all render tiers.
-          const pageData = await page.evaluate((): { html: string; title: string } => ({
-            html: document.documentElement.outerHTML,
-            title: document.title || '',
-          }));
-          html = pageData.html;
-          pageTitle = pageData.title;
-
-          await page.close();
-          break;
-        } catch (error) {
-          await page.close();
-          throw error;
-        }
-      }
-
-      if (redirectCount >= config.MAX_REDIRECTS) {
-        throw new RedirectLoopError(config.MAX_REDIRECTS);
-      }
+      let { html } = result;
+      const pageTitle = result.title;
 
       if (html.length > config.MAX_CONTENT_LENGTH) {
         const truncatedSize = html.length;
@@ -303,7 +140,6 @@ export class Fetcher {
         const stats = urlCache.getStats();
         Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
       } catch {
-        // Cache write failed (e.g. eviction race), continue without caching
         Logger.warn(`[Cache] Failed to cache ${url}`);
       }
 
@@ -333,24 +169,15 @@ export class Fetcher {
     }
   }
 
-  /**
-   * Fetch multiple URLs in parallel batches.
-   * Splits URLs into batches of MAX_CONCURRENT_FETCHES and processes each batch concurrently.
-   * @param urls - Array of URLs to fetch
-   * @param timeout - Optional per-request timeout in milliseconds
-   * @returns Array of FetchResult objects, one per input URL
-   */
   async fetchMultiple(urls: string[], timeout?: number): Promise<FetchResult[]> {
     const config = this.getConfig();
     const results: FetchResult[] = [];
     const batches: string[][] = [];
 
-    // Split URLs into batches for parallel processing
     for (let i = 0; i < urls.length; i += config.MAX_CONCURRENT_FETCHES) {
       batches.push(urls.slice(i, i + config.MAX_CONCURRENT_FETCHES));
     }
 
-    // Process each batch concurrently
     for (const batch of batches) {
       const batchPromises = batch.map(async (url) => {
         try {
@@ -375,7 +202,6 @@ export class Fetcher {
         }
       });
 
-      // Process all URLs in batch concurrently
       const batchResults = await Promise.all(batchPromises);
       results.push(...batchResults);
     }

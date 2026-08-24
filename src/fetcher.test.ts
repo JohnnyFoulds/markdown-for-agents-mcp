@@ -1,23 +1,25 @@
 import { describe, test, expect, beforeEach, vi, afterEach } from 'vitest';
-import { chromium } from 'playwright';
 import { fetcher, Fetcher, urlCache, titleCache } from './fetcher.js';
 import { initializeConfig, resetConfig } from './config.js';
+import { DomainBlockedError, RedirectBlockedError } from './utils/errors.js';
 
-vi.mock('playwright', async () => {
-  const actual = await vi.importActual('playwright');
-  return {
-    ...actual,
-    chromium: {
-      launch: vi.fn(),
-    },
-  };
-});
+vi.mock('./render/ladder.js', () => ({
+  renderLadder: {
+    render: vi.fn(),
+    warmup: vi.fn().mockResolvedValue(undefined),
+    drain: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+import { renderLadder } from './render/ladder.js';
+const mockLadder = renderLadder as any;
+
+function makeResult(html: string, title = '') {
+  return { url: 'https://example.com', html, title, status: 200, tier: 'http', escalations: [], durationMs: 10 };
+}
 
 describe('fetcher', () => {
-  let fetcherInstance: any;
-  const mockChromium = chromium as any;
-
-  beforeEach(async () => {
+  beforeEach(() => {
     vi.clearAllMocks();
     resetConfig();
     initializeConfig({
@@ -28,730 +30,104 @@ describe('fetcher', () => {
     });
     urlCache.clear();
     titleCache.clear();
-    fetcherInstance = fetcher;
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     urlCache.clear();
     titleCache.clear();
     resetConfig();
-    // Clean up browser state between tests
-    try {
-      await fetcherInstance.close();
-    } catch {
-      // Ignore cleanup errors in tests
-    }
   });
 
-   describe('fetch', () => {
-    test('fetches HTML from URL', async () => {
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
-        waitForTimeout: vi.fn().mockResolvedValue(undefined),
-        evaluate: vi.fn().mockResolvedValue({ html: '<h1>Test</h1>', title: 'Test Page' }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
+  describe('fetch', () => {
+    test('fetches HTML and title via render ladder', async () => {
+      mockLadder.render.mockResolvedValue(makeResult('<h1>Test</h1>', 'Test Page'));
 
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      const result = await fetcherInstance.fetch('https://example.com');
+      const result = await fetcher.fetch('https://example.com');
 
       expect(result.html).toBe('<h1>Test</h1>');
       expect(result.title).toBe('Test Page');
-      expect(mockPage.goto).toHaveBeenCalledWith('https://example.com', {
-        waitUntil: 'networkidle',
-        timeout: 30000,
-      });
+      expect(mockLadder.render).toHaveBeenCalledWith(
+        expect.objectContaining({ url: 'https://example.com', timeoutMs: 30000 }),
+      );
     });
 
-    test('extracts main content from page', async () => {
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
-        waitForTimeout: vi.fn().mockResolvedValue(undefined),
-        evaluate: vi.fn().mockResolvedValue({ html: '<main><h1>Main Content</h1></main>', title: '' }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
+    test('passes custom timeout to render ladder', async () => {
+      mockLadder.render.mockResolvedValue(makeResult('<p>ok</p>'));
 
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
+      await fetcher.fetch('https://example.com', 5000);
 
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      const result = await fetcherInstance.fetch('https://example.com');
-
-      expect(result.html).toContain('Main Content');
+      expect(mockLadder.render).toHaveBeenCalledWith(
+        expect.objectContaining({ timeoutMs: 5000 }),
+      );
     });
 
-    test('extracts document.title from page', async () => {
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
-        evaluate: vi.fn().mockResolvedValue({ html: '<p>Content</p>', title: 'My Awesome Page' }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      const result = await fetcherInstance.fetch('https://example.com');
-
-      expect(result.title).toBe('My Awesome Page');
+    test('validates URL format before calling ladder', async () => {
+      await expect(fetcher.fetch('not-a-valid-url')).rejects.toThrow('Invalid URL');
+      expect(mockLadder.render).not.toHaveBeenCalled();
     });
 
-    test('returns empty title when document.title is empty', async () => {
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
-        evaluate: vi.fn().mockResolvedValue({ html: '<p>Content</p>', title: '' }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
+    test('validates URL protocol before calling ladder', async () => {
+      await expect(fetcher.fetch('ftp://example.com')).rejects.toThrow('Invalid URL');
+      expect(mockLadder.render).not.toHaveBeenCalled();
+    });
 
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      const result = await fetcherInstance.fetch('https://example.com');
-
+    test('returns empty title when ladder returns empty title', async () => {
+      mockLadder.render.mockResolvedValue(makeResult('<p>Content</p>', ''));
+      const result = await fetcher.fetch('https://example.com');
       expect(result.title).toBe('');
     });
+  });
 
-    test('populates titleCache on cache miss', async () => {
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
-        evaluate: vi.fn().mockResolvedValue({ html: '<p>Content</p>', title: 'Cached Title' }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      await fetcherInstance.fetch('https://example.com/title-test');
-
-      expect(titleCache.get('https://example.com/title-test')).toBe('Cached Title');
-    });
-
-    test('returns title from titleCache on cache hit', async () => {
-      // Pre-populate both caches
-      const cachedContent = '<p>Cached content</p>';
-      const cachedTitle = 'Cached Title';
+  describe('cache', () => {
+    test('returns cached content without calling ladder', async () => {
+      const cachedContent = '<p>Cached</p>';
       urlCache.set('https://example.com', cachedContent, Buffer.byteLength(cachedContent, 'utf8'));
-      titleCache.set('https://example.com', cachedTitle, Buffer.byteLength(cachedTitle, 'utf8'));
+      titleCache.set('https://example.com', 'Cached Title', 12);
 
-      const result = await fetcherInstance.fetch('https://example.com');
+      const result = await fetcher.fetch('https://example.com');
 
       expect(result.html).toBe(cachedContent);
-      expect(result.title).toBe(cachedTitle);
+      expect(result.title).toBe('Cached Title');
+      expect(mockLadder.render).not.toHaveBeenCalled();
     });
 
-    test('handles navigation errors', async () => {
-      const mockPage = {
-        goto: vi.fn().mockRejectedValue(new Error('Network error')),
-        waitForTimeout: vi.fn(),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
+    test('populates cache on cache miss', async () => {
+      const liveContent = '<h1>Fresh</h1>';
+      mockLadder.render.mockResolvedValue(makeResult(liveContent, 'Fresh'));
 
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
+      await fetcher.fetch('https://example.com/new');
 
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-
-      await expect(fetcherInstance.fetch('https://invalid-url.example')).rejects.toThrow(
-        'Network error'
-      );
+      expect(urlCache.get('https://example.com/new')).toBe(liveContent);
+      expect(titleCache.get('https://example.com/new')).toBe('Fresh');
     });
 
-    test('validates URL format', async () => {
-      await expect(fetcherInstance.fetch('not-a-valid-url')).rejects.toThrow('Invalid URL');
+    test('second fetch returns cached content without re-rendering', async () => {
+      mockLadder.render.mockResolvedValue(makeResult('<p>Live</p>'));
+
+      await fetcher.fetch('https://example.com');
+      await fetcher.fetch('https://example.com');
+
+      expect(mockLadder.render).toHaveBeenCalledOnce();
     });
 
-    test('validates URL protocol', async () => {
-      await expect(fetcherInstance.fetch('ftp://example.com')).rejects.toThrow('Invalid URL');
-    });
-  });
-
-  describe('fetchMultiple', () => {
-    test('fetches multiple URLs successfully', async () => {
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
-        waitForTimeout: vi.fn().mockResolvedValue(undefined),
-        evaluate: vi.fn().mockResolvedValue({ html: '<p>Content</p>', title: 'Test' }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      const urls = ['https://example.com/1', 'https://example.com/2'];
-      const results = await fetcherInstance.fetchMultiple(urls);
-
-      expect(results).toHaveLength(2);
-      expect(results[0].url).toBe('https://example.com/1');
-      expect(results[0].success).toBe(true);
-      expect(results[1].url).toBe('https://example.com/2');
-      expect(results[1].success).toBe(true);
-    });
-
-    test('handles partial failures', async () => {
-      const mockPage1 = {
-        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
-        waitForTimeout: vi.fn().mockResolvedValue(undefined),
-        evaluate: vi.fn().mockResolvedValue({ html: '<p>Success</p>', title: 'OK' }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      const mockPage2 = {
-        goto: vi.fn().mockRejectedValue(new Error('Failed')),
-        waitForTimeout: vi.fn(),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      const mockContext = {
-        newPage: vi.fn()
-          .mockResolvedValueOnce(mockPage1)
-          .mockResolvedValueOnce(mockPage2),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      const urls = ['https://example.com/success', 'https://example.com/fail'];
-      const results = await fetcherInstance.fetchMultiple(urls);
-
-      expect(results).toHaveLength(2);
-      expect(results[0].success).toBe(true);
-      expect(results[1].success).toBe(false);
-      expect(results[1].error).toContain('Failed');
-    });
-
-    test('includes markdown in successful results', async () => {
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
-        waitForTimeout: vi.fn().mockResolvedValue(undefined),
-        evaluate: vi.fn().mockResolvedValue({ html: '<article>Article content</article>', title: '' }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      const results = await fetcherInstance.fetchMultiple(['https://example.com']);
-
-      expect(results[0].success).toBe(true);
-      expect(results[0].markdown).toContain('Article content');
-    });
-
-    test('returns empty markdown for failed results', async () => {
-      const mockPage = {
-        goto: vi.fn().mockRejectedValue(new Error('Network error')),
-        waitForTimeout: vi.fn(),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      const results = await fetcherInstance.fetchMultiple(['https://example.com']);
-
-      expect(results[0].success).toBe(false);
-      expect(results[0].markdown).toBe('');
-      expect(results[0].title).toBe('');
-    });
-
-    test('propagates title from successful fetch', async () => {
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: () => ({}) }),
-        evaluate: vi.fn().mockResolvedValue({ html: '<p>ok</p>', title: 'Page Title' }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      const results = await fetcherInstance.fetchMultiple(['https://example.com']);
-
-      expect(results[0].title).toBe('Page Title');
-    });
-  });
-
-  describe('cache hit path', () => {
-    test('returns cached content without calling Playwright', async () => {
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: vi.fn().mockReturnValue({}) }),
-        evaluate: vi.fn().mockResolvedValue({ html: '<p>Live content</p>', title: 'Live' }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      // Pre-populate the cache
-      const cachedContent = '<p>Cached content</p>';
-      urlCache.set('https://example.com', cachedContent, Buffer.byteLength(cachedContent, 'utf8'));
-
-      const result = await fetcherInstance.fetch('https://example.com');
-
-      expect(result.html).toBe(cachedContent);
-      // Playwright should NOT have been invoked
-      expect(mockPage.goto).not.toHaveBeenCalled();
-    });
-
-    test('calls Playwright on a cache miss and stores the result', async () => {
-      const liveContent = '<h1>Fresh content</h1>';
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: vi.fn().mockReturnValue({}) }),
-        evaluate: vi.fn().mockResolvedValue({ html: liveContent, title: 'Fresh' }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      const result = await fetcherInstance.fetch('https://example.com');
-
-      expect(result.html).toBe(liveContent);
-      expect(mockPage.goto).toHaveBeenCalledOnce();
-      // Should now be cached
-      expect(urlCache.get('https://example.com')).toBe(liveContent);
-    });
-  });
-
-  describe('redirect handling', () => {
-    test('blocks a cross-origin redirect with RedirectBlockedError', async () => {
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({
-          status: () => 302,
-          headers: vi.fn().mockReturnValue({ location: 'https://evil.com/page' }),
-        }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      await expect(fetcherInstance.fetch('https://example.com')).rejects.toThrow('Redirect blocked');
-    });
-
-    test('blocks a redirect to a different port with RedirectBlockedError', async () => {
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({
-          status: () => 302,
-          headers: vi.fn().mockReturnValue({ location: 'https://example.com:8080/page' }),
-        }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      await expect(fetcherInstance.fetch('https://example.com')).rejects.toThrow('Redirect blocked');
-    });
-
-    test('throws RedirectLoopError when MAX_REDIRECTS is reached', async () => {
-      // Always return a same-origin redirect to trigger the loop
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({
-          status: () => 302,
-          headers: vi.fn().mockReturnValue({ location: 'https://example.com/loop' }),
-        }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      // MAX_REDIRECTS is configured to 3 in beforeEach
-      await expect(fetcherInstance.fetch('https://example.com')).rejects.toThrow('Too many redirects');
-    });
-  });
-
-  describe('timeout handling', () => {
-    test('wraps timeout errors in FetchTimeoutError', async () => {
-      const mockPage = {
-        goto: vi.fn().mockRejectedValue(new Error('page.goto: Timeout 30000ms exceeded')),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      await expect(fetcherInstance.fetch('https://example.com')).rejects.toThrow('Fetch timeout for https://example.com');
-    });
-
-    test('passes custom timeout to page.goto', async () => {
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: vi.fn().mockReturnValue({}) }),
-        evaluate: vi.fn().mockResolvedValue({ html: '<p>ok</p>', title: '' }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      await fetcherInstance.fetch('https://example.com', 5000);
-
-      expect(mockPage.goto).toHaveBeenCalledWith('https://example.com', {
-        waitUntil: 'networkidle',
-        timeout: 5000,
-      });
-    });
-  });
-
-  describe('redirect — edge cases', () => {
-    test('blocks a redirect to a domain on the blocklist', async () => {
-      // doubleclick.net is in the default blocklist
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({
-          status: () => 302,
-          headers: vi.fn().mockReturnValue({ location: 'https://doubleclick.net/page' }),
-        }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      await expect(fetcherInstance.fetch('https://example.com')).rejects.toThrow('Redirect blocked');
-    });
-
-    test('blocks a redirect with a malformed Location header', async () => {
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({
-          status: () => 302,
-          headers: vi.fn().mockReturnValue({ location: 'http://:80/' }),
-        }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      await expect(fetcherInstance.fetch('https://example.com')).rejects.toThrow('Redirect blocked');
-    });
-
-    test('null pageResponse defaults to status 200 and continues', async () => {
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue(null),
-        evaluate: vi.fn().mockResolvedValue({ html: '<p>null response ok</p>', title: '' }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      const result = await fetcherInstance.fetch('https://example.com');
-      expect(result.html).toBe('<p>null response ok</p>');
-    });
-  });
-
-  describe('initialize', () => {
-    test('does not re-create browser on second call', async () => {
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue({
-          goto: vi.fn().mockResolvedValue({ status: () => 200, headers: vi.fn().mockReturnValue({}) }),
-          evaluate: vi.fn().mockResolvedValue({ html: '<p>ok</p>', title: '' }),
-          close: vi.fn().mockResolvedValue(undefined),
-        }),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      await fetcherInstance.initialize();
-      await fetcherInstance.initialize(); // second call
-
-      expect(mockChromium.launch).toHaveBeenCalledOnce();
-    });
-
-    test('passes proxy config to chromium.launch when PLAYWRIGHT_PROXY is set', async () => {
-      resetConfig();
-      initializeConfig({
-        FETCH_TIMEOUT_MS: '30000',
-        MAX_CONCURRENT_FETCHES: '5',
-        MAX_REDIRECTS: '3',
-        MAX_CONTENT_LENGTH: '100000',
-        PLAYWRIGHT_PROXY: 'http://proxy.example.com:8080',
-      });
-
-      const mockContext = {
-        newPage: vi.fn(),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      // Use a fresh instance so it re-initializes with new config
-      const freshFetcher = new Fetcher();
-      await freshFetcher.initialize();
-
-      expect(mockChromium.launch).toHaveBeenCalledWith(
-        expect.objectContaining({
-          proxy: { server: 'http://proxy.example.com:8080', bypass: undefined },
-        })
-      );
-
-      await freshFetcher.close();
-    });
-
-    test('does not pass proxy config when PLAYWRIGHT_PROXY is absent', async () => {
-      const mockContext = {
-        newPage: vi.fn(),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      const freshFetcher = new Fetcher();
-      await freshFetcher.initialize();
-
-      const launchCall = mockChromium.launch.mock.calls[0][0];
-      expect(launchCall.proxy).toBeUndefined();
-
-      await freshFetcher.close();
-    });
-  });
-
-  describe('cache write failure', () => {
     test('continues normally when cache.set throws', async () => {
-      const liveContent = '<p>content</p>';
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: vi.fn().mockReturnValue({}) }),
-        evaluate: vi.fn().mockResolvedValue({ html: liveContent, title: '' }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      mockChromium.launch.mockResolvedValue(mockBrowser);
-
-      // Force cache.set to throw
+      mockLadder.render.mockResolvedValue(makeResult('<p>content</p>'));
       vi.spyOn(urlCache, 'set').mockImplementationOnce(() => { throw new Error('cache full'); });
 
-      await fetcherInstance.initialize();
-      // Should still return the content despite the cache write failure
-      const result = await fetcherInstance.fetch('https://example.com/nocache');
-      expect(result.html).toBe(liveContent);
+      const result = await fetcher.fetch('https://example.com/nocache');
+      expect(result.html).toBe('<p>content</p>');
     });
-  });
 
-  describe('domain blocking', () => {
-    test('throws on a blocked domain without touching Playwright', async () => {
-      // doubleclick.net is in the built-in blocklist
-      await expect(fetcherInstance.fetch('https://doubleclick.net/page')).rejects.toThrow('Domain blocked');
-      expect(mockChromium.launch).not.toHaveBeenCalled();
+    test('urlCache.maxBytes reflects CACHE_MAX_BYTES', () => {
+      resetConfig();
+      initializeConfig({ CACHE_MAX_BYTES: '1048576', CACHE_TTL_MS: '60000' });
+      urlCache.clear();
+      expect(urlCache.maxBytes).toBe(1048576);
     });
   });
 
   describe('content truncation', () => {
     test('truncates content that exceeds MAX_CONTENT_LENGTH', async () => {
-      // Set a very small content limit
       resetConfig();
       initializeConfig({
         FETCH_TIMEOUT_MS: '30000',
@@ -761,24 +137,9 @@ describe('fetcher', () => {
       });
 
       const largeContent = 'A'.repeat(100);
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: vi.fn().mockReturnValue({}) }),
-        evaluate: vi.fn().mockResolvedValue({ html: largeContent, title: '' }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      mockChromium.launch.mockResolvedValue(mockBrowser);
+      mockLadder.render.mockResolvedValue(makeResult(largeContent));
 
-      await fetcherInstance.initialize();
-      const result = await fetcherInstance.fetch('https://example.com/big');
+      const result = await fetcher.fetch('https://example.com/big');
 
       expect(result.html.length).toBe(20);
       expect(result.html).toBe('A'.repeat(20));
@@ -786,43 +147,106 @@ describe('fetcher', () => {
 
     test('does not truncate content within MAX_CONTENT_LENGTH', async () => {
       const content = '<p>Short content</p>';
-      const mockPage = {
-        goto: vi.fn().mockResolvedValue({ status: () => 200, headers: vi.fn().mockReturnValue({}) }),
-        evaluate: vi.fn().mockResolvedValue({ html: content, title: '' }),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockContext = {
-        newPage: vi.fn().mockResolvedValue(mockPage),
-        addInitScript: vi.fn().mockResolvedValue(undefined),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockBrowser = {
-        newContext: vi.fn().mockResolvedValue(mockContext),
-        close: vi.fn().mockResolvedValue(undefined),
-      };
-      mockChromium.launch.mockResolvedValue(mockBrowser);
+      mockLadder.render.mockResolvedValue(makeResult(content));
 
-      await fetcherInstance.initialize();
-      const result = await fetcherInstance.fetch('https://example.com/short');
-
+      const result = await fetcher.fetch('https://example.com/short');
       expect(result.html).toBe(content);
     });
   });
 
-  describe('cache honours config (0.3)', () => {
-    test('urlCache.maxBytes reflects CACHE_MAX_BYTES', () => {
-      resetConfig();
-      initializeConfig({ CACHE_MAX_BYTES: '1048576', CACHE_TTL_MS: '60000' });
-      urlCache.clear(); // forces re-init on next access
-      expect(urlCache.maxBytes).toBe(1048576);
+  describe('error handling', () => {
+    test('throws on a blocked domain without calling ladder', async () => {
+      await expect(fetcher.fetch('https://doubleclick.net/page')).rejects.toThrow('Domain blocked');
+      expect(mockLadder.render).not.toHaveBeenCalled();
     });
 
-    test('titleCache TTL reflects CACHE_TTL_MS', () => {
-      resetConfig();
-      initializeConfig({ CACHE_MAX_BYTES: '52428800', CACHE_TTL_MS: '30000' });
-      titleCache.clear();
-      // getStats() triggers init; TTL is internal, but maxBytes is derived from CACHE_MAX_BYTES
-      expect(titleCache.maxBytes).toBeGreaterThan(0);
+    test('re-throws DomainBlockedError from ladder', async () => {
+      mockLadder.render.mockRejectedValue(new DomainBlockedError('example.com'));
+      await expect(fetcher.fetch('https://example.com')).rejects.toBeInstanceOf(DomainBlockedError);
+    });
+
+    test('re-throws RedirectBlockedError from ladder', async () => {
+      mockLadder.render.mockRejectedValue(new RedirectBlockedError('https://example.com', 'https://evil.com'));
+      await expect(fetcher.fetch('https://example.com')).rejects.toBeInstanceOf(RedirectBlockedError);
+    });
+
+    test('wraps timeout messages in FetchTimeoutError', async () => {
+      mockLadder.render.mockRejectedValue(new Error('page.goto: Timeout 30000ms exceeded'));
+      await expect(fetcher.fetch('https://example.com')).rejects.toThrow('Fetch timeout for https://example.com');
+    });
+
+    test('re-throws other errors from ladder', async () => {
+      mockLadder.render.mockRejectedValue(new Error('Network error'));
+      await expect(fetcher.fetch('https://example.com')).rejects.toThrow('Network error');
+    });
+  });
+
+  describe('initialize and close', () => {
+    test('initialize delegates to renderLadder.warmup', async () => {
+      await fetcher.initialize();
+      expect(mockLadder.warmup).toHaveBeenCalledOnce();
+    });
+
+    test('close delegates to renderLadder.drain', async () => {
+      await fetcher.close();
+      expect(mockLadder.drain).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('fetchMultiple', () => {
+    test('fetches multiple URLs and returns results', async () => {
+      mockLadder.render
+        .mockResolvedValueOnce({ ...makeResult('<p>One</p>'), url: 'https://example.com/1' })
+        .mockResolvedValueOnce({ ...makeResult('<p>Two</p>'), url: 'https://example.com/2' });
+
+      const results = await fetcher.fetchMultiple(['https://example.com/1', 'https://example.com/2']);
+
+      expect(results).toHaveLength(2);
+      expect(results[0].success).toBe(true);
+      expect(results[0].url).toBe('https://example.com/1');
+      expect(results[1].success).toBe(true);
+      expect(results[1].url).toBe('https://example.com/2');
+    });
+
+    test('handles partial failures', async () => {
+      mockLadder.render
+        .mockResolvedValueOnce({ ...makeResult('<p>Success</p>'), url: 'https://example.com/success' })
+        .mockRejectedValueOnce(new Error('Failed'));
+
+      const results = await fetcher.fetchMultiple([
+        'https://example.com/success',
+        'https://example.com/fail',
+      ]);
+
+      expect(results[0].success).toBe(true);
+      expect(results[1].success).toBe(false);
+      expect(results[1].error).toContain('Failed');
+    });
+
+    test('includes html in markdown field of successful results', async () => {
+      mockLadder.render.mockResolvedValue(makeResult('<article>Article content</article>'));
+
+      const results = await fetcher.fetchMultiple(['https://example.com']);
+
+      expect(results[0].success).toBe(true);
+      expect(results[0].markdown).toContain('Article content');
+    });
+
+    test('returns empty markdown for failed results', async () => {
+      mockLadder.render.mockRejectedValue(new Error('Network error'));
+
+      const results = await fetcher.fetchMultiple(['https://example.com']);
+
+      expect(results[0].success).toBe(false);
+      expect(results[0].markdown).toBe('');
+      expect(results[0].title).toBe('');
+    });
+
+    test('propagates title from successful fetch', async () => {
+      mockLadder.render.mockResolvedValue(makeResult('<p>ok</p>', 'Page Title'));
+
+      const results = await fetcher.fetchMultiple(['https://example.com']);
+      expect(results[0].title).toBe('Page Title');
     });
   });
 });
