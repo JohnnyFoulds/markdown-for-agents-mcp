@@ -6,33 +6,31 @@
 [![codecov](https://codecov.io/gh/JohnnyFoulds/markdown-for-agents-mcp/branch/main/graph/badge.svg?token=cc1e1265-2c75-413a-95ea-3f07c9e81c62)](https://codecov.io/gh/JohnnyFoulds/markdown-for-agents-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that fetches URLs with **full JavaScript rendering** and converts them to clean, token-efficient markdown for AI agents.
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that fetches URLs, searches the web, and crawls sites — converting everything to clean, token-efficient markdown for AI agents.
 
-Most MCP fetch tools use plain HTTP — they see what a server sends without running any JavaScript. That works for static sites, but silently returns empty or broken content for **React, Vue, Angular, SPAs, and any page that loads data dynamically**. This server runs a real Chromium browser via [Playwright](https://playwright.dev), so it renders the full page before extraction — the same content a human user would see.
-
-Powered by [Playwright](https://playwright.dev) and the [`markdown-for-agents`](https://www.npmjs.com/package/markdown-for-agents) library. Strips ads, navigation, and boilerplate — delivering up to 80% fewer tokens than raw HTML.
+Powered by a **3-tier render ladder** (plain HTTP → [Lightpanda](https://github.com/lightpanda-io/browser) → [Playwright](https://playwright.dev)/Chromium) and the [`markdown-for-agents`](https://www.npmjs.com/package/markdown-for-agents) library. Most pages are served from the fast HTTP tier with no browser launched. Chromium fires only when JavaScript rendering is genuinely required. Strips ads, navigation, and boilerplate — delivering up to 80% fewer tokens than raw HTML.
 
 ---
 
-## Why Playwright?
+## 3-Tier Render Ladder
 
-| Capability | Plain HTTP fetchers | markdown-for-agents-mcp |
-| --- | --- | --- |
-| Static HTML pages | ✅ | ✅ |
-| React / Vue / Angular apps | ❌ | ✅ |
-| JavaScript-rendered content | ❌ | ✅ |
-| Single-page app routes | ❌ | ✅ |
-| Lazy-loaded / infinite-scroll | ❌ | ✅ |
-| Token efficiency vs raw HTML | Medium | Up to 80% fewer |
-| Bot-detection evasion | None | UA rotation, webdriver spoofing |
+Most pages are served from the fast HTTP tier. Chromium fires only when JavaScript rendering is genuinely required.
 
-**Token reduction example:** a typical news article page is ~150 KB of raw HTML (~40,000 tokens). After Playwright rendering, DOM pruning, and markdown conversion the same article becomes ~2,000 tokens — a 95% reduction.
+| Tier | Technology | When used | Memory |
+| --- | --- | --- | --- |
+| 1 — HTTP | `undici` plain HTTP | Static HTML, most news/docs sites | 1–10 MB |
+| 2 — Lightpanda | CDP to Lightpanda sidecar | Light JS rendering (`LIGHTPANDA_ENABLED`) | ~123 MB |
+| 3 — Playwright | Chromium via browser pool | React/Vue/Angular SPAs, bot-challenged pages | 300–500 MB |
+
+The escalation heuristic scores signals (empty body, SPA hydration markers, `<noscript>` warnings, text-to-HTML ratio) and escalates only when the score exceeds the threshold. Tier decisions are memoised in the store to avoid re-probing the same site repeatedly.
+
+**Token reduction example:** a typical news article page is ~150 KB of raw HTML (~40,000 tokens). After extraction and markdown conversion the same article becomes ~2,000 tokens — a 95% reduction.
 
 ---
 
 ## Table of Contents
 
-- [Why Playwright?](#why-playwright)
+- [3-Tier Render Ladder](#3-tier-render-ladder)
 - [Features](#features)
 - [Installation](#installation)
 - [MCP Client Setup](#mcp-client-setup)
@@ -40,10 +38,17 @@ Powered by [Playwright](https://playwright.dev) and the [`markdown-for-agents`](
   - [fetch_url](#fetch_url)
   - [fetch_urls](#fetch_urls)
   - [web_search](#web_search)
+  - [extract_urls](#extract_urls)
+  - [map_site](#map_site)
   - [download_file](#download_file)
   - [health_check](#health_check)
+  - [Crawl Tools](#crawl-tools)
 - [CLI Usage](#cli-usage)
 - [Configuration](#configuration)
+- [Search Providers](#search-providers)
+- [Reranking](#reranking)
+- [Async Crawl Jobs](#async-crawl-jobs)
+- [Deployment](#deployment)
 - [Security](#security)
 - [Architecture](#architecture)
 - [Development](#development)
@@ -57,18 +62,22 @@ Powered by [Playwright](https://playwright.dev) and the [`markdown-for-agents`](
 
 ## Features
 
-- **JavaScript Rendering** — Playwright-driven Chromium renders React, Vue, Angular, and any JS-heavy page before extraction
-- **Structured Output** — Tools return typed `structuredContent` (url, title, markdown, fetchedAt, contentSize) alongside the text response, compatible with MCP SDK 1.11+
-- **Smart Content Extraction** — Scores and selects the main content block (`main` > `article` > `#content` > `body`), dropping sidebars, nav, and ads automatically
-- **Token Efficiency** — Produces compact LLM-ready markdown; benchmarks show up to 80% fewer tokens than raw HTML
-- **Web Search** — DuckDuckGo search with optional fetch-and-convert of top results
-- **LRU Cache** — 50 MB in-memory cache with a 15-minute TTL avoids redundant fetches
-- **Domain Filtering** — Built-in blocklist of trackers/social domains; supports per-request allow/block lists and server-level allowlist mode
-- **Batch Fetching** — Concurrent multi-URL fetches with configurable parallelism
-- **HTTP Server Mode** — Run as an HTTP server (`--http [port]` or `HTTP_PORT` env var) with optional bearer token auth
-- **Proxy Support** — Pass `PLAYWRIGHT_PROXY` to route Playwright traffic through a proxy
-- **Health Monitoring** — `health_check` tool exposes cache and fetch metrics
-- **Zero Configuration** — Chromium is installed automatically on first run
+- **3-Tier Render Ladder** — plain HTTP → Lightpanda CDP → Playwright/Chromium. Most pages served without a browser launch.
+- **Async Site Crawl** — `crawl_start`/`crawl_status`/`crawl_results`/`crawl_cancel`/`crawl_list` for long-running jobs; workers and servers scale independently
+- **Structured Output** — Tools return typed `structuredContent` alongside the text response, compatible with MCP SDK 1.11+
+- **Smart Content Extraction** — CSS selector targeting, multiple output formats (`markdown`/`html`/`text`/`screenshot`), and pagination
+- **Token Efficiency** — Up to 80% fewer tokens than raw HTML
+- **Multi-Provider Web Search** — DuckDuckGo (zero-config), Brave, Serper, SearXNG with automatic fan-out, RRF merge, and bot-challenge fallback
+- **Cross-Encoder Reranking** — Local ONNX (`bge-reranker-base`) or TEI endpoint ranks search results by actual content, not SERP position
+- **Pluggable Stores** — memory (stdio), SQLite (single-server HTTP), or Redis (N-replica) for rate-limit buckets, job queue, and content cache
+- **Per-Host Rate Limiting** — shared Redis token bucket enforces aggregate RPS across all replicas
+- **robots.txt Compliance** — respects crawl rules, `Crawl-delay`, and sitemaps
+- **SSRF Protection** — RFC1918, loopback, IPv6 ULA/link-local blocked; DNS-rebinding guard pins resolved addresses
+- **Proxy Support** — HTTP/SOCKS5 proxy, round-robin `PROXY_PINS` rotation; stealth mode via `playwright-extra`
+- **HTTP Server Mode** — stateless Streamable HTTP transport; N replicas behind any load balancer; bearer token auth
+- **SOCKS5 Gateway** — optional ingress listener for AI Studio or SOCKS5-aware clients; upstream credential injection for Chromium
+- **Prometheus Metrics** — `/healthz`, `/readyz`, `/metrics` endpoints; named metric constants for HPA and alerting
+- **Zero Configuration** — `npx markdown-for-agents-mcp` with no env vars works out of the box; Chromium installed automatically
 
 ---
 
@@ -418,6 +427,85 @@ Returns current server status, cache metrics, and fetch statistics. Useful for m
 
 ---
 
+### `extract_urls`
+
+Fetches multiple URLs with optional CSS selector targeting, output format control, and pagination.
+
+**Arguments:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `urls` | string[] | yes | URLs to fetch |
+| `includeSelector` | string | no | CSS selector to extract (e.g. `main`, `.article`, `#content`) |
+| `excludeSelectors` | string[] | no | CSS selectors to remove |
+| `outputFormat` | string | no | `markdown` (default), `html`, `text`, `screenshot` |
+| `offset` | number | no | Character offset for pagination |
+| `limit` | number | no | Max characters per result |
+| `headers` | object | no | Custom headers (auth/cookie passthrough) |
+
+---
+
+### `map_site`
+
+Discovers all URLs on a site via `sitemap.xml` or BFS link crawl.
+
+**Arguments:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `url` | string | yes | Root URL of the site |
+| `maxUrls` | number | no | Maximum URLs to return |
+| `includePattern` | string | no | Regex to include only matching URLs |
+| `excludePattern` | string | no | Regex to exclude matching URLs |
+
+---
+
+### Crawl Tools
+
+Five tools for async site crawls. Crawl jobs are persistent — start a crawl, check its status later, retrieve paginated results.
+
+#### `crawl_start`
+
+```
+crawl_start(url="https://docs.example.com", maxPages=200, maxDepth=3)
+```
+
+Returns: `"Crawl started. Job ID: <uuid>\nStatus: running"`
+
+#### `crawl_status`
+
+```
+crawl_status(jobId="<uuid>")
+```
+
+Returns job status, page counts (total/completed/failed/pending).
+
+#### `crawl_results`
+
+```
+crawl_results(jobId="<uuid>", offset=0, limit=50, filter="completed")
+```
+
+Returns paginated `PageRecord` array with `url`, `markdown`, `status`, `crawledAt`, `depth`.
+
+#### `crawl_cancel`
+
+```
+crawl_cancel(jobId="<uuid>")
+```
+
+Cancels a running crawl; leased items are abandoned and marked failed.
+
+#### `crawl_list`
+
+```
+crawl_list()
+```
+
+Returns all jobs (running, completed, cancelled), sorted newest-first.
+
+---
+
 ## CLI Usage
 
 A standalone CLI (`markdown-cli`) is included for use outside the MCP protocol.
@@ -467,29 +555,107 @@ Copy `.env.example` to `.env` to get started:
 cp .env.example .env
 ```
 
-### Reference
+The full reference is in `.env.example`. Key variables:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `FETCH_TIMEOUT_MS` | `30000` | Timeout per fetch request (ms) |
 | `MAX_CONCURRENT_FETCHES` | `5` | Max parallel fetches in batch operations |
-| `MAX_REDIRECTS` | `10` | Max redirect hops before error |
-| `MAX_CONTENT_LENGTH` | `100000` | Max content size (chars) before truncation |
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARN`, or `ERROR` |
-| `LOG_FORMAT` | `text` | `text` (human-readable) or `json` (structured) |
+| `LOG_FORMAT` | `text` | `text` or `json` |
 | `CACHE_MAX_BYTES` | `52428800` | Max LRU cache size (50 MB) |
 | `CACHE_TTL_MS` | `900000` | Cache entry TTL (15 minutes) |
-| `USE_ALLOWLIST_MODE` | `false` | When `true`, only domains in `BLOCKLIST_DOMAINS` are allowed |
-| `BLOCKLIST_DOMAINS` | _(empty)_ | Comma-separated domains to block (or allow in allowlist mode) |
-| `BLOCKLIST_URL_PATTERNS` | _(empty)_ | Comma-separated regex patterns to block by URL path |
-| `WEB_SEARCH_DEFAULT_TIMEOUT_MS` | `30000` | Default timeout for search requests (ms) |
-| `DOWNLOAD_TIMEOUT_MS` | `60000` | Timeout for binary file downloads (ms) |
-| `HTTP_PORT` | _(unset)_ | When set, starts an HTTP server on this port instead of stdio |
-| `MCP_AUTH_TOKEN` | _(unset)_ | Bearer token required on all HTTP requests (HTTP mode only) |
-| `PLAYWRIGHT_PROXY` | _(unset)_ | Proxy server URL for Playwright (e.g. `http://proxy.example.com:8080`) |
-| `PLAYWRIGHT_PROXY_BYPASS` | _(unset)_ | Comma-separated domains to bypass the proxy |
+| `USE_ALLOWLIST_MODE` | `false` | When `true`, only listed domains are allowed |
+| `BLOCKLIST_DOMAINS` | _(empty)_ | Comma-separated domains to block |
+| `HTTP_PORT` | _(unset)_ | Start HTTP server on this port |
+| `MCP_AUTH_TOKEN` | _(unset)_ | Bearer token for HTTP mode |
+| `MCP_HTTP_MODE` | `stateless` | `stateless` (N-replica safe) or `session` |
+| `STORE_BACKEND` | `auto` | `auto` \| `memory` \| `sqlite` \| `redis` |
+| `STORE_REDIS_URL` | _(unset)_ | Redis URL when `STORE_BACKEND=redis` |
+| `RATE_LIMIT_PER_HOST_RPS` | `0` | Max requests/sec per host (0 = unlimited) |
+| `RESPECT_ROBOTS_TXT` | `false` | Honour robots.txt crawl rules |
+| `HTTP_PROXY_URL` | _(unset)_ | Outbound proxy for all tiers |
+| `PROXY_PINS` | _(unset)_ | JSON array of proxy URLs for round-robin rotation |
+| `RERANK_BACKEND` | `none` | `none` \| `local` \| `tei` |
+| `MCP_ROLE` | `server` | `server` \| `worker` \| `both` |
+| `SHUTDOWN_DRAIN_MS` | `5000` | Grace period before closing HTTP |
+| `OTEL_ENABLED` | `false` | Enable OpenTelemetry tracing |
 
 All logs are written to `stderr` to keep `stdout` clean for the MCP protocol.
+
+---
+
+## Search Providers
+
+`web_search` supports multiple backends with automatic fan-out and fallback:
+
+| Provider | Tier | Config | Notes |
+|----------|------|--------|-------|
+| Brave Search API | 1 | `BRAVE_API_KEY` | Licensed index, $5/1k; best for fresh/current results |
+| Serper | 1 | `SERPER_API_KEY` | Real Google SERP; highest quality |
+| SearXNG | 2 | `SEARXNG_URL` | Self-hosted; dev/cheap tier |
+| DuckDuckGo | 3 | none | Zero-config fallback; last resort in HTTP mode |
+
+When multiple providers are configured, they are queried in parallel with results merged using Reciprocal Rank Fusion. A startup warning is logged when DuckDuckGo is the only configured provider in HTTP mode.
+
+---
+
+## Reranking
+
+Set `RERANK_BACKEND=local` to rank search results by actual content relevance rather than SERP position. The local backend runs `bge-reranker-base` (ONNX, q8, CPU) in a worker thread to keep the event loop free.
+
+```bash
+RERANK_BACKEND=local web_search(query="...", searchDepth="advanced", maxResults=10)
+```
+
+For GPU-accelerated reranking, point `RERANK_TEI_URL` at a TEI endpoint and set `RERANK_BACKEND=tei`.
+
+---
+
+## Async Crawl Jobs
+
+Crawl jobs run in the background. Workers and servers are the same binary (`MCP_ROLE`), so they scale independently:
+
+```bash
+# Start the server
+HTTP_PORT=3000 MCP_ROLE=server node dist/index.js
+
+# Start workers (one or more, same binary)
+MCP_ROLE=worker STORE_REDIS_URL=redis://localhost:6379 node dist/index.js
+```
+
+Workers claim jobs from the shared queue, crawl pages, and re-enqueue discovered links. If a worker dies mid-crawl, its leased items are reclaimed after `CRAWL_QUEUE_LEASE_MS` and picked up by another worker.
+
+---
+
+## Deployment
+
+### Docker Compose
+
+```bash
+# Single-server with Redis
+docker compose up
+
+# Multi-replica scale test (3 servers, 2 workers)
+docker compose -f docker-compose.scale-test.yml up --scale mcp-server=3 --scale mcp-worker=2
+```
+
+### Kubernetes
+
+Two Deployments of the same image — `mcp-server` and `mcp-worker` — behind a single Service. HPA scales the server on `mcp_inflight_requests` and workers on `crawl_queue_depth`. See `deploy/k8s/` for manifests.
+
+### AWS ECS Fargate
+
+Two ECS Services of one task-definition family. The server runs behind an ALB with `MCP_HTTP_MODE=stateless`. Workers run without a load balancer. Key Fargate-specific settings:
+
+```json
+"linuxParameters": {
+  "initProcessEnabled": true,
+  "tmpfs": [{ "containerPath": "/dev/shm", "size": 1024 }]
+}
+```
+
+See `deploy/ecs/` and `TAVILY_PARITY_PLAN.md` for full deployment details.
 
 ---
 
@@ -521,67 +687,52 @@ For the full security model and reporting vulnerabilities, see [SECURITY.md](SEC
 
 ## Architecture
 
-```mermaid
-graph TD
-    subgraph MCP["MCP Server Layer"]
-        entry["index.ts\n(entry)"]
-        fetchUrl["fetchUrl\n(tool)"]
-        fetchUrls["fetchUrls\n(tool)"]
-        webSearchTool["webSearch\n(tool)"]
-        healthCheck["health_check\n(tool)"]
-    end
+```
+MCP Layer (src/server/registry.ts)   ← 13 tools, timeout + metrics wrapper
+  ↓
+Render Ladder (src/render/ladder.ts)
+  ├── Tier 1: HttpTier         ← plain HTTP via undici (most requests)
+  ├── Tier 2: LightpandaTier   ← CDP to Lightpanda sidecar (opt-in)
+  └── Tier 3: PlaywrightTier   ← Chromium via BrowserPool
 
-    subgraph Services["Service Layer"]
-        fetcher["fetcher\n(Playwright)"]
-        converter["converter\n(HTML → MD)"]
-        webSearchSvc["webSearch\n(DuckDuckGo)"]
-        config["config\n(Zod)"]
-    end
+Extract pipeline (src/extract/pipeline.ts)
+  └── selectors, formats, pagination
 
-    subgraph Utils["Utilities"]
-        cache["cache.ts"]
-        blocklist["domainBlacklist.ts"]
-        errors["errors.ts"]
-        logger["logger.ts"]
-    end
+Search fan-out  (src/search/)
+  ├── providers: brave | serper | searxng | duckduckgo
+  └── RRF merge → dedup → filter
 
-    entry --> fetchUrl
-    entry --> fetchUrls
-    entry --> webSearchTool
-    entry --> healthCheck
+Reranker (src/rank/)
+  └── none | local ONNX worker thread | TEI endpoint
 
-    fetchUrl --> fetcher
-    fetchUrl --> converter
-    fetchUrls --> fetcher
-    fetchUrls --> converter
-    webSearchTool --> webSearchSvc
-    webSearchSvc --> fetcher
+Crawl engine (src/crawl/engine.ts)
+  └── BFS sync + async job queue + worker loop
 
-    fetcher --> cache
-    fetcher --> blocklist
-    fetcher --> logger
-    fetcher --> errors
-    webSearchSvc --> blocklist
-    converter --> config
-    fetcher --> config
+Store layer (src/store/)
+  └── memory | sqlite | redis (KV, RateLimit, JobQueue)
+
+Observability (src/obs/metrics.ts)
+  └── prom-client, /healthz /readyz /metrics
 ```
 
 ### Key components
 
-| Component | File | Responsibility |
-|-----------|------|----------------|
-| MCP entry point | `src/index.ts` | Tool registration, dispatch |
-| Playwright fetcher | `src/fetcher.ts` | JS rendering, DOM pruning, LRU cache |
-| HTML converter | `src/converter.ts` | Wraps `markdown-for-agents` with content scoring |
-| DuckDuckGo search | `src/services/webSearch.ts` | Plain HTTP search, result parsing |
+| Component | Directory/File | Responsibility |
+|-----------|---------------|----------------|
+| Entry point | `src/index.ts` | Bootstrap: HTTP/stdio/worker, lifecycle drain |
+| Tool registry | `src/server/registry.ts` | Metrics, timeout AbortSignal, error mapping |
+| Tool definitions | `src/tools/definitions.ts` | All 13 tools with `outputSchema` + `toText` |
+| Render ladder | `src/render/ladder.ts` | Tier selection + tier-memo |
+| Escalation heuristic | `src/render/heuristic.ts` | Pure signal scoring (fixture-tested) |
+| Browser pool | `src/render/browserPool.ts` | Warm Chromium instances, per-context isolation |
+| HTTP client | `src/http/client.ts` | Retry, rate-limit, robots, DNS guard |
+| Extract pipeline | `src/extract/pipeline.ts` | Format, selectors, pagination |
+| Search fan-out | `src/search/fanout.ts` | Multi-provider parallel query + RRF |
+| Reranker | `src/rank/` | ONNX worker thread or TEI |
+| Crawl engine | `src/crawl/engine.ts` | BFS + async job worker |
+| Store layer | `src/store/` | Pluggable KV, rate-limit, job queue |
 | Config | `src/config.ts` | Zod-validated env var schema |
-| Cache | `src/utils/cache.ts` | LRU eviction with byte-level size tracking |
-| Domain filter | `src/utils/domainBlacklist.ts` | Block/allowlist logic |
-| Logger | `src/utils/logger.ts` | Structured logging, per-domain metrics |
-
-**Fetcher internals:** a single persistent Chromium instance is shared across requests. Each fetch opens a fresh page (isolated state), applies DOM pruning to strip non-content elements, then extracts HTML using a priority selector chain. Browser fingerprint spoofing (`navigator.webdriver = false`, randomized UA) reduces bot-detection rejections.
-
-**Content conversion:** the `markdown-for-agents` library uses content scoring and boilerplate detection (`extract: true`) to identify the main article body before converting to markdown with inline links (`linkStyle: "inlined"`).
+| Domain filter | `src/utils/domainBlacklist.ts` | Block/allowlist + `isPrivateIp` |
 
 ---
 
@@ -589,7 +740,7 @@ graph TD
 
 ### Prerequisites
 
-- Node.js >= 20.0.0
+- Node.js >= 22.0.0 (required for `node:sqlite` built-in)
 - npm
 
 ### Setup
@@ -675,7 +826,7 @@ Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for fu
 
 1. Branch from `development`
 2. Follow [Conventional Commits](https://www.conventionalcommits.org/) (`type(scope): subject`)
-3. Add or update tests — aim for >80% coverage
+3. Add or update tests — aim for >90% coverage
 4. Open a pull request against `development`
 
 ---

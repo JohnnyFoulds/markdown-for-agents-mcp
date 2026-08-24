@@ -16,15 +16,15 @@ Legend: ✅ implemented · 🔲 planned · ❌ not available · ⚠️ supersede
 
 ## Competitive Landscape Summary
 
-### Current state
+### Current state (Phases 0–10 complete)
 
 | Feature | This project | Official MCP Fetch | Firecrawl MCP | Playwright MCP | Jina Reader | Crawl4AI |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
-| JS rendering | ✅ | Partial | ✅ | ✅ | ✅ | ✅ |
+| JS rendering | ✅ 3-tier | Partial | ✅ | ✅ | ✅ | ✅ |
 | Batch fetch | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ |
-| Web search | ✅ | ❌ | ✅ | ❌ | Separate | ❌ |
+| Web search | ✅ multi-provider | ❌ | ✅ | ❌ | Separate | ❌ |
 | In-process cache | ✅ | ❌ | ❌ | ❌ | Cloud | ✅ |
-| Proxy support | ✅ | ✅ | Cloud-managed | ✅ | ✅ | ✅ |
+| Proxy support | ✅ rotation | ✅ | Cloud-managed | ✅ | ✅ | ✅ |
 | Structured output (MCP schema) | ✅ | ❌ | ✅ | Accessibility | ✅ | ✅ |
 | MCP native | ✅ | ✅ | ✅ | ✅ | ❌ | Via Docker |
 | No API key required | ✅ | ✅ | ❌ | ❌ | Free tier | ✅ |
@@ -32,18 +32,20 @@ Legend: ✅ implemented · 🔲 planned · ❌ not available · ⚠️ supersede
 | Binary file download | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Streamable HTTP + auth | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Interactive browser | ❌ | ❌ | ✅ | ✅ | ❌ | Partial |
-| Site crawl | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ |
-| Async crawl jobs | ❌ | ❌ | ✅ | ❌ | ❌ | Partial |
-| Anti-bot stealth | Light | None | Cloud-managed | None | Cloud | Aggressive |
-| Proxy list rotation | ❌ | ❌ | Cloud-managed | ❌ | Cloud | ✅ |
-| Schema-based extraction | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ |
-| Multiple output formats | ❌ | ❌ | ✅ | Accessibility | ✅ | ✅ |
-| Auth / cookie passthrough | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
-| robots.txt compliance | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ |
-| Content pagination | ❌ | ✅ | ❌ | ❌ | ✅ | ❌ |
+| Site crawl | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ |
+| Async crawl jobs | ✅ | ❌ | ✅ | ❌ | ❌ | Partial |
+| Anti-bot stealth | ✅ opt-in | None | Cloud-managed | None | Cloud | Aggressive |
+| Proxy list rotation | ✅ | ❌ | Cloud-managed | ❌ | Cloud | ✅ |
+| Schema-based extraction | CSS/XPath | ❌ | ✅ | ❌ | ❌ | ✅ |
+| Multiple output formats | ✅ | ❌ | ✅ | Accessibility | ✅ | ✅ |
+| Auth / cookie passthrough | ✅ headers | ❌ | ✅ | ✅ | ✅ | ✅ |
+| robots.txt compliance | ✅ opt-in | ✅ | ✅ | ❌ | ✅ | ✅ |
+| Content pagination | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ |
 | Multi-browser support | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ |
-| CSS selector targeting | ❌ | ❌ | ✅ | ❌ | ✅ | ✅ |
-| Retry and back-off | ❌ | ❌ | ✅ | ❌ | ❌ | ✅ |
+| CSS selector targeting | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ |
+| Retry and back-off | ✅ | ❌ | ✅ | ❌ | ❌ | ✅ |
+| Cross-encoder reranking | ✅ ONNX/TEI | ❌ | ❌ | ❌ | Cloud | ❌ |
+| Enterprise-scale infra | ✅ Phase 7 | ❌ | ✅ | ❌ | ✅ | ❌ |
 
 ### After implementing all planned work
 
@@ -100,7 +102,9 @@ Legend: ✅ implemented · 🔲 planned · ❌ not available · ⚠️ supersede
 
 ---
 
-### 3. Site Crawling and Mapping
+### 3. Site Crawling and Mapping ✅
+
+> ✅ **Implemented.** `crawl_site` (sync), `crawl_start`/`crawl_status`/`crawl_results`/`crawl_cancel`/`crawl_list` (async), and `map_site` are all shipped as part of **Phase 5–6** in `TAVILY_PARITY_PLAN.md`.
 
 **Gap:** There is no way to crawl an entire site or enumerate all URLs under a domain. Firecrawl exposes `firecrawl_crawl` and `firecrawl_map` for this.
 
@@ -228,7 +232,9 @@ CAPTCHA solving is explicitly out of scope — it requires a third-party solving
 
 ---
 
-### 6. CSS Selector Targeting
+### 6. CSS Selector Targeting ✅
+
+> ✅ **Implemented.** `includeSelector` / `excludeSelectors` added to `extract_urls` and `fetch_url` as part of **Phase 5** in `TAVILY_PARITY_PLAN.md`. Implemented in `src/extract/selector.ts`.
 
 **Gap:** Content extraction uses a fixed priority chain (`<main>` > `<article>` > `#content` > `.content` > `<body>`). Jina Reader supports explicit `X-Target-Selector` and `X-Remove-Selector` headers for precise targeting.
 
@@ -248,7 +254,9 @@ CAPTCHA solving is explicitly out of scope — it requires a third-party solving
 
 ---
 
-### 8. Authentication / Cookie Passthrough
+### 8. Authentication / Cookie Passthrough ✅
+
+> ✅ **Implemented.** `fetch_url`, `fetch_urls`, and `extract_urls` all accept a `headers` object for auth/cookie passthrough (Phase 9 / `MCP_AUTH_TOKEN` bearer token, timing-safe comparison). Full stateful session replay is still unimplemented — see Moat 2.
 
 **Gap:** There is no way to fetch authenticated pages without a full browser session. Jina Reader supports `X-Set-Cookie` header forwarding; Browserbase supports persistent authenticated sessions.
 
@@ -260,7 +268,9 @@ For full multi-step login flows and interactive authenticated pages that cannot 
 
 ---
 
-### 9. Multiple Output Formats
+### 9. Multiple Output Formats ✅
+
+> ✅ **Implemented.** `outputFormat: markdown|html|text|screenshot` parameter added to `extract_urls` and `fetch_url` as part of **Phase 5** in `TAVILY_PARITY_PLAN.md`.
 
 **Gap:** The server always returns markdown. Jina Reader can return raw HTML, plain text, screenshots, and full-page images.
 

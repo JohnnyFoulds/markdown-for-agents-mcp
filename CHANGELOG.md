@@ -5,6 +5,100 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — Phases 0–10 (Tavily Parity)
+
+### Added — Phase 10: SOCKS5 Gateway
+- `src/proxy/socks5Server.ts` — RFC 1928/1929 SOCKS5 listener (`tunnel` and `intercept` modes)
+- `src/proxy/policy.ts` — allow/deny policy enforcing existing domain blocklist + SSRF guard
+- `SOCKS5_LISTEN_*` config vars; `SOCKS5_UPSTREAM_*` for upstream credential injection
+- Solves Chromium SOCKS5 credential limitation (microsoft/playwright#10567) via loopback relay
+
+### Added — Phase 9: Docs & Auth
+- `.env.example` fully documents all ~80 config vars
+- `CLAUDE.md` updated to reflect 13-tool surface and current architecture
+- Bearer token comparison uses `crypto.timingSafeEqual` (timing-safe)
+- Auth passthrough: `fetch_url` / `fetch_urls` / `extract_urls` accept custom `headers`
+
+### Added — Phase 8: Stealth + Proxy Rotation
+- `STEALTH_ENABLED` flag wires `playwright-extra` stealth plugin into Tier 3
+- `PROXY_PINS` JSON array enables round-robin proxy rotation via `src/render/poolRegistry.ts`
+- Per-proxy `BrowserPool` instances in `PoolRegistry` (Playwright proxy is launch-time)
+
+### Added — Phase 7: Containerisation & Observability
+- `Dockerfile` using `playwright:jammy` runtime stage + `node:22-bookworm-slim` build stage
+- `docker-compose.yml` (server + worker + Redis) and `docker-compose.scale-test.yml` (scale proof)
+- `scripts/scale-proof.mjs` — 20-assertion integration proof (stateless, shared queue, rate-limit, drain)
+- `src/obs/metrics.ts` — prom-client registry with all named metric constants
+- `/healthz`, `/readyz`, `/metrics` probe endpoints
+- `src/server/lifecycle.ts` — ordered graceful drain (flip readyz → close HTTP → release leases → await in-flight → browser drain)
+- `MCP_HTTP_MODE=stateless` — per-request McpServer+transport factory; N replicas behind a plain load balancer with no session affinity
+- `SHUTDOWN_DRAIN_MS` / `SHUTDOWN_TIMEOUT_MS` config
+
+### Added — Phase 6: Pluggable Stores + Async Crawl
+- `src/store/types.ts` — `KeyValueStore`, `RateLimitStore`, `JobQueue` interfaces
+- `src/store/memory/` — in-process implementations (default for stdio)
+- `src/store/sqlite/` — `node:sqlite`-backed implementations (default for single-replica HTTP)
+- `src/store/redis/` — `ioredis`-backed implementations with Lua-atomic `LEASE_SCRIPT` / `FAIL_SCRIPT`
+- `src/store/factory.ts` — `initStores()` / `STORE_BACKEND=auto|memory|sqlite|redis`
+- `src/crawl/engine.ts` — `crawlSync` (BFS), `startAsyncCrawl`, `runWorkerLoop`
+- `crawl_start`, `crawl_status`, `crawl_results`, `crawl_cancel`, `crawl_list` MCP tools
+- `MCP_ROLE=server|worker|both` — same binary, different role
+- `src/store/__contract__/` — 44-test contract suite for all three backends (KV, RateLimit, JobQueue)
+- Fixed `MemoryJobQueue.lease` to sort by depth (BFS order), matching SQLite/Redis behaviour
+- Fixed rate-limit store wiring: removed `isHttpMode` guard so all roles use shared Redis bucket
+
+### Added — Phase 5: Extract, Map, Formats, Selectors
+- `extract_urls` MCP tool — fetch multiple URLs with CSS selectors, output format, pagination
+- `map_site` MCP tool — discover all URLs via sitemap.xml or BFS link crawl
+- `crawl_site` MCP tool — synchronous bounded BFS crawl
+- `src/extract/pipeline.ts` — `outputFormat: markdown|html|text|screenshot`, pagination (`offset`/`limit`/`totalLength`/`truncated`)
+- `src/extract/selector.ts` — CSS selector extraction (tag, `#id`, `.class`, `tag.class`, `tag#id`)
+
+### Added — Phase 4: Chunking + Reranking
+- `src/rank/chunker.ts` — ATX-heading-aware chunker, 400-token chunks, 64-token overlap, heading-path prefix
+- `src/rank/transformersReranker.ts` — `@huggingface/transformers` ONNX backend (`dtype: q8`, `device: cpu`)
+- `src/rank/rerankWorker.ts` — worker-thread isolation to keep event loop free during inference
+- `src/rank/teiReranker.ts` — TEI HTTP endpoint backend (optional, GPU-capable)
+- `RERANK_BACKEND=none|local|tei` config; `web_search` `searchDepth` parameter
+
+### Added — Phase 3: Search Provider Abstraction
+- `src/search/providers/` — Brave, Serper, SearXNG, DuckDuckGo adapters
+- `src/search/fanout.ts` — multi-provider fan-out with RRF merge, URL canonicalisation, dedup
+- `src/search/breaker.ts` — shared circuit breaker (stored in `KeyValueStore` so replicas share state)
+- Fixed silent-failure bug: `AllProvidersFailedError` now propagates as `isError: true`
+- Fixed bot-challenge detection: `BotChallengeError` triggers fan-out fallback rather than empty result
+- Fixed missing `title` arg in `convertWithMetadata` (results headed `# <url>` instead of `# <title>`)
+
+### Added — Phase 2: 3-Tier Render Ladder
+- `src/render/ladder.ts` — escalation ladder with tier-memo in `KeyValueStore`
+- `src/render/heuristic.ts` — pure signal-scoring escalation heuristic (fixture-tested)
+- `src/render/tiers/httpTier.ts` — Tier 1: plain HTTP via undici
+- `src/render/tiers/lightpandaTier.ts` — Tier 2: CDP to Lightpanda sidecar (`LIGHTPANDA_ENABLED`)
+- `src/render/tiers/playwrightTier.ts` — Tier 3: Chromium via BrowserPool
+- `src/render/browserPool.ts` — warm pool, per-context isolation, recycle on crash/max-jobs/max-age
+- Fixed `waitUntil: "networkidle"` → `"domcontentloaded"` + bounded settle race to prevent infinite hangs
+- Fixed shared-context cookie leak (new context per request)
+
+### Added — Phase 1: Unified HTTP Layer
+- `src/http/client.ts` — `UndiciHttpClient` with retry, robots, rate-limit, DNS guard
+- `src/http/retry.ts` — exponential backoff with full jitter, `Retry-After` honour
+- `src/http/rateLimiter.ts` — per-host token bucket wired to `RateLimitStore`
+- `src/http/robots.ts` — `robots-parser` integration, cached in `KeyValueStore`
+- `src/http/dnsGuard.ts` — resolves all DNS addresses, pins via undici `connect.lookup`
+- `src/http/encoding.ts` — `Content-Type` charset → BOM → `<meta charset>` detection
+- `src/http/fingerprint.ts` — single source of UA strings (replaces three scattered constants)
+- `src/http/proxy.ts` — `resolveProxy` / `resolveProxyList` / `PROXY_PINS` rotation
+
+### Added — Phase 0: Prerequisite Refactors
+- `src/server/registry.ts` — tool registration loop with metrics, timeout AbortSignal, error mapping
+- `src/tools/definitions.ts` — all tool definitions with required `outputSchema` + `toText`
+- `src/extract/pipeline.ts` — host-side extraction pipeline (replaces hardcoded `page.evaluate` pruning)
+- `src/utils/domainBlacklist.ts` — exports `isPrivateIp()` for DNS guard
+- Config-driven cache construction (was hardcoded `50MB`/`15min`, ignoring `CACHE_*` env vars)
+- Fixed HTML-level truncation (was cutting mid-tag); truncation now post-conversion at paragraph boundary
+
+---
+
 ## [1.0.1] - 2026-04-06
 
 ### Fixed

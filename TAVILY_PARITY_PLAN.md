@@ -1,5 +1,9 @@
 # Evolving `markdown-for-agents-mcp` into a self-hosted Tavily equivalent
 
+> **Implementation complete.** All 10 phases (Phase 0 through Phase 10) are implemented
+> as of 2026-08-24. See `CHANGELOG.md` for the full feature history and `FUTURE_WORK.md`
+> for the updated competitive analysis.
+
 > **Document roles** — `FUTURE_WORK.md` is the **gap catalogue and competitive analysis**:
 > what is missing and why it matters. This document is the **execution plan**: phases,
 > interfaces, file layouts, effort estimates, and verification. Update `FUTURE_WORK.md`
@@ -60,21 +64,21 @@ single highest-leverage change in this plan.
 
 ## Phasing
 
-| Phase | Theme | Effort |
-| --- | --- | --- |
-| **0** | Prerequisite refactors: tool registry, parameterised extraction, config-driven cache, `isPrivateIp` export | 3–5 d |
-| **1** | Unified HTTP layer: retry/backoff, rate limit, robots, proxy, encoding, DNS guard | 5–8 d |
-| **2** | 3-tier render ladder + browser pool | 8–12 d |
-| **3** | Search provider abstraction + fan-out + fix silent failure | 5–7 d |
-| **4** | Chunking + reranking, `searchDepth`, `chunksPerSource` | 6–10 d |
-| **5** | `extract_urls` / `map_site`, output formats, CSS selectors, pagination | 4–6 d |
-| **6** | Pluggable stores + queue-driven crawl (sync + async) | 10–15 d |
-| **7** | Containerisation, k8s, ECS Fargate, OTel/Prometheus, stateless HTTP, draining | 6–10 d |
-| **8** | Stealth Layer 1 + proxy rotation (Tier 3 only) | 5–8 d |
-| **9** | Docs truth-up, `.env.example` fix, auth/cookie passthrough | 2–3 d |
-| **10** | SOCKS5 gateway: optional ingress listener + upstream chaining (AI Studio) | 4–6 d |
+| Phase | Status | Theme | Effort |
+| --- | --- | --- | --- |
+| **0** | ✅ | Prerequisite refactors: tool registry, parameterised extraction, config-driven cache, `isPrivateIp` export | 3–5 d |
+| **1** | ✅ | Unified HTTP layer: retry/backoff, rate limit, robots, proxy, encoding, DNS guard | 5–8 d |
+| **2** | ✅ | 3-tier render ladder + browser pool | 8–12 d |
+| **3** | ✅ | Search provider abstraction + fan-out + fix silent failure | 5–7 d |
+| **4** | ✅ | Chunking + reranking, `searchDepth`, `chunksPerSource` | 6–10 d |
+| **5** | ✅ | `extract_urls` / `map_site`, output formats, CSS selectors, pagination | 4–6 d |
+| **6** | ✅ | Pluggable stores + queue-driven crawl (sync + async) | 10–15 d |
+| **7** | ✅ | Containerisation, k8s, ECS Fargate, OTel/Prometheus, stateless HTTP, draining | 6–10 d |
+| **8** | ✅ | Stealth Layer 1 + proxy rotation (Tier 3 only) | 5–8 d |
+| **9** | ✅ | Docs truth-up, `.env.example` fix, auth/cookie passthrough | 2–3 d |
+| **10** | ✅ | SOCKS5 gateway: optional ingress listener + upstream chaining (AI Studio) | 4–6 d |
 
-**≈58–90 dev-days.** Hard dependency edges: `0→1→2`, `1→3`, `3→4`, `0→5`, `1→6`,
+**All 11 phases complete** (2026-08-24). Original estimate ≈58–90 dev-days. Hard dependency edges: `0→1→2`, `1→3`, `3→4`, `0→5`, `1→6`,
 `6→7`, `2→8`, `1→10`.
 
 **Build Phase 10's listener early if the upstream proxy requires authentication** — it is

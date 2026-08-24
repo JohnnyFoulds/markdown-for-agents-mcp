@@ -75,7 +75,7 @@ src/
     └── logger.ts
 ```
 
-## MCP Tools (14 total)
+## MCP Tools (13 total)
 
 | Tool | Description |
 |---|---|

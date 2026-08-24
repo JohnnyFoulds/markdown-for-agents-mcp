@@ -2,9 +2,9 @@
 
 ## Prerequisites
 
-- **Node.js**: >= 20.0.0 (tested with Node 20 LTS and Node 22)
+- **Node.js**: >= 22.0.0 (required for `node:sqlite` built-in)
 - **npm**: >= 8.0.0
-- **Linux/MacOS** (Playwright requires specific system dependencies)
+- **Linux/macOS** (Playwright requires specific system dependencies on Linux)
 
 ---
 
@@ -23,12 +23,14 @@ cd markdown-for-agents-mcp
 npm install
 ```
 
-This installs:
-- `@modelcontextprotocol/sdk` - MCP server framework
-- `playwright` - Browser automation for JavaScript rendering
-- `markdown-for-agents` - HTML to markdown conversion library
-- `vitest` - Test framework
-- `typescript` - TypeScript compiler
+This installs all runtime and development dependencies, including:
+- `@modelcontextprotocol/sdk` — MCP server framework
+- `playwright` — Browser automation for Tier 3 rendering
+- `markdown-for-agents` — HTML to markdown conversion library
+- `undici` — Unified HTTP client (Tiers 1 & 2)
+- `zod` — Env var validation
+- `better-sqlite3` / `node:sqlite` — SQLite store backend
+- `vitest` — Test framework
 
 ### Step 3: Install Playwright Browsers
 
@@ -36,22 +38,16 @@ This installs:
 npx playwright install chromium
 ```
 
-Or run the postinstall script (automatically run by npm):
+Or run the postinstall script (run automatically by `npm install`):
 
 ```bash
 npm run postinstall
 ```
 
-To install all Playwright browsers (recommended for development):
+To install system dependencies for Playwright (Linux):
 
 ```bash
-npx playwright install
-```
-
-To install system dependencies for Playwright:
-
-```bash
-npx playwright install-deps
+npx playwright install-deps chromium
 ```
 
 ---
@@ -60,29 +56,19 @@ npx playwright install-deps
 
 ### Development Mode
 
-Run TypeScript in watch mode:
-
 ```bash
 npm run dev
 ```
 
-This compiles TypeScript to `dist/` and watches for changes.
+Compiles TypeScript to `dist/` and watches for changes.
 
 ### Production Build
-
-Compile TypeScript with type checking:
 
 ```bash
 npm run build
 ```
 
-This produces:
-- `dist/index.js` - Compiled JavaScript
-- `dist/index.d.ts` - TypeScript declarations
-
 ### Type Checking
-
-Run TypeScript type checking without emitting files:
 
 ```bash
 npm run typecheck
@@ -116,32 +102,50 @@ npx vitest run src/converter.test.ts
 npx vitest run --coverage
 ```
 
+### Run with Redis Contract Tests
+
+Start a local Redis first:
+
+```bash
+docker run -d --rm -p 6379:6379 redis:7-alpine
+REDIS_URL=redis://localhost:6379 npm test
+```
+
+### Run Real-Browser Tests
+
+```bash
+RUN_BROWSER_TESTS=1 npm test
+```
+
 ---
 
 ## 4. Running the MCP Server
 
-### Direct Execution
+### stdio (default — zero config)
 
 ```bash
+npx markdown-for-agents-mcp
+# or after build:
 node dist/index.js
 ```
 
-Expected output:
-```
-markdown-for-agents-mcp server running on stdio
-```
-
-### As a CLI Tool
+### HTTP server mode
 
 ```bash
-markdown-mcp
+HTTP_PORT=3000 node dist/index.js
+# or
+node dist/index.js --http 3000
 ```
 
-(The binary is defined in `package.json` as `markdown-mcp`)
+### Worker-only mode (crawl jobs)
+
+```bash
+MCP_ROLE=worker node dist/index.js
+# or
+node dist/index.js --role=worker
+```
 
 ### Using with an MCP Client
-
-Configure your MCP client to use stdio transport:
 
 ```json
 {
@@ -156,17 +160,10 @@ Configure your MCP client to use stdio transport:
 
 ### CLI Testing
 
-Use the `markdown-cli` binary to test the server manually:
-
 ```bash
-# Single URL fetch
-markdown-cli https://example.com
-
-# Batch fetch
-markdown-cli -b https://example.com https://example.org
-
-# Search
-markdown-cli -s "typescript tutorials"
+markdown-cli https://example.com          # single URL
+markdown-cli -b https://a.com https://b.com  # batch
+markdown-cli -s "typescript tutorials"    # web search
 ```
 
 ---
@@ -176,12 +173,14 @@ markdown-cli -s "typescript tutorials"
 | Command | Description |
 |---------|-------------|
 | `npm install` | Install dependencies and Playwright |
-| `npm run build` | Compile TypeScript to dist/ |
+| `npm run build` | Compile TypeScript to `dist/` |
 | `npm run dev` | TypeScript watch mode |
-| `npm run test` | Run all tests with Vitest |
+| `npm test` | Run all tests with Vitest |
 | `npm run typecheck` | TypeScript type checking |
-| `npx playwright install` | Install Playwright browsers |
-| `node dist/index.js` | Run MCP server |
+| `npx playwright install chromium` | Install Playwright browser |
+| `node dist/index.js` | Run MCP server (stdio) |
+| `HTTP_PORT=3000 node dist/index.js` | Run HTTP server |
+| `MCP_ROLE=worker node dist/index.js` | Run crawl worker |
 
 ---
 
@@ -190,36 +189,66 @@ markdown-cli -s "typescript tutorials"
 ```
 markdown-for-agents-mcp/
 ├── src/
-│   ├── index.ts          # MCP server entry point
-│   ├── fetcher.ts        # Playwright-based URL fetcher
-│   ├── converter.ts      # HTML to markdown converter
-│   ├── fetcher.test.ts   # Fetcher unit tests (7 tests)
-│   ├── converter.test.ts # Converter unit tests (13 tests)
-│   └── tools/
-│       ├── fetchUrl.ts   # Single URL fetch tool
-│       ├── fetchUrl.test.ts   # Single URL tests (7 tests)
-│       ├── fetchUrls.ts  # Batch URL fetch tool
-│       └── fetchUrls.test.ts  # Batch URL tests (8 tests)
-├── dist/                 # Compiled JavaScript (generated)
+│   ├── index.ts              # Entry point: HTTP/stdio/worker bootstrap
+│   ├── config.ts             # Zod-validated env vars
+│   ├── fetcher.ts            # URL fetcher (delegates to render ladder)
+│   ├── converter.ts          # HTML → markdown
+│   ├── server/
+│   │   ├── registry.ts       # Tool registration loop
+│   │   └── lifecycle.ts      # Graceful drain
+│   ├── tools/
+│   │   ├── definitions.ts    # All 13 tool definitions
+│   │   ├── fetchUrl.ts
+│   │   ├── fetchUrls.ts
+│   │   └── types.ts
+│   ├── render/               # 3-tier render ladder
+│   │   ├── ladder.ts
+│   │   ├── heuristic.ts
+│   │   ├── browserPool.ts
+│   │   └── tiers/            # httpTier, lightpandaTier, playwrightTier
+│   ├── extract/              # HTML → format pipeline
+│   ├── http/                 # Unified HTTP client
+│   ├── search/               # Search provider abstraction
+│   ├── rank/                 # Chunker + reranker
+│   ├── crawl/                # BFS + async job worker
+│   ├── store/                # Pluggable stores (memory/sqlite/redis)
+│   ├── obs/                  # Prometheus metrics
+│   └── utils/
 ├── scripts/
-│   └── install-playwright.js  # Playwright installation script
-├── vitest.config.ts      # Vitest configuration
-├── tsconfig.json         # TypeScript configuration
-├── package.json          # Project dependencies and scripts
-└── BUILD_INSTRUCTIONS.md # This file
+│   ├── install-playwright.js
+│   └── scale-proof.mjs       # Docker scale integration proof
+├── dist/                     # Compiled JavaScript (generated)
+├── docker-compose.yml        # Local development stack
+├── docker-compose.scale-test.yml  # Multi-replica scale test
+├── Dockerfile
+├── vitest.config.ts
+├── tsconfig.json
+└── package.json
 ```
 
 ---
 
 ## 7. Environment Variables
 
-No environment variables are required for basic operation.
+Copy `.env.example` to `.env`:
 
-Optional environment variables:
+```bash
+cp .env.example .env
+```
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PLAYWRIGHT_BROWSERS_PATH` | Custom Playwright browser path | System default |
+All variables are documented in `.env.example`. Key variables for getting started:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HTTP_PORT` | _(unset)_ | Start HTTP server on this port |
+| `MCP_AUTH_TOKEN` | _(unset)_ | Bearer token for HTTP mode |
+| `STORE_BACKEND` | `auto` | `auto` \| `memory` \| `sqlite` \| `redis` |
+| `STORE_REDIS_URL` | _(unset)_ | Redis URL when `STORE_BACKEND=redis` |
+| `LOG_LEVEL` | `INFO` | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` |
+| `RATE_LIMIT_PER_HOST_RPS` | `0` | Max requests/sec per host (0 = unlimited) |
+| `RESPECT_ROBOTS_TXT` | `false` | Honour robots.txt |
+| `RERANK_BACKEND` | `none` | `none` \| `local` \| `tei` |
+| `MCP_ROLE` | `server` | `server` \| `worker` \| `both` |
 
 ---
 
@@ -227,28 +256,18 @@ Optional environment variables:
 
 ### Playwright Installation Issues
 
-If Playwright browsers fail to install:
-
 ```bash
-# Remove existing installation
 rm -rf node_modules/.cache/playwright
-
-# Reinstall
 npx playwright install chromium
 ```
 
-### Permission Errors on Linux
-
-Add the user to the appropriate groups:
+### Node Version
 
 ```bash
-sudo usermod -aG docker $USER
-sudo usermod -aG video $USER
+node --version  # Must be >= 22.0.0
 ```
 
 ### TypeScript Compilation Errors
-
-Clear and rebuild:
 
 ```bash
 rm -rf dist node_modules
@@ -258,146 +277,137 @@ npm run build
 
 ### MCP Connection Issues
 
-Check server logs:
-
 ```bash
 node dist/index.js 2>&1 | tee mcp.log
+```
+
+### Redis Connection
+
+```bash
+# Test Redis is reachable
+redis-cli -u $STORE_REDIS_URL ping
 ```
 
 ---
 
 ## 9. Verification
 
-After installation, verify everything works:
-
 ```bash
-# 1. Check Node version
-node --version  # Should be >= 20.0.0
+# 1. Check Node version (must be >= 22)
+node --version
 
-# 2. Check npm version
-npm --version   # Should be >= 8.0.0
+# 2. Run tests
+npm test
 
-# 3. Run tests
-npm test        # Should show all tests passing
+# 3. Build
+npm run build
 
-# 4. Build the project
-npm run build   # Should complete without errors
+# 4. Smoke test (stdio)
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}' | node dist/index.js
 
-# 5. Start the server (in background)
-node dist/index.js &
-
-# 6. Check if server is running
-pgrep -f "dist/index.js"  # Should show PID
-
-# 7. Kill server when done
-kill <PID>
+# 5. Smoke test (HTTP)
+HTTP_PORT=3456 node dist/index.js &
+curl -s -X POST http://localhost:3456/healthz
+kill %1
 ```
 
 ---
 
-## 10. Deployment
+## 10. Container Deployment
 
-### Container Deployment (Docker)
+### Dockerfile
 
-Create a `Dockerfile`:
+The repo includes a production-ready `Dockerfile`. It uses the official Playwright base image to ensure Chromium is available without manual `apt-get` steps:
 
 ```dockerfile
-FROM node:20-alpine
-
+# Build stage
+FROM node:22-bookworm-slim AS builder
 WORKDIR /app
-
-# Install Playwright dependencies
-RUN apk add --no-cache chromium nss freetype harfbuzz ca-certures fonts-terminus
-
-# Copy package files
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 COPY package*.json ./
-
-# Install dependencies
-RUN npm install
-
-# Copy source
+RUN npm ci --ignore-scripts
+COPY tsconfig.json ./
 COPY src ./src
-COPY scripts ./scripts
-COPY vitest.config.ts ./vitest.config.ts
-COPY tsconfig.json ./tsconfig.json
-
-# Run postinstall
-RUN npm run postinstall
-
-# Build
 RUN npm run build
 
-# Expose nothing (stdio transport)
+# Runtime stage — Playwright's image has Chromium + all system deps
+FROM mcr.microsoft.com/playwright:v1.52.0-jammy AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+
+# Provide a properly-sized /dev/shm (Docker default 64 MB exhausts Chromium)
+# In Docker: add shm_size: 1gb to compose; in k8s: emptyDir{medium:Memory}
+# See SECURITY.md for the --disable-dev-shm-usage trade-off.
+
+EXPOSE 3000
 ENTRYPOINT ["node", "dist/index.js"]
 ```
+
+> **Alpine is not supported.** Playwright does not ship a musl Chromium binary. Using `node:22-alpine` + `apk add chromium` requires setting `executablePath` manually and is unsupported.
 
 Build and run:
 
 ```bash
 docker build -t markdown-mcp .
-docker run --rm markdown-mcp
+docker run --rm --shm-size=1gb -e HTTP_PORT=3000 -p 3000:3000 markdown-mcp
 ```
 
-### Global Installation
+### Docker Compose
 
 ```bash
-npm install -g markdown-for-agents-mcp
-```
+# Development stack (server + worker + Redis)
+docker compose up
 
-Then use:
+# Multi-replica scale test (3 servers, 2 workers, nginx)
+docker compose -f docker-compose.scale-test.yml up --scale mcp-server=3 --scale mcp-worker=2
 
-```bash
-markdown-mcp
+# Run scale proof
+node scripts/scale-proof.mjs
 ```
 
 ---
 
 ## 11. Dependencies
 
-### Runtime Dependencies
+### Runtime
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `@modelcontextprotocol/sdk` | ^1.0.0 | MCP server framework |
-| `playwright` | ^1.40.0 | Browser automation |
-| `markdown-for-agents` | ^1.0.0 | HTML to markdown conversion |
+| Package | Purpose |
+|---------|---------|
+| `@modelcontextprotocol/sdk` | MCP server framework |
+| `playwright` | Tier 3 browser automation |
+| `markdown-for-agents` | HTML to markdown conversion |
+| `undici` | Unified HTTP client |
+| `zod` | Config validation |
+| `prom-client` | Prometheus metrics |
 
-### Development Dependencies
+### Optional Runtime (lazy-imported)
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| `vitest` | ^4.1.2 | Test framework |
-| `typescript` | ^5.3.0 | TypeScript compiler |
-| `@types/node` | ^20.19.39 | Node.js type definitions |
+| Package | Purpose |
+|---------|---------|
+| `ioredis` | Redis store backend |
+| `@huggingface/transformers` | Local ONNX reranker |
+| `@opentelemetry/sdk-node` | OpenTelemetry tracing |
+
+### Development
+
+| Package | Purpose |
+|---------|---------|
+| `vitest` | Test framework |
+| `typescript` | TypeScript compiler |
+| `@types/node` | Node.js type definitions |
 
 ---
 
 ## 12. Testing Checklist
 
+- [ ] `node --version` shows >= 22.0.0
 - [ ] `npm install` completes successfully
-- [ ] `npx playwright install chromium` completes successfully
+- [ ] `npx playwright install chromium` completes
 - [ ] `npm test` shows all tests passing
 - [ ] `npm run build` completes without errors
 - [ ] `npm run typecheck` shows no errors
-- [ ] `node dist/index.js` starts and outputs success message
-
----
-
-## 13. Build Artifacts
-
-After `npm run build`, the following files are generated in `dist/`:
-
-```
-dist/
-├── index.js          # Main entry point (ESM)
-├── index.d.ts        # TypeScript declarations
-├── fetcher.js
-├── fetcher.d.ts
-├── converter.js
-├── converter.d.ts
-└── tools/
-    ├── fetchUrl.js
-    ├── fetchUrl.d.ts
-    └── fetchUrls.js
-    └── fetchUrls.d.ts
-```
+- [ ] `node dist/index.js` starts in stdio mode
+- [ ] `HTTP_PORT=3000 node dist/index.js` serves `/healthz` → 200

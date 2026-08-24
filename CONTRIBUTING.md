@@ -24,22 +24,20 @@ Feature suggestions are welcome! Please provide:
 
 ### Pull Requests
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Test thoroughly
-5. Commit using conventional commits (`feat: add amazing feature`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
+1. Branch from `development`
+2. Make your changes
+3. Add or update tests — aim for >90% coverage
+4. Commit using [Conventional Commits](https://www.conventionalcommits.org/)
+5. Push to your fork and open a pull request against `development`
 
 ## Development Setup
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/markdown-for-agents-mcp.git
+git clone https://github.com/JohnnyFoulds/markdown-for-agents-mcp.git
 cd markdown-for-agents-mcp
 
-# Install dependencies
+# Install dependencies (Node.js >= 22 required)
 npm install
 
 # Install Playwright browsers
@@ -47,6 +45,9 @@ npx playwright install chromium
 
 # Run tests
 npm test
+
+# Run tests with Redis store contract tests
+REDIS_URL=redis://localhost:6379 npm test
 
 # Build project
 npm run build
@@ -58,15 +59,29 @@ npm run dev
 ## Code Style
 
 ### TypeScript
-- Use strict mode (enforced by tsconfig.json)
-- All functions must have JSDoc comments
-- Type hints required for all parameters and return values
+- Use strict mode (enforced by `tsconfig.json`)
+- No JSDoc on obvious signatures — comments only for non-obvious WHY
+- No `implicit any` in new code
 - Use `const` over `let`; avoid `var`
 
-### File Organization
-- Co-located tests (`.test.ts` next to source files)
-- Utility functions in `src/utils/`
-- MCP tools in `src/tools/`
+### Directory structure
+
+```
+src/
+├── index.ts          # Entry point: HTTP/stdio/worker bootstrap
+├── config.ts         # Zod-validated env vars
+├── server/           # Tool registry + graceful drain
+├── tools/            # Tool definitions and handlers
+├── render/           # 3-tier render ladder (http / lightpanda / playwright)
+├── extract/          # HTML → format pipeline (selectors, pagination)
+├── http/             # Unified HTTP client (retry, robots, rate-limit, proxy)
+├── search/           # Search provider abstraction + fan-out
+├── rank/             # Chunker + reranker (ONNX / TEI)
+├── crawl/            # BFS crawl engine + async job worker
+├── store/            # Pluggable stores (memory / sqlite / redis)
+├── obs/              # Prometheus metrics + OTel
+└── utils/            # Cache, domain blocklist, errors, logger
+```
 
 ### Commit Messages
 
@@ -89,22 +104,31 @@ Follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 **Examples:**
 ```
-feat: add support for custom user agents
-fix: resolve timeout issue on slow connections
-docs: update environment variable documentation
-refactor: extract config validation to separate function
+feat(search): add Brave Search provider
+fix(crawl): reclaim expired leases on worker restart
+docs: update .env.example with reranker config
 ```
+
+Do **not** add AI co-authorship lines to commits.
 
 ## Testing
 
-- Test each service layer function independently
-- Mock external dependencies (Playwright, network)
-- Aim for >80% code coverage
+- Test each layer independently; mock at the DI seam (injected deps, not module internals)
+- Aim for >90% statement coverage
 - Run tests before committing: `npm test`
+- Redis contract tests: `REDIS_URL=redis://localhost:6379 npm test`
+- Real-browser tests: `RUN_BROWSER_TESTS=1 npm test`
+
+All new MCP tools must have `outputSchema` and `toText` — enforced by `registry.test.ts`.
+
+## Prerequisites
+
+- **Node.js >= 22.0.0** (required for `node:sqlite` built-in)
+- npm >= 8
 
 ## Questions?
 
-Feel free to reach out with questions via GitHub issues or direct contact.
+Reach out via GitHub issues.
 
 ## Code of Conduct
 
