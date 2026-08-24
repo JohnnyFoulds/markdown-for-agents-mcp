@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+resources:
+  - valkey.yaml
+
+# Patch the shared ConfigMap to switch the store backend to Valkey.
+# Remove this component to fall back to the default SQLite store.
+patches:
+  - target:
+      kind: ConfigMap
+      name: mcp-config
+    patch: |-
+      - op: replace
+        path: /data/STORE_BACKEND
+        value: redis
+      - op: add
+        path: /data/STORE_REDIS_URL
+        value: redis://valkey:6379

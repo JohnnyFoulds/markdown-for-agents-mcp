@@ -1,0 +1,52 @@
+# Egress NetworkPolicy — blocks Chromium from reaching private IP ranges.
+#
+# Why this matters: Chrome resolves DNS internally, so our app-level isPrivateIp()
+# check can be bypassed by a DNS record that changes between our check and Chrome's
+# resolution (DNS rebinding). This policy enforces the restriction at the kernel
+# level, where it cannot be bypassed from within the container.
+#
+# Allows:
+#   - DNS (UDP+TCP 53) to any destination
+#   - All traffic to other pods in the mcp-system namespace (Valkey, inter-pod)
+#   - HTTP (80) and HTTPS (443) to the public internet
+# Blocks:
+#   - Any destination in RFC1918 / link-local ranges
+#   - Loopback (prevents localhost SSRF from worker processes)
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-egress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # In-namespace traffic: Valkey, health checks between pods
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: mcp-system
+
+    # External HTTP/HTTPS — everything EXCEPT private ranges
+    - ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 443
+      to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+              - 127.0.0.0/8

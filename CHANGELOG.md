@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `PROXY_PINS` JSON array enables round-robin proxy rotation via `src/render/poolRegistry.ts`
 - Per-proxy `BrowserPool` instances in `PoolRegistry` (Playwright proxy is launch-time)
 
+### Added — Kubernetes manifests & deployment guide
+- `deploy/k8s/base/` — Kustomize base: Namespace, ConfigMap, Deployments (server + worker), Service, HPA, PDB, NetworkPolicy
+- `deploy/k8s/components/valkey/` — optional Kustomize component: Valkey (BSD-licensed Redis-compatible) for shared rate-limit store and crawl queue
+- `deploy/k8s/overlays/docker-desktop/` — local development overlay: single replica, `imagePullPolicy: Never`, LoadBalancer service on port 3000
+- `deploy/k8s/overlays/prod/` — production overlay: `imagePullPolicy: Always`, Ingress with cert-manager TLS, image registry placeholder
+- `deploy/k8s/DEPLOYMENT.md` — complete deployment guide: architecture, config reference, secrets, Prometheus integration, HPA setup (prometheus-adapter), rolling updates, smoke test suite, teardown, Docker Desktop walkthrough with containerd image import
+- `scripts/smoke-tests.mjs` — Docker Compose smoke tests (10 modes: stdio, HTTP/sqlite, memory, Lightpanda, Redis, auth, role=both, role=worker, readyz gate)
+- `scripts/k8s-smoke-tests.mjs` — k8s smoke tests (13 suites, 67 assertions: inventory, probes, MCP protocol, tool call, auth, HPA, PDB, stateless, NetworkPolicy, self-healing)
+- `package.json` scripts: `test:smoke` and `test:k8s`
+
 ### Added — Phase 7: Containerisation & Observability
 - `Dockerfile` using `playwright:jammy` runtime stage + `node:22-bookworm-slim` build stage
 - `docker-compose.yml` (server + worker + Redis) and `docker-compose.scale-test.yml` (scale proof)

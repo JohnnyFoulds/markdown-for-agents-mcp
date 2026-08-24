@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mcp-config
+data:
+  # Default store: SQLite (no external dependency, single-replica only).
+  # For multi-replica deployments include the valkey component:
+  #   components/valkey — adds Valkey deployment and switches STORE_BACKEND=redis
+  # For an external Redis/Valkey instance, set STORE_BACKEND and STORE_REDIS_URL
+  # in your overlay's configmap patch.
+  STORE_BACKEND: "sqlite"
+
+  MCP_HTTP_MODE: "stateless"
+  LOG_FORMAT: "json"
+  LOG_LEVEL: "INFO"
+  LIGHTPANDA_ENABLED: "false"
+
+  RATE_LIMIT_PER_HOST_RPS: "2"
+  RATE_LIMIT_BURST: "5"
+  SHUTDOWN_DRAIN_MS: "5000"
+  SHUTDOWN_TIMEOUT_MS: "30000"
+
+  # Prometheus scraping is handled by existing cluster Prometheus via pod
+  # annotations on the server pods (prometheus.io/scrape=true on port 3000).
+  # No Prometheus or Grafana is deployed by these manifests.
+  # For an external Prometheus, add a scrape job pointing to the mcp-server
+  # Service on port 3000, path /metrics.

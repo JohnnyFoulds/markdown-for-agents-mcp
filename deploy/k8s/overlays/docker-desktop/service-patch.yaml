@@ -1,0 +1,9 @@
+- op: replace
+  path: /spec/type
+  value: LoadBalancer
+- op: replace
+  path: /spec/ports
+  value:
+    - name: http
+      port: 3000
+      targetPort: 3000

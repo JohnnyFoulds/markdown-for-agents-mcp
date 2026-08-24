@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-worker
+  labels:
+    app: mcp-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: mcp-worker
+  template:
+    metadata:
+      labels:
+        app: mcp-worker
+    spec:
+      terminationGracePeriodSeconds: 90
+      containers:
+        - name: mcp-worker
+          image: markdown-for-agents-mcp:latest
+          command: ["node", "dist/index.js", "--role=worker"]
+          envFrom:
+            - configMapRef:
+                name: mcp-config
+          env:
+            - name: MCP_ROLE
+              value: worker
+            - name: RENDER_MAX_CONCURRENCY
+              value: "16"
+            - name: CRAWL_MAX_CONCURRENCY
+              value: "10"
+          resources:
+            requests:
+              cpu: "2"
+              memory: 4Gi
+            limits:
+              cpu: "4"
+              memory: 8Gi
+          volumeMounts:
+            - name: dshm
+              mountPath: /dev/shm
+          livenessProbe:
+            exec:
+              command: ["node", "-e", "process.exit(0)"]
+            periodSeconds: 30
+            failureThreshold: 3
+      volumes:
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi

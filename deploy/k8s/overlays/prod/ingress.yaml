@@ -1,0 +1,29 @@
+# Replace mcp.your-domain.com with your actual hostname before deploying.
+# Requires cert-manager with a ClusterIssuer named letsencrypt-prod.
+# Adjust ingressClassName to match your cluster's ingress controller.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mcp-server
+  namespace: mcp-system
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - mcp.your-domain.com
+      secretName: mcp-tls
+  rules:
+    - host: mcp.your-domain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mcp-server
+                port:
+                  name: http

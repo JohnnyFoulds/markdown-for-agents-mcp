@@ -642,7 +642,22 @@ docker compose -f docker-compose.scale-test.yml up --scale mcp-server=3 --scale 
 
 ### Kubernetes
 
-Two Deployments of the same image — `mcp-server` and `mcp-worker` — behind a single Service. HPA scales the server on `mcp_inflight_requests` and workers on `crawl_queue_depth`. See `deploy/k8s/` for manifests.
+Two Deployments of the same image — `mcp-server` and `mcp-worker` — behind a single Service. HPA scales the server on `mcp_inflight_requests` and workers on `crawl_queue_depth`.
+
+- Manifests: `deploy/k8s/` (Kustomize base + optional Valkey component)
+- Overlays: `overlays/docker-desktop/` (local dev) and `overlays/prod/` (production)
+- Full deployment guide: [`deploy/k8s/DEPLOYMENT.md`](deploy/k8s/DEPLOYMENT.md)
+
+```bash
+# Docker Desktop (local dev)
+kubectl apply -k deploy/k8s/overlays/docker-desktop
+
+# Production
+kubectl apply -k deploy/k8s/overlays/prod
+
+# Run k8s smoke tests (67 assertions against a live deployment)
+npm run test:k8s
+```
 
 ### AWS ECS Fargate
 

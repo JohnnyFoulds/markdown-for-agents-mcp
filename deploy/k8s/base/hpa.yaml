@@ -1,0 +1,66 @@
+# HPA for mcp-server.
+# Primary signal: mcp_inflight_requests (requires prometheus-adapter).
+# CPU is the fallback for clusters without prometheus-adapter.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mcp-server-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mcp-server
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Pods
+      pods:
+        metric:
+          name: mcp_inflight_requests
+        target:
+          type: AverageValue
+          averageValue: "6"
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+---
+# HPA for mcp-worker: scale on crawl queue depth.
+# Requires prometheus-adapter exposing crawl_queue_depth as an external metric.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: mcp-worker-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: mcp-worker
+  minReplicas: 2
+  maxReplicas: 50
+  metrics:
+    - type: External
+      external:
+        metric:
+          name: crawl_queue_depth
+        target:
+          type: AverageValue
+          averageValue: "50"
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300

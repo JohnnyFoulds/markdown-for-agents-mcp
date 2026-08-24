@@ -1,0 +1,45 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+# Include the valkey component to enable the shared store.
+# Remove this line to run with SQLite (single-replica only).
+components:
+  - ../../components/valkey
+
+images:
+  - name: markdown-for-agents-mcp:latest
+    newName: markdown-for-agents-mcp
+    newTag: local
+
+patches:
+  - path: server-patch.yaml
+    target:
+      kind: Deployment
+      name: mcp-server
+  - path: server-tsc-patch.yaml
+    target:
+      kind: Deployment
+      name: mcp-server
+  - path: worker-patch.yaml
+    target:
+      kind: Deployment
+      name: mcp-worker
+  - path: service-patch.yaml
+    target:
+      kind: Service
+      name: mcp-server
+  - path: hpa-server-patch.yaml
+    target:
+      kind: HorizontalPodAutoscaler
+      name: mcp-server-hpa
+  - path: hpa-worker-patch.yaml
+    target:
+      kind: HorizontalPodAutoscaler
+      name: mcp-worker-hpa
+  - path: pdb-patch.yaml
+    target:
+      kind: PodDisruptionBudget
+      name: mcp-server-pdb
