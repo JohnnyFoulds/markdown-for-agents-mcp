@@ -7,11 +7,12 @@ vi.mock('../fetcher.js', () => ({
   fetcher: { fetchMultiple: vi.fn() },
 }));
 
-vi.mock('../converter.js', () => ({
-  converter: { convertWithMetadata: vi.fn((html: string, url: string, title?: string) => {
-    const heading = title ? `# ${title}\n\nSource: ${url}` : `# ${url}`;
-    return `${heading}\n\n${html}\n\n---\n*Converted*`;
-  }) },
+vi.mock('../extract/pipeline.js', () => ({
+  extract: vi.fn((html: string, opts: { url?: string; title?: string }) => {
+    const heading = opts.title ? `# ${opts.title}\n\nSource: ${opts.url}` : `# ${opts.url}`;
+    const markdown = `${heading}\n\n${html}\n\n---\n*Converted*`;
+    return { markdown, title: opts.title ?? '', contentSize: Buffer.byteLength(markdown, 'utf8') };
+  }),
 }));
 
 describe('fetchUrls', () => {

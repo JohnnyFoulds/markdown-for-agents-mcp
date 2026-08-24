@@ -1,10 +1,5 @@
-/**
- * Fetch URLs Tool
- * Fetches multiple URLs and converts each to markdown
- */
-
 import { fetcher } from "../fetcher.js";
-import { converter } from "../converter.js";
+import { extract } from "../extract/pipeline.js";
 import { FetchUrlsResult } from "./types.js";
 
 export interface FetchUrlsOptions {
@@ -29,13 +24,13 @@ export async function fetchUrls(options: FetchUrlsOptions): Promise<FetchUrlsRes
         error: result.error || 'Unknown error',
       };
     }
-    const markdown = converter.convertWithMetadata(result.markdown, result.url, result.title);
+    const { markdown, contentSize } = extract(result.markdown, { url: result.url, title: result.title });
     return {
       url: result.url,
       title: result.title,
       markdown,
       fetchedAt: now,
-      contentSize: Buffer.byteLength(markdown, 'utf8'),
+      contentSize,
       success: true as const,
     };
   });

@@ -15,17 +15,44 @@ import {
 } from "./utils/errors.js";
 import { getConfig } from "./config.js";
 
-// URL cache: configured via config module (50MB max, 15min TTL)
-// Exported for test visibility (cache-hit path testing)
-export const urlCache = new LRUCache<string>({
-  maxBytes: 50 * 1024 * 1024,
-  ttl: 15 * 60 * 1000,
+/**
+ * Lazy wrapper: initialises the inner LRUCache from config on first use so
+ * CACHE_MAX_BYTES and CACHE_TTL_MS are actually honoured. Tests call
+ * clear() before each case — that nulls _inner, causing re-init from the
+ * then-current config on the next access.
+ */
+class LazyLRUCache<T> {
+  private _inner: LRUCache<T> | null = null;
+  private readonly getOpts: () => { maxBytes: number; ttl: number };
+
+  constructor(getOpts: () => { maxBytes: number; ttl: number }) {
+    this.getOpts = getOpts;
+  }
+
+  private get inner(): LRUCache<T> {
+    if (!this._inner) this._inner = new LRUCache<T>(this.getOpts());
+    return this._inner;
+  }
+
+  get(key: string): T | undefined { return this.inner.get(key); }
+  set(key: string, value: T, bytes?: number): void { this.inner.set(key, value, bytes); }
+  delete(key: string): boolean { return this.inner.delete(key); }
+  clear(): void { this._inner?.clear(); this._inner = null; }
+  getStats() { return this.inner.getStats(); }
+  get size(): number { return this.inner.size; }
+  get totalBytes(): number { return this.inner.totalBytes; }
+  get maxBytes(): number { return this.inner.maxBytes; }
+}
+
+export const urlCache = new LazyLRUCache<string>(() => {
+  const cfg = getFetcherConfig();
+  return { maxBytes: cfg.CACHE_MAX_BYTES, ttl: cfg.CACHE_TTL_MS };
 });
 
-// Title cache: stores page titles alongside HTML cache entries (1MB, same TTL)
-export const titleCache = new LRUCache<string>({
-  maxBytes: 1 * 1024 * 1024,
-  ttl: 15 * 60 * 1000,
+export const titleCache = new LazyLRUCache<string>(() => {
+  const cfg = getFetcherConfig();
+  // title strings are small; budget 1/50 of the HTML cache, floor 1 MB
+  return { maxBytes: Math.max(1024 * 1024, Math.floor(cfg.CACHE_MAX_BYTES / 50)), ttl: cfg.CACHE_TTL_MS };
 });
 
 /**
@@ -50,6 +77,8 @@ function getFetcherConfig() {
       MAX_CONCURRENT_FETCHES: 5,
       MAX_REDIRECTS: 10,
       MAX_CONTENT_LENGTH: 100000,
+      CACHE_MAX_BYTES: 50 * 1024 * 1024,
+      CACHE_TTL_MS: 15 * 60 * 1000,
       PLAYWRIGHT_PROXY: undefined as string | undefined,
       PLAYWRIGHT_PROXY_BYPASS: undefined as string | undefined,
     };
@@ -279,29 +308,13 @@ export class Fetcher {
             continue;
           }
 
-          const pageData = await page.evaluate((): { html: string; title: string } => {
-            const elementsToRemove = [
-              "nav", "footer", "header", "[role='navigation']",
-              ".nav", ".navbar", ".sidebar", ".ads", ".advertisement",
-              "iframe", "script", "style", "link", "meta"
-            ];
-
-            elementsToRemove.forEach((selector: string) => {
-              document.querySelectorAll(selector).forEach((el: Element) => el.remove());
-            });
-
-            const mainContent =
-              document.querySelector("main") ||
-              document.querySelector("article") ||
-              document.querySelector("#content") ||
-              document.querySelector(".content") ||
-              document.querySelector("body");
-
-            return {
-              html: mainContent?.innerHTML || document.body.innerHTML,
-              title: document.title || '',
-            };
-          });
+          // Return the full page HTML — all extraction (nav stripping, content
+          // selection, relative-link resolution) runs host-side in
+          // src/extract/pipeline.ts so it is identical for all render tiers.
+          const pageData = await page.evaluate((): { html: string; title: string } => ({
+            html: document.documentElement.outerHTML,
+            title: document.title || '',
+          }));
           html = pageData.html;
           pageTitle = pageData.title;
 

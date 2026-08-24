@@ -264,6 +264,14 @@ export function validateUrl(
 }
 
 /**
+ * Exported alias used by the DNS guard (Phase 1) and Chromium pre-flight (Phase 2).
+ * Checks lexically — caller must also do a post-DNS check to close the TOCTOU window.
+ */
+export function isPrivateIp(hostname: string): boolean {
+  return isPrivateOrLocalAddress(hostname);
+}
+
+/**
  * Get the current blocklist configuration for debugging
  */
 export function getBlocklistConfig(): {

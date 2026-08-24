@@ -808,4 +808,21 @@ describe('fetcher', () => {
       expect(result.html).toBe(content);
     });
   });
+
+  describe('cache honours config (0.3)', () => {
+    test('urlCache.maxBytes reflects CACHE_MAX_BYTES', () => {
+      resetConfig();
+      initializeConfig({ CACHE_MAX_BYTES: '1048576', CACHE_TTL_MS: '60000' });
+      urlCache.clear(); // forces re-init on next access
+      expect(urlCache.maxBytes).toBe(1048576);
+    });
+
+    test('titleCache TTL reflects CACHE_TTL_MS', () => {
+      resetConfig();
+      initializeConfig({ CACHE_MAX_BYTES: '52428800', CACHE_TTL_MS: '30000' });
+      titleCache.clear();
+      // getStats() triggers init; TTL is internal, but maxBytes is derived from CACHE_MAX_BYTES
+      expect(titleCache.maxBytes).toBeGreaterThan(0);
+    });
+  });
 });

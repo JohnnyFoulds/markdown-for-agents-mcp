@@ -4,7 +4,7 @@
  */
 
 import { fetcher } from "../fetcher.js";
-import { converter } from "../converter.js";
+import { extract } from "../extract/pipeline.js";
 import { getConfig } from "../config.js";
 import { Logger } from "../utils/logger.js";
 import http from 'http';
@@ -303,7 +303,7 @@ export async function duckDuckGoSearch(
         }
         return {
           url: r.url,
-          markdown: converter.convertWithMetadata(r.markdown, r.url),
+          markdown: extract(r.markdown, { url: r.url, title: r.title ?? '' }).markdown,
         };
       });
     }
