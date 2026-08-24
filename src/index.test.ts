@@ -176,6 +176,31 @@ describe('MCP Server Configuration', () => {
   });
 });
 
+describe('Response security headers (source inspection)', () => {
+  const src = readFileSync(join(__dirname, 'index.ts'), 'utf8');
+
+  it('defines an applyBaseHeaders helper', () => {
+    expect(src).toContain('applyBaseHeaders');
+  });
+
+  it('applyBaseHeaders sets Cache-Control: no-store', () => {
+    // ZAP flagged the absence of this header (finding ZAP_10049)
+    expect(src).toContain('Cache-Control');
+    expect(src).toContain('no-store');
+  });
+
+  it('applyBaseHeaders sets X-Content-Type-Options: nosniff', () => {
+    expect(src).toContain('X-Content-Type-Options');
+    expect(src).toContain('nosniff');
+  });
+
+  it('applyBaseHeaders uses res.setHeader (composes with SDK writeHead)', () => {
+    // res.writeHead merges over previously-set headers; res.setHeader is safe
+    // to call before the SDK transport or sendJson calls writeHead.
+    expect(src).toContain('res.setHeader');
+  });
+});
+
 describe('HTTP auth fail-closed (source inspection)', () => {
   const src = readFileSync(join(__dirname, 'index.ts'), 'utf8');
 

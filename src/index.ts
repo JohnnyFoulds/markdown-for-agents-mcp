@@ -39,6 +39,23 @@ function isValidBearer(authHeader: string, token: string): boolean {
 
 // ---- helpers ----------------------------------------------------------------
 
+/**
+ * Set security headers using res.setHeader so they are present on every
+ * response regardless of which code path calls res.writeHead afterwards.
+ *
+ * res.writeHead merges its headers object OVER previously-set headers, so
+ * calling applyBaseHeaders first composes correctly with sendJson (which
+ * calls writeHead) and with the MCP SDK transport (which also calls writeHead).
+ *
+ * Deliberately minimal — this server returns JSON and Prometheus text only,
+ * never HTML, so X-Frame-Options, CSP, and Referrer-Policy are inert.
+ * Strict-Transport-Security belongs at the TLS terminator, not here.
+ */
+function applyBaseHeaders(res: ServerResponse): void {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+}
+
 function sendJson(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
   res.writeHead(status, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) });
@@ -98,6 +115,10 @@ async function startHttpServer(
 
   const httpServer = createServer(async (req, res) => {
     try {
+      // Apply security headers before any handler so they are present on
+      // every response path, including SDK-controlled /mcp responses.
+      applyBaseHeaders(res);
+
       // Probes — always unauthenticated
       if (handleProbe(req, res)) return;
 
@@ -164,6 +185,7 @@ async function startHttpServer(
 
 async function startMetricsServer(port: number): Promise<ReturnType<typeof createServer>> {
   const server = createServer(async (req, res) => {
+    applyBaseHeaders(res);
     const path = req.url?.split('?')[0] ?? '';
     if (path === '/metrics') {
       const data = await metricsRegistry.metrics();
