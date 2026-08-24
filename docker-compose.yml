@@ -28,6 +28,7 @@ services:
       MCP_ROLE: server
       MCP_HTTP_MODE: stateless
       STORE_BACKEND: "${STORE_BACKEND:-sqlite}"
+      STORE_SQLITE_PATH: "${STORE_SQLITE_PATH:-/tmp/crawl.db}"
       STORE_REDIS_URL: "${STORE_REDIS_URL:-}"
       MCP_AUTH_TOKEN: "${MCP_AUTH_TOKEN:-}"
       RATE_LIMIT_PER_HOST_RPS: "${RATE_LIMIT_PER_HOST_RPS:-2}"
@@ -66,6 +67,7 @@ services:
     environment:
       MCP_ROLE: worker
       STORE_BACKEND: "${STORE_BACKEND:-sqlite}"
+      STORE_SQLITE_PATH: "${STORE_SQLITE_PATH:-/tmp/crawl.db}"
       STORE_REDIS_URL: "${STORE_REDIS_URL:-}"
       CRAWL_MAX_CONCURRENCY: "${CRAWL_MAX_CONCURRENCY:-5}"
       CRAWL_QUEUE_LEASE_MS: "30000"
