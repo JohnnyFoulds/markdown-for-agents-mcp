@@ -38,9 +38,13 @@ services:
       SHUTDOWN_DRAIN_MS: "5000"
       SHUTDOWN_TIMEOUT_MS: "30000"
       LOG_FORMAT: json
+      LIGHTPANDA_ENABLED: "true"
+      LIGHTPANDA_CDP_URL: "ws://lightpanda:9222"
     shm_size: 1gb
     depends_on:
       redis:
+        condition: service_healthy
+      lightpanda:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:3000/healthz || exit 1"]
@@ -62,10 +66,25 @@ services:
       SHUTDOWN_DRAIN_MS: "5000"
       SHUTDOWN_TIMEOUT_MS: "30000"
       LOG_FORMAT: json
+      LIGHTPANDA_ENABLED: "true"
+      LIGHTPANDA_CDP_URL: "ws://lightpanda:9222"
     shm_size: 1gb
     depends_on:
       redis:
         condition: service_healthy
+      lightpanda:
+        condition: service_healthy
+
+  # Tier 2 render sidecar — AGPL-3.0, run as a separate process via CDP.
+  lightpanda:
+    image: lightpanda/browser:0.3.7
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9222/json"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   redis:
     image: redis:7-alpine

@@ -1,6 +1,7 @@
 # Two services from the same image:
 #   mcp-server  — serves MCP over HTTP in stateless mode
 #   mcp-worker  — runs the crawl worker loop, no HTTP listener
+#   lightpanda  — Tier 2 render sidecar (AGPL-3.0, separate process via CDP)
 #
 # Add Redis and override STORE_BACKEND=redis for multi-replica deployments.
 # Single-replica: default sqlite store works without Redis.
@@ -23,6 +24,8 @@ services:
       SHUTDOWN_DRAIN_MS: "5000"
       SHUTDOWN_TIMEOUT_MS: "30000"
       LOG_FORMAT: json
+      LIGHTPANDA_ENABLED: "true"
+      LIGHTPANDA_CDP_URL: "ws://lightpanda:9222"
     # Provide 1 GB tmpfs at /dev/shm so Chromium renderers don't exhaust the
     # Docker default 64 MB and crash under concurrency.
     shm_size: 1gb
@@ -34,6 +37,8 @@ services:
       retries: 3
       start_period: 30s
     depends_on:
+      lightpanda:
+        condition: service_healthy
       redis:
         condition: service_healthy
         required: false
@@ -51,10 +56,26 @@ services:
       SHUTDOWN_DRAIN_MS: "5000"
       SHUTDOWN_TIMEOUT_MS: "30000"
       LOG_FORMAT: json
+      LIGHTPANDA_ENABLED: "true"
+      LIGHTPANDA_CDP_URL: "ws://lightpanda:9222"
     shm_size: 1gb
     restart: unless-stopped
     depends_on:
       - mcp-server
+      - lightpanda
+
+  # Tier 2 render sidecar — Lightpanda speaks CDP (same protocol as Playwright).
+  # AGPL-3.0: run as a separate process, never imported/vendored into our code.
+  # Disable by removing this service and setting LIGHTPANDA_ENABLED=false.
+  lightpanda:
+    image: lightpanda/browser:0.3.7
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9222/json"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   # Optional Redis — uncomment and set STORE_BACKEND=redis to share state
   # across multiple mcp-server and mcp-worker replicas.

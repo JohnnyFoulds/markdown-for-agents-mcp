@@ -99,6 +99,7 @@ If intercept mode is used:
 | `@modelcontextprotocol/sdk` | MCP protocol | Official Anthropic SDK |
 | `undici` | HTTP client | Node.js native, actively maintained |
 | `ioredis` (optional) | Redis client | Used only when `STORE_BACKEND=redis` |
+| `lightpanda/browser` (sidecar) | Tier 2 CDP browser | **AGPL-3.0** — run as a separate container, never imported. `docker-compose.yml` includes the `lightpanda:0.3.7` sidecar. Obtain legal sign-off before commercial/SaaS deployment (AGPL §13 network-use clause). |
 
 ---
 
