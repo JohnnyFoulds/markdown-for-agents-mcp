@@ -68,6 +68,15 @@ const configSchema = z.object({
   SERPER_API_KEY: z.string().optional(),
   SEARXNG_URL: z.string().optional(),
   SEARCH_FANOUT_RESULTS: z.string().default('20').transform(Number),
+
+  // Reranker
+  RERANK_BACKEND: z.string().default('none').refine(v => ['none', 'local', 'tei'].includes(v), {
+    message: 'RERANK_BACKEND must be none, local, or tei',
+  }),
+  RERANK_MODEL: z.string().default('Xenova/bge-reranker-base'),
+  RERANK_DTYPE: z.string().default('q8'),
+  RERANK_DEVICE: z.string().default('cpu'),
+  RERANK_TEI_URL: z.string().optional(),
 });
 
 export type Config = z.infer<typeof configSchema>;

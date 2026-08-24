@@ -8,6 +8,7 @@ import { serperProvider } from '../search/providers/serper.js';
 import { searXNGProvider } from '../search/providers/searxng.js';
 import { DuckDuckGoProvider, duckDuckGoProvider, parseDuckDuckGoHtml } from '../search/providers/duckduckgo.js';
 import { passesAllowedList, passesBlockedList, domainOf } from '../search/filter.js';
+import { chunkMarkdown, getReranker } from '../rank/index.js';
 import type { SearchProvider } from '../search/types.js';
 import type { HttpClient } from '../http/types.js';
 
@@ -25,6 +26,8 @@ export interface SearchResponse {
   durationMs: number;
 }
 
+export type SearchDepth = 'fast' | 'basic' | 'advanced';
+
 export interface SearchOptions {
   query: string;
   maxResults?: number;
@@ -32,6 +35,8 @@ export interface SearchOptions {
   blockedDomains?: string[];
   fetchResults?: boolean;
   timeout?: number;
+  searchDepth?: SearchDepth;
+  chunksPerSource?: number;
 }
 
 const DEFAULT_PROVIDERS: SearchProvider[] = [
@@ -63,6 +68,8 @@ export async function webSearch(options: SearchOptions): Promise<SearchResponse>
     blockedDomains,
     fetchResults = false,
     timeout,
+    searchDepth = 'basic',
+    chunksPerSource = 1,
   } = options;
 
   const config = getConfig();
@@ -72,8 +79,12 @@ export async function webSearch(options: SearchOptions): Promise<SearchResponse>
   const timer = setTimeout(() => controller.abort(), searchTimeout);
 
   try {
+    const fanoutMax = searchDepth === 'advanced'
+      ? Math.max(maxResults * 2, config.SEARCH_FANOUT_RESULTS)
+      : Math.max(maxResults, 10);
+
     const providerResults = await fanout(
-      { query, maxResults: Math.max(maxResults, config.SEARCH_FANOUT_RESULTS), includeDomains: allowedDomains, excludeDomains: blockedDomains },
+      { query, maxResults: fanoutMax, includeDomains: allowedDomains, excludeDomains: blockedDomains },
       DEFAULT_PROVIDERS,
       { signal: controller.signal, requestId, deadlineMs: searchTimeout, includeDomains: allowedDomains, excludeDomains: blockedDomains },
     );
@@ -83,16 +94,34 @@ export async function webSearch(options: SearchOptions): Promise<SearchResponse>
     }));
 
     let markdownResults: { url: string; markdown: string }[] | undefined;
+    const shouldFetch = fetchResults || searchDepth === 'basic' || searchDepth === 'advanced';
 
-    if (fetchResults && results.length > 0) {
+    if (shouldFetch && results.length > 0) {
       const titleMap = new Map(results.map(r => [r.url, r.title]));
       const fetched = await fetcher.fetchMultiple(results.map(r => r.url), searchTimeout);
-      markdownResults = fetched.map(r => {
+
+      const reranker = getReranker();
+      const ranked: { url: string; markdown: string }[] = [];
+
+      for (const r of fetched) {
         if (!r.success) {
-          return { url: r.url, markdown: `# Error fetching ${r.url}\n\n${r.error ?? 'Unknown error'}\n` };
+          ranked.push({ url: r.url, markdown: `# Error fetching ${r.url}\n\n${r.error ?? 'Unknown error'}\n` });
+          continue;
         }
-        return { url: r.url, markdown: extract(r.markdown, { url: r.url, title: r.title ?? titleMap.get(r.url) ?? '' }).markdown };
-      });
+        const extracted = extract(r.markdown, { url: r.url, title: r.title ?? titleMap.get(r.url) ?? '' });
+
+        if (searchDepth === 'advanced' && reranker.isReady()) {
+          const chunks = chunkMarkdown(extracted.markdown, r.url);
+          if (chunks.length > 0) {
+            const scored = await reranker.rank(query, chunks, { signal: controller.signal });
+            ranked.push({ url: r.url, markdown: scored.slice(0, chunksPerSource).map(c => c.text).join('\n\n---\n\n') });
+            continue;
+          }
+        }
+
+        ranked.push({ url: r.url, markdown: extracted.markdown });
+      }
+      markdownResults = ranked;
     }
 
     return { query, results, markdownResults, durationMs: Date.now() - startTime };
