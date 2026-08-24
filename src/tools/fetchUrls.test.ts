@@ -32,7 +32,7 @@ describe('fetchUrls', () => {
       const urls = ['https://example.com/1', 'https://example.com/2'];
       const result = await fetchUrls({ urls });
 
-      expect(fetcher.fetchMultiple).toHaveBeenCalledWith(urls, undefined);
+      expect(fetcher.fetchMultiple).toHaveBeenCalledWith(urls, undefined, undefined);
       expect(result.results).toHaveLength(2);
       expect(result.summary.total).toBe(2);
       expect(result.summary.succeeded).toBe(2);
@@ -120,7 +120,7 @@ describe('fetchUrls', () => {
 
       const result = await fetchUrls({ urls: [] });
 
-      expect(fetcher.fetchMultiple).toHaveBeenCalledWith([], undefined);
+      expect(fetcher.fetchMultiple).toHaveBeenCalledWith([], undefined, undefined);
       expect(result.results).toHaveLength(0);
       expect(result.summary.total).toBe(0);
     });

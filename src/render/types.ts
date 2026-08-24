@@ -12,6 +12,8 @@ export interface RenderRequest {
   blockResources?: ResourceType[];
   screenshot?: boolean;
   requestId?: string;
+  /** Extra HTTP headers forwarded verbatim to every request for this page (auth, cookies, etc.). */
+  headers?: Record<string, string>;
 }
 
 export interface EscalationRecord {

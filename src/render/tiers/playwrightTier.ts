@@ -29,6 +29,10 @@ export class PlaywrightTier implements RenderTierImpl {
     try {
       const { page } = lease;
 
+      if (req.headers && Object.keys(req.headers).length > 0) {
+        await page.setExtraHTTPHeaders(req.headers);
+      }
+
       const response = await page.goto(req.url, {
         waitUntil: 'domcontentloaded',
         timeout: req.timeoutMs,

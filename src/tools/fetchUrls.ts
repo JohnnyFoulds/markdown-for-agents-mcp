@@ -5,11 +5,12 @@ import { FetchUrlsResult } from "./types.js";
 export interface FetchUrlsOptions {
   urls: string[];
   timeout?: number;
+  headers?: Record<string, string>;
 }
 
 export async function fetchUrls(options: FetchUrlsOptions): Promise<FetchUrlsResult> {
-  const { urls, timeout } = options;
-  const results = await fetcher.fetchMultiple(urls, timeout);
+  const { urls, timeout, headers } = options;
+  const results = await fetcher.fetchMultiple(urls, timeout, headers);
   const now = new Date().toISOString();
 
   const items = results.map(result => {

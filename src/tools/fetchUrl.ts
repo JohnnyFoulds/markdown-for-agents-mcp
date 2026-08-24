@@ -5,11 +5,12 @@ import { FetchUrlResult } from "./types.js";
 export interface FetchUrlOptions {
   url: string;
   timeout?: number;
+  headers?: Record<string, string>;
 }
 
 export async function fetchUrl(options: FetchUrlOptions): Promise<FetchUrlResult> {
-  const { url, timeout } = options;
-  const pageResult = await fetcher.fetch(url, timeout);
+  const { url, timeout, headers } = options;
+  const pageResult = await fetcher.fetch(url, timeout, undefined, headers);
   const { markdown, contentSize } = extract(pageResult.html, { url, title: pageResult.title });
   return {
     url,

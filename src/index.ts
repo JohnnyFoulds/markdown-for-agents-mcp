@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createRequire } from "module";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual, createHash } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -19,6 +19,16 @@ const { version } = require("../package.json") as { version: string };
 
 // Probe paths that bypass bearer-token auth
 const UNAUTHED_PATHS = new Set(['/healthz', '/readyz']);
+
+/** Timing-safe bearer comparison — prevents timing side-channel on the token. */
+function isValidBearer(authHeader: string, token: string): boolean {
+  const expected = `Bearer ${token}`;
+  // Hash both strings to a fixed-length digest so timingSafeEqual always
+  // receives equal-length Buffers regardless of token length.
+  const a = createHash('sha256').update(authHeader).digest();
+  const b = createHash('sha256').update(expected).digest();
+  return timingSafeEqual(a, b);
+}
 
 // ---- helpers ----------------------------------------------------------------
 
@@ -84,7 +94,7 @@ async function startHttpServer(
       if (req.url?.split('?')[0] === '/metrics') {
         if (authToken) {
           const auth = req.headers['authorization'] ?? '';
-          if (auth !== `Bearer ${authToken}`) {
+          if (!isValidBearer(auth, authToken)) {
             sendJson(res, 401, { error: 'Unauthorized' });
             return;
           }
@@ -98,7 +108,7 @@ async function startHttpServer(
         const path = req.url?.split('?')[0] ?? '';
         if (!UNAUTHED_PATHS.has(path)) {
           const auth = req.headers['authorization'] ?? '';
-          if (auth !== `Bearer ${authToken}`) {
+          if (!isValidBearer(auth, authToken)) {
             sendJson(res, 401, { error: 'Unauthorized' });
             return;
           }

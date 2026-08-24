@@ -16,6 +16,7 @@ export class HttpTier implements RenderTierImpl {
       purpose: 'page',
       timeoutMs: req.timeoutMs,
       requestId: req.requestId,
+      ...(req.headers ? { headers: req.headers } : {}),
     });
 
     return {

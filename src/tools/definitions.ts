@@ -204,11 +204,12 @@ export const TOOLS: ToolDefinition[] = [
     inputSchema: {
       url: z.string().describe("The URL to fetch and convert to markdown"),
       timeout: z.number().optional().describe("Request timeout in milliseconds (default: 30000)"),
+      headers: z.record(z.string(), z.string()).optional().describe("Extra HTTP headers forwarded to the target (e.g. Authorization, Cookie)"),
     },
     outputSchema: fetchUrlOutputSchema,
     annotations: { readOnlyHint: true, idempotentHint: true },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    handler: async (a: any) => fetchUrl({ url: String(a.url), timeout: a.timeout as number | undefined }),
+    handler: async (a: any) => fetchUrl({ url: String(a.url), timeout: a.timeout as number | undefined, headers: a.headers as Record<string,string> | undefined }),
     toText: (r: any) => String(r.markdown),
   },
 
@@ -220,11 +221,12 @@ export const TOOLS: ToolDefinition[] = [
     inputSchema: {
       urls: z.array(z.string()).describe("Array of URLs to fetch and convert"),
       timeout: z.number().optional().describe("Request timeout in milliseconds (default: 30000)"),
+      headers: z.record(z.string(), z.string()).optional().describe("Extra HTTP headers forwarded to every target URL (e.g. Authorization, Cookie)"),
     },
     outputSchema: fetchUrlsOutputSchema,
     annotations: { readOnlyHint: true, idempotentHint: true },
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    handler: async (a: any) => fetchUrls({ urls: (a.urls as string[]).map(String), timeout: a.timeout as number | undefined }),
+    handler: async (a: any) => fetchUrls({ urls: (a.urls as string[]).map(String), timeout: a.timeout as number | undefined, headers: a.headers as Record<string,string> | undefined }),
     toText: (r: any) => (r.results as any[]).map((item: any) =>
       item.success
         ? `${item.markdown}\n\n---`

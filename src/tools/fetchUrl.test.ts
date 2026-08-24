@@ -33,7 +33,7 @@ describe('fetchUrl', () => {
 
       const result = await fetchUrl({ url });
 
-      expect(fetcher.fetch).toHaveBeenCalledWith(url, undefined);
+      expect(fetcher.fetch).toHaveBeenCalledWith(url, undefined, undefined, undefined);
       expect(extract).toHaveBeenCalledWith(mockPageResult.html, { url, title: mockPageResult.title });
       expect(result.markdown).toBe(mockExtractResult.markdown);
     });

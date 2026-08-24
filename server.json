@@ -1,54 +1,78 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.JohnnyFoulds/markdown-for-agents-mcp",
-  "description": "MCP server for AI agents — fetch any URL with full JavaScript rendering (Playwright/Chromium) and convert to clean, token-efficient markdown. Works on React, Vue, Angular, and any JS-heavy page. Includes web search, batch fetching, binary file download, LRU cache, SSRF protection, and structured output.",
+  "description": "MCP server for AI agents — fetch any URL with full JavaScript rendering (3-tier render ladder: plain HTTP, Lightpanda, Playwright/Chromium) and convert to clean, token-efficient markdown. Includes web search, batch fetching, site crawl, binary file download, CSS selector extraction, output formats, LRU cache, SSRF protection, and structured output.",
   "repository": {
     "url": "https://github.com/JohnnyFoulds/markdown-for-agents-mcp",
     "source": "github"
   },
-  "version": "1.0.0",
+  "version": "1.0.1",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "markdown-for-agents-mcp",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "transport": {
         "type": "stdio"
       },
       "environmentVariables": [
         {
           "name": "FETCH_TIMEOUT_MS",
-          "description": "Timeout per fetch request in milliseconds",
+          "description": "Timeout per fetch request in milliseconds (default: 30000)",
           "isRequired": false,
           "format": "number"
         },
         {
           "name": "MAX_CONCURRENT_FETCHES",
-          "description": "Max parallel fetches in batch operations",
+          "description": "Max parallel fetches in batch operations (default: 5)",
           "isRequired": false,
           "format": "number"
         },
         {
           "name": "MAX_CONTENT_LENGTH",
-          "description": "Max content size in characters before truncation",
+          "description": "Max content size in characters before truncation (default: 100000)",
           "isRequired": false,
           "format": "number"
         },
         {
           "name": "LOG_LEVEL",
-          "description": "Log level: DEBUG, INFO, WARN, or ERROR",
+          "description": "Log level: DEBUG, INFO, WARN, or ERROR (default: INFO)",
           "isRequired": false,
           "format": "string"
         },
         {
+          "name": "LOG_FORMAT",
+          "description": "Log format: text or json (default: text)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "CACHE_MAX_BYTES",
+          "description": "Maximum in-memory cache size in bytes (default: 52428800 = 50 MB)",
+          "isRequired": false,
+          "format": "number"
+        },
+        {
+          "name": "CACHE_TTL_MS",
+          "description": "Cache time-to-live in milliseconds (default: 900000 = 15 min)",
+          "isRequired": false,
+          "format": "number"
+        },
+        {
           "name": "USE_ALLOWLIST_MODE",
-          "description": "When true, only domains listed in BLOCKLIST_DOMAINS are allowed",
+          "description": "When true, only domains listed in BLOCKLIST_DOMAINS are allowed (default: false)",
           "isRequired": false,
           "format": "boolean"
         },
         {
           "name": "BLOCKLIST_DOMAINS",
           "description": "Comma-separated domains to block (or allow in allowlist mode)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "BLOCKLIST_URL_PATTERNS",
+          "description": "Comma-separated URL patterns to block",
           "isRequired": false,
           "format": "string"
         },
@@ -60,16 +84,133 @@
         },
         {
           "name": "MCP_AUTH_TOKEN",
-          "description": "Bearer token required on all HTTP requests (HTTP mode only)",
+          "description": "Bearer token required on all HTTP requests (HTTP mode only). Stored in Secrets Manager in production.",
           "isRequired": false,
           "format": "string",
           "isSecret": true
         },
         {
-          "name": "PLAYWRIGHT_PROXY",
-          "description": "Proxy server URL for Playwright (e.g. http://proxy.example.com:8080)",
+          "name": "MCP_HTTP_MODE",
+          "description": "HTTP transport mode: stateless (default, N-replica safe) or session (requires Ingress affinity)",
           "isRequired": false,
           "format": "string"
+        },
+        {
+          "name": "HTTP_PROXY_URL",
+          "description": "Proxy server URL for all outbound HTTP requests (e.g. http://proxy:8080). Canonical var; PLAYWRIGHT_PROXY is a legacy alias.",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "PROXY_PINS",
+          "description": "JSON array of proxy URLs for round-robin rotation, e.g. '[\"http://p1:3128\",\"http://p2:3128\"]'. Overrides HTTP_PROXY_URL when set.",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "PLAYWRIGHT_PROXY",
+          "description": "Legacy alias for HTTP_PROXY_URL. Use HTTP_PROXY_URL in new deployments.",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "PLAYWRIGHT_PROXY_BYPASS",
+          "description": "Comma-separated hostnames that bypass the proxy",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "DOWNLOAD_TIMEOUT_MS",
+          "description": "Timeout for file download requests in milliseconds (default: 60000)",
+          "isRequired": false,
+          "format": "number"
+        },
+        {
+          "name": "MAX_DOWNLOAD_BYTES",
+          "description": "Maximum file size for downloads in bytes (default: 52428800 = 50 MB)",
+          "isRequired": false,
+          "format": "number"
+        },
+        {
+          "name": "RATE_LIMIT_PER_HOST_RPS",
+          "description": "Max requests per second per host. 0 = unlimited (default). Shared across replicas when STORE_BACKEND=redis.",
+          "isRequired": false,
+          "format": "number"
+        },
+        {
+          "name": "RATE_LIMIT_BURST",
+          "description": "Token-bucket burst size for rate limiting (default: 10)",
+          "isRequired": false,
+          "format": "number"
+        },
+        {
+          "name": "STORE_BACKEND",
+          "description": "Store backend: auto (memory for stdio, sqlite for HTTP), memory, sqlite, or redis (default: auto)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "STORE_REDIS_URL",
+          "description": "Redis connection URL when STORE_BACKEND=redis (e.g. redis://localhost:6379)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "MCP_ROLE",
+          "description": "Process role: server (default), worker (crawl worker only), or both",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "LIGHTPANDA_ENABLED",
+          "description": "Enable Lightpanda as Tier 2 in the render ladder (default: false). Requires a running Lightpanda CDP server.",
+          "isRequired": false,
+          "format": "boolean"
+        },
+        {
+          "name": "LIGHTPANDA_CDP_URL",
+          "description": "CDP WebSocket URL for Lightpanda (default: ws://127.0.0.1:9222)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "STEALTH_ENABLED",
+          "description": "Use playwright-extra + puppeteer-extra-plugin-stealth for Tier 3 browser fingerprint hardening (default: false). Requires optional packages.",
+          "isRequired": false,
+          "format": "boolean"
+        },
+        {
+          "name": "BRAVE_API_KEY",
+          "description": "Brave Search API key for web search (Tier 1 provider)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "SERPER_API_KEY",
+          "description": "Serper API key for Google SERP results (Tier 1 provider)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "SEARXNG_URL",
+          "description": "SearXNG instance URL for self-hosted search (Tier 2 provider)",
+          "isRequired": false,
+          "format": "string"
+        },
+        {
+          "name": "SHUTDOWN_DRAIN_MS",
+          "description": "Time to wait for load-balancer drain before closing the HTTP server (default: 5000)",
+          "isRequired": false,
+          "format": "number"
+        },
+        {
+          "name": "SHUTDOWN_TIMEOUT_MS",
+          "description": "Maximum time to wait for in-flight requests during graceful shutdown (default: 30000)",
+          "isRequired": false,
+          "format": "number"
         }
       ]
     }

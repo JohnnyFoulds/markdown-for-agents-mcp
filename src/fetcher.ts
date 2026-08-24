@@ -100,7 +100,7 @@ export class Fetcher {
     await renderLadder.drain();
   }
 
-  async fetch(url: string, timeout?: number, requestId?: string): Promise<PageResult> {
+  async fetch(url: string, timeout?: number, requestId?: string, headers?: Record<string, string>): Promise<PageResult> {
     const config = this.getConfig();
     const requestTimeout = timeout ?? config.FETCH_TIMEOUT_MS;
     const startTime = Date.now();
@@ -123,7 +123,7 @@ export class Fetcher {
     Logger.logCacheMiss(hostname, requestId);
 
     try {
-      const result = await renderLadder.render({ url, timeoutMs: requestTimeout, requestId });
+      const result = await renderLadder.render({ url, timeoutMs: requestTimeout, requestId, headers });
 
       let { html } = result;
       const pageTitle = result.title;
@@ -169,7 +169,7 @@ export class Fetcher {
     }
   }
 
-  async fetchMultiple(urls: string[], timeout?: number): Promise<FetchResult[]> {
+  async fetchMultiple(urls: string[], timeout?: number, headers?: Record<string, string>): Promise<FetchResult[]> {
     const config = this.getConfig();
     const results: FetchResult[] = [];
     const batches: string[][] = [];
@@ -182,7 +182,7 @@ export class Fetcher {
       const batchPromises = batch.map(async (url) => {
         try {
           const requestId = Logger.generateRequestId();
-          const pageResult = await this.fetch(url, timeout, requestId);
+          const pageResult = await this.fetch(url, timeout, requestId, headers);
           return {
             url,
             success: true,
