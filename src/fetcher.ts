@@ -14,6 +14,8 @@ import {
 } from "./utils/errors.js";
 import { getConfig } from "./config.js";
 import { renderLadder } from "./render/ladder.js";
+import { isStorable, freshnessMs, secondaryKey } from "./http/cachePolicy.js";
+import { cacheNotStoredTotal } from "./obs/metrics.js";
 
 /**
  * Lazy wrapper: initialises the inner LRUCache from config on first use so
@@ -35,7 +37,7 @@ class LazyLRUCache<T> {
   }
 
   get(key: string): T | undefined { return this.inner.get(key); }
-  set(key: string, value: T, bytes?: number): void { this.inner.set(key, value, bytes); }
+  set(key: string, value: T, bytes?: number, ttlMs?: number): void { this.inner.set(key, value, bytes, ttlMs); }
   delete(key: string): boolean { return this.inner.delete(key); }
   clear(): void { this._inner?.clear(); this._inner = null; }
   getStats() { return this.inner.getStats(); }
@@ -112,12 +114,20 @@ export class Fetcher {
 
     const hostname = new URL(url).hostname;
 
-    const cached = urlCache.get(url);
+    // §4.1 Vary: the full cache key is the URL plus a secondary key derived from
+    // request headers named by the origin's Vary response header.  For a plain
+    // (non-Vary) response this appends nothing, so the key is identical to the URL.
+    // We compute a provisional secondary key from the request headers before the
+    // fetch; the definitive key is recomputed after the response arrives.
+    const reqHeaders = headers ?? {};
+    const provisionalKey = url + (secondaryKey(reqHeaders, {}) || '');
+
+    const cached = urlCache.get(provisionalKey);
     if (cached) {
       Logger.logCacheHit(hostname, Buffer.byteLength(cached, 'utf8'), requestId);
       const stats = urlCache.getStats();
       Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
-      return { html: cached, title: titleCache.get(url) ?? '' };
+      return { html: cached, title: titleCache.get(provisionalKey) ?? '' };
     }
 
     Logger.logCacheMiss(hostname, requestId);
@@ -127,6 +137,7 @@ export class Fetcher {
 
       let { html } = result;
       const pageTitle = result.title;
+      const resHeaders = result.headers ?? {};
 
       if (html.length > config.MAX_CONTENT_LENGTH) {
         const truncatedSize = html.length;
@@ -134,13 +145,25 @@ export class Fetcher {
         Logger.warn(`[Truncated] ${url}: ${truncatedSize} -> ${config.MAX_CONTENT_LENGTH} chars`);
       }
 
-      try {
-        urlCache.set(url, html, Buffer.byteLength(html, 'utf8'));
-        titleCache.set(url, pageTitle, Buffer.byteLength(pageTitle, 'utf8'));
-        const stats = urlCache.getStats();
-        Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
-      } catch {
-        Logger.warn(`[Cache] Failed to cache ${url}`);
+      // RFC 9111 shared-cache policy: check storability before writing to cache.
+      const storability = isStorable(reqHeaders, resHeaders);
+      if (!storability.storable) {
+        cacheNotStoredTotal.inc({ reason: storability.reason });
+      } else {
+        // §4.1 definitive secondary key using the actual Vary response header
+        const sk = secondaryKey(reqHeaders, resHeaders);
+        // sk includes 'vary-star:…' sentinel for Vary:* — which will never match cache
+        const cacheKey = url + (sk || '');
+        // §4.2 freshness capped at CACHE_TTL_MS
+        const ttlMs = freshnessMs(resHeaders, config.CACHE_TTL_MS);
+        try {
+          urlCache.set(cacheKey, html, Buffer.byteLength(html, 'utf8'), ttlMs);
+          titleCache.set(cacheKey, pageTitle, Buffer.byteLength(pageTitle, 'utf8'), ttlMs);
+          const stats = urlCache.getStats();
+          Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
+        } catch {
+          Logger.warn(`[Cache] Failed to cache ${url}`);
+        }
       }
 
       const duration = Date.now() - startTime;

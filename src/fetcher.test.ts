@@ -249,4 +249,92 @@ describe('fetcher', () => {
       expect(results[0].title).toBe('Page Title');
     });
   });
+
+  // ── RFC 9111 shared-cache disclosure fix (POPIA Phase 1) ─────────────────────
+  //
+  // Phase 1 RED reason (before fix):
+  //   urlCache keyed on bare URL; Cookie/Authorization ignored.
+  //   fetch(url, Cookie=A) then fetch(url, no headers) → second caller receives A's
+  //   authenticated content without ever supplying credentials.
+  //
+  describe('RFC 9111 shared-cache policy — cross-caller disclosure prevention', () => {
+    const URL = 'https://example.com/protected';
+    const AUTHED_HTML = '<p>authenticated content</p>';
+    const ANON_HTML = '<p>public content</p>';
+
+    test('(headline) Cookie-bearing response is NOT served to unauthenticated caller', async () => {
+      // Caller A: authenticated fetch
+      mockLadder.render.mockResolvedValueOnce(makeResult(AUTHED_HTML, 'Protected'));
+      await fetcher.fetch(URL, undefined, undefined, { cookie: 'session=A' });
+
+      // Caller B: unauthenticated fetch — must NOT get A's content
+      mockLadder.render.mockResolvedValueOnce(makeResult(ANON_HTML, 'Public'));
+      const result = await fetcher.fetch(URL);
+
+      expect(result.html).toBe(ANON_HTML);
+      expect(result.html).not.toBe(AUTHED_HTML);
+      expect(mockLadder.render).toHaveBeenCalledTimes(2);
+    });
+
+    test('Authorization-bearing response is NOT cached and NOT served to next caller', async () => {
+      mockLadder.render.mockResolvedValueOnce(makeResult(AUTHED_HTML));
+      await fetcher.fetch(URL, undefined, undefined, { authorization: 'Bearer token' });
+
+      mockLadder.render.mockResolvedValueOnce(makeResult(ANON_HTML));
+      const result = await fetcher.fetch(URL);
+
+      expect(result.html).toBe(ANON_HTML);
+      expect(mockLadder.render).toHaveBeenCalledTimes(2);
+    });
+
+    test('Cache-Control: private response is NOT stored', async () => {
+      const r = { ...makeResult(AUTHED_HTML), headers: { 'cache-control': 'private' } };
+      mockLadder.render.mockResolvedValueOnce(r);
+      await fetcher.fetch(URL);
+
+      // Next call must hit the ladder again, not the cache
+      mockLadder.render.mockResolvedValueOnce(makeResult(ANON_HTML));
+      const result = await fetcher.fetch(URL);
+
+      expect(result.html).toBe(ANON_HTML);
+      expect(mockLadder.render).toHaveBeenCalledTimes(2);
+    });
+
+    test('Cache-Control: no-store response is NOT stored', async () => {
+      const r = { ...makeResult(AUTHED_HTML), headers: { 'cache-control': 'no-store' } };
+      mockLadder.render.mockResolvedValueOnce(r);
+      await fetcher.fetch(URL);
+
+      mockLadder.render.mockResolvedValueOnce(makeResult(ANON_HTML));
+      const result = await fetcher.fetch(URL);
+
+      expect(result.html).toBe(ANON_HTML);
+      expect(mockLadder.render).toHaveBeenCalledTimes(2);
+    });
+
+    test('plain cacheable response IS reused (caching still works)', async () => {
+      mockLadder.render.mockResolvedValueOnce(makeResult(ANON_HTML, 'Public'));
+      await fetcher.fetch(URL);
+      // Second call: should be a cache hit, ladder NOT called again
+      const result = await fetcher.fetch(URL);
+
+      expect(result.html).toBe(ANON_HTML);
+      expect(mockLadder.render).toHaveBeenCalledOnce();
+    });
+
+    test('Vary: Cookie — different cookies produce separate cache entries', async () => {
+      const htmlA = '<p>user A</p>';
+      const htmlB = '<p>user B</p>';
+      const varyRes = { headers: { vary: 'Cookie' } };
+
+      mockLadder.render.mockResolvedValueOnce({ ...makeResult(htmlA), ...varyRes });
+      await fetcher.fetch(URL, undefined, undefined, { cookie: 'session=A' });
+
+      mockLadder.render.mockResolvedValueOnce({ ...makeResult(htmlB), ...varyRes });
+      await fetcher.fetch(URL, undefined, undefined, { cookie: 'session=B' });
+
+      // Both should have called the ladder (different secondary keys)
+      expect(mockLadder.render).toHaveBeenCalledTimes(2);
+    });
+  });
 });

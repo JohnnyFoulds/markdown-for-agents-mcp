@@ -175,3 +175,11 @@ export const robotsDeniedTotal = new Counter({
   help: 'Requests blocked by robots.txt',
   registers: [registry],
 });
+
+// RFC 9111 shared-cache policy (POPIA Phase 1)
+export const cacheNotStoredTotal = new Counter({
+  name: 'cache_not_stored_total',
+  help: 'Page cache entries not stored due to RFC 9111 policy: no_store | private | authorization | cookie | set_cookie | vary_star',
+  labelNames: ['reason'] as const,
+  registers: [registry],
+});

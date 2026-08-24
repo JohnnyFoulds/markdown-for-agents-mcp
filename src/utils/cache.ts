@@ -17,6 +17,8 @@ export interface CacheEntry<T> {
   createdAt: number;
   accessAt: number;
   bytes: number;
+  /** Per-entry TTL override in ms. Undefined means use the cache-wide default. */
+  ttlMs?: number;
 }
 
 export class LRUCache<T> {
@@ -43,8 +45,9 @@ export class LRUCache<T> {
       return undefined;
     }
 
-    // Check TTL
-    if (Date.now() - entry.createdAt > this.options.ttl) {
+    // Check TTL — per-entry override takes precedence over cache-wide default
+    const ttl = entry.ttlMs ?? this.options.ttl;
+    if (Date.now() - entry.createdAt > ttl) {
       this.delete(key);
       return undefined;
     }
@@ -57,9 +60,10 @@ export class LRUCache<T> {
   }
 
   /**
-   * Set value in cache
+   * Set value in cache.
+   * @param ttlMs  Optional per-entry TTL override in ms (falls back to cache-wide default).
    */
-  set(key: string, value: T, bytes?: number): void {
+  set(key: string, value: T, bytes?: number, ttlMs?: number): void {
     const size = bytes ?? this.estimateBytes(value);
 
     // Check if key exists, delete if so
@@ -86,6 +90,7 @@ export class LRUCache<T> {
       createdAt: Date.now(),
       accessAt: Date.now(),
       bytes: size,
+      ttlMs,
     };
 
     this.cache.set(key, entry);
