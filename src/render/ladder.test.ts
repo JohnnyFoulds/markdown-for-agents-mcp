@@ -1,4 +1,12 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('../obs/metrics.js', () => ({
+  fetchRequestsTotal:   { inc: vi.fn() },
+  fetchDurationSeconds: { observe: vi.fn() },
+  fetchEscalationsTotal: { inc: vi.fn() },
+}));
+
+import { fetchRequestsTotal, fetchDurationSeconds, fetchEscalationsTotal } from '../obs/metrics.js';
 import { RenderLadder } from './ladder.js';
 import type { RenderTierImpl, RenderRequest, RenderResult } from './types.js';
 
@@ -31,6 +39,8 @@ const SPA_HTML    = '<html><body><div id="root"></div><script>window.__NEXT_DATA
 const CF_HTML     = '<html><body>Just a moment...<script>var cf=1</script></body></html>';
 
 const BASE_REQ: RenderRequest = { url: 'https://example.com', timeoutMs: 5000 };
+
+beforeEach(() => { vi.clearAllMocks(); });
 
 describe('RenderLadder — tier selection', () => {
   it('returns HTTP result without escalation for static content', async () => {
@@ -137,12 +147,68 @@ describe('RenderLadder — tier memo', () => {
     // decay=0 means memo is always used (never randomly re-probed)
     const ladder = new RenderLadder([http, lp, pw], 0);
 
-    await ladder.render(BASE_REQ);           // first call: http → lightpanda
+    await ladder.render(BASE_REQ);          // first call: http → lightpanda
     vi.mocked(http.render).mockClear();
     vi.mocked(lp.render).mockClear();
 
-    await ladder.render(BASE_REQ);           // second call: should start at lightpanda
+    await ladder.render(BASE_REQ);          // second call: should start at lightpanda
     expect(http.render).not.toHaveBeenCalled();
     expect(lp.render).toHaveBeenCalled();
+  });
+});
+
+describe('RenderLadder — metrics', () => {
+  it('increments fetch_requests_total{outcome=success} on a clean render', async () => {
+    const ladder = new RenderLadder([fakeTier('http', STATIC_HTML)]);
+    await ladder.render(BASE_REQ);
+    expect(vi.mocked(fetchRequestsTotal.inc)).toHaveBeenCalledWith({ tier: 'http', outcome: 'success' });
+  });
+
+  it('observes fetch_duration_seconds on a clean render', async () => {
+    const ladder = new RenderLadder([fakeTier('http', STATIC_HTML)]);
+    await ladder.render(BASE_REQ);
+    expect(vi.mocked(fetchDurationSeconds.observe)).toHaveBeenCalledWith(
+      { tier: 'http' },
+      expect.any(Number),
+    );
+  });
+
+  it('increments fetch_requests_total{outcome=error} when a tier throws', async () => {
+    const http = fakeTier('http', '', { throws: new Error('timeout') });
+    const pw   = fakeTier('playwright', STATIC_HTML);
+    const ladder = new RenderLadder([http, pw]);
+    await ladder.render(BASE_REQ);
+    expect(vi.mocked(fetchRequestsTotal.inc)).toHaveBeenCalledWith({ tier: 'http', outcome: 'error' });
+    expect(vi.mocked(fetchRequestsTotal.inc)).toHaveBeenCalledWith({ tier: 'playwright', outcome: 'success' });
+  });
+
+  it('increments fetch_escalations_total{reason=heuristic} on heuristic escalation', async () => {
+    const http = fakeTier('http', SPA_HTML);
+    const lp   = fakeTier('lightpanda', STATIC_HTML);
+    const ladder = new RenderLadder([http, lp]);
+    await ladder.render(BASE_REQ);
+    expect(vi.mocked(fetchEscalationsTotal.inc)).toHaveBeenCalledWith({
+      from_tier: 'http',
+      to_tier: 'lightpanda',
+      reason: 'heuristic',
+    });
+  });
+
+  it('increments fetch_escalations_total{reason=error} on tier error fall-through', async () => {
+    const http = fakeTier('http', '', { throws: new Error('conn reset') });
+    const pw   = fakeTier('playwright', STATIC_HTML);
+    const ladder = new RenderLadder([http, pw]);
+    await ladder.render(BASE_REQ);
+    expect(vi.mocked(fetchEscalationsTotal.inc)).toHaveBeenCalledWith({
+      from_tier: 'http',
+      to_tier: 'playwright',
+      reason: 'error',
+    });
+  });
+
+  it('does not increment fetch_escalations_total on a clean single-tier render', async () => {
+    const ladder = new RenderLadder([fakeTier('http', STATIC_HTML)]);
+    await ladder.render(BASE_REQ);
+    expect(vi.mocked(fetchEscalationsTotal.inc)).not.toHaveBeenCalled();
   });
 });

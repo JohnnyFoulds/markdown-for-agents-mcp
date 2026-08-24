@@ -50,8 +50,8 @@ export class RenderLadder {
     let currentTierIdx = minTierIdx;
 
     while (currentTierIdx <= maxTierIdx) {
-      const tier = TIER_ORDER[currentTierIdx]!;
       const impl = this.tiers[currentTierIdx]!;
+      const tier = impl.tier;
 
       if (!(await impl.isAvailable())) {
         currentTierIdx++;
@@ -90,7 +90,7 @@ export class RenderLadder {
         fetchRequestsTotal.inc({ tier, outcome: 'error' });
         const nextTierIdx = currentTierIdx + 1;
         if (nextTierIdx <= maxTierIdx) {
-          const nextTier = TIER_ORDER[nextTierIdx]!;
+          const nextTier = this.tiers[nextTierIdx]!.tier;
           const reason = `error:${err instanceof Error ? err.message.slice(0, 60) : String(err)}`;
           escalations.push({ from: tier, to: nextTier, reason });
           fetchEscalationsTotal.inc({ from_tier: tier, to_tier: nextTier, reason: 'error' });
