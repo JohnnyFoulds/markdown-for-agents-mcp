@@ -3,7 +3,7 @@
  * Supports size-based and time-based eviction
  */
 
-export interface CacheOptions<T> {
+export interface CacheOptions {
   /** Maximum number of entries */
   maxLength?: number;
   /** Maximum size in bytes (sum of serialized values) */
@@ -22,10 +22,10 @@ export interface CacheEntry<T> {
 export class LRUCache<T> {
   private cache: Map<string, CacheEntry<T>> = new Map();
   private accessOrder: string[] = [];
-  private options: Required<CacheOptions<T>>;
+  private options: Required<CacheOptions>;
   private _totalBytes = 0;
 
-  constructor(options: CacheOptions<T> = {}) {
+  constructor(options: CacheOptions = {}) {
     this.options = {
       maxLength: options.maxLength ?? 100,
       maxBytes: options.maxBytes ?? 50 * 1024 * 1024, // 50MB default

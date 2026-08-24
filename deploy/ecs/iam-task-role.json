@@ -1,0 +1,63 @@
+{
+  "_comment": "IAM inline policy for the markdown-mcp-task-role. Attach to the task role so containers can read secrets and write logs.",
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "SecretsManagerRead",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": [
+        "arn:aws:secretsmanager:<AWS_REGION>:<AWS_ACCOUNT_ID>:secret:markdown-mcp/*"
+      ]
+    },
+    {
+      "Sid": "SSMParameterRead",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParameters"
+      ],
+      "Resource": [
+        "arn:aws:ssm:<AWS_REGION>:<AWS_ACCOUNT_ID>:parameter/markdown-mcp/*"
+      ]
+    },
+    {
+      "Sid": "CloudWatchMetrics",
+      "Effect": "Allow",
+      "Action": [
+        "cloudwatch:PutMetricData"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "cloudwatch:namespace": "ECS/ContainerInsights/Prometheus"
+        }
+      }
+    },
+    {
+      "Sid": "ECSExec",
+      "Effect": "Allow",
+      "Action": [
+        "ssmmessages:CreateControlChannel",
+        "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel",
+        "ssmmessages:OpenDataChannel"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "ElastiCacheConnect",
+      "_comment": "Only needed if ElastiCache auth tokens are managed separately from the connection URL secret.",
+      "Effect": "Allow",
+      "Action": [
+        "elasticache:Connect"
+      ],
+      "Resource": [
+        "arn:aws:elasticache:<AWS_REGION>:<AWS_ACCOUNT_ID>:replicationgroup:<REDIS_REPLICATION_GROUP>"
+      ]
+    }
+  ]
+}

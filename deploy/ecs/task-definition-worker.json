@@ -1,0 +1,68 @@
+{
+  "family": "markdown-mcp-worker",
+  "taskRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/markdown-mcp-task-role",
+  "executionRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/markdown-mcp-execution-role",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "4096",
+  "memory": "8192",
+  "ephemeralStorage": {
+    "sizeInGiB": 40
+  },
+  "containerDefinitions": [
+    {
+      "name": "mcp-worker",
+      "image": "<AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/markdown-mcp:<IMAGE_TAG>",
+      "essential": true,
+      "command": ["node", "dist/index.js", "--role=worker"],
+      "environment": [
+        { "name": "MCP_ROLE",                   "value": "worker" },
+        { "name": "BROWSER_POOL_SIZE",          "value": "3" },
+        { "name": "RENDER_MAX_CONCURRENCY",     "value": "16" },
+        { "name": "BROWSER_DISABLE_DEV_SHM",   "value": "false" },
+        { "name": "STORE_BACKEND",              "value": "redis" },
+        { "name": "CRAWL_MAX_CONCURRENCY",      "value": "16" },
+        { "name": "CRAWL_QUEUE_LEASE_MS",       "value": "30000" },
+        { "name": "CRAWL_WORKER_POLL_MS",       "value": "1000" },
+        { "name": "SHUTDOWN_DRAIN_MS",          "value": "5000" },
+        { "name": "SHUTDOWN_TIMEOUT_MS",        "value": "30000" },
+        { "name": "LOG_FORMAT",                 "value": "json" },
+        { "name": "RERANK_BACKEND",             "value": "local" },
+        { "name": "RERANK_DTYPE",               "value": "q8" }
+      ],
+      "secrets": [
+        {
+          "name": "STORE_REDIS_URL",
+          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<AWS_ACCOUNT_ID>:secret:markdown-mcp/STORE_REDIS_URL"
+        },
+        {
+          "name": "BRAVE_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<AWS_ACCOUNT_ID>:secret:markdown-mcp/BRAVE_API_KEY"
+        },
+        {
+          "name": "SERPER_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<AWS_ACCOUNT_ID>:secret:markdown-mcp/SERPER_API_KEY"
+        }
+      ],
+      "linuxParameters": {
+        "initProcessEnabled": true,
+        "tmpfs": [
+          {
+            "containerPath": "/dev/shm",
+            "size": 1024,
+            "mountOptions": ["rw", "noexec", "nosuid"]
+          }
+        ]
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/markdown-mcp-worker",
+          "awslogs-region": "<AWS_REGION>",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "stopTimeout": 90
+    }
+  ]
+}

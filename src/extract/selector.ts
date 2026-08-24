@@ -121,9 +121,8 @@ export function applyExcludeSelectors(html: string, selectors: string[]): string
     const pattern = buildOpenTagPattern(parsed);
     // Remove all matching elements
     let replaced = result;
-    let found: RegExpExecArray | null;
 
-    while ((found = pattern.exec(replaced)) !== null) {
+    while (pattern.exec(replaced) !== null) {
       // Reset so extractElement's internal exec re-scans from the start
       pattern.lastIndex = 0;
       const element = extractElement(replaced, pattern);

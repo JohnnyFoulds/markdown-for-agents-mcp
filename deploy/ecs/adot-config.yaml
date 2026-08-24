@@ -1,0 +1,87 @@
+# ADOT (AWS Distro for OpenTelemetry) collector config.
+#
+# Stored in SSM Parameter Store at:
+#   /markdown-mcp/adot-config
+# Referenced by the adot-collector container via AOT_CONFIG_CONTENT secret.
+#
+# This config scrapes the mcp-server's /metrics endpoint (localhost:3000)
+# and exports Prometheus metrics to CloudWatch as custom metrics under the
+# ECS/ContainerInsights/Prometheus namespace. Those metrics power the
+# Application Auto Scaling target-tracking policies in scaling.json.
+#
+# To apply:
+#   aws ssm put-parameter \
+#     --name /markdown-mcp/adot-config \
+#     --value file://adot-config.yaml \
+#     --type SecureString \
+#     --overwrite
+
+extensions:
+  health_check:
+
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: mcp-server
+          scrape_interval: 15s
+          static_configs:
+            - targets: ["localhost:3000"]
+          metrics_path: /metrics
+
+processors:
+  batch:
+    timeout: 30s
+  # Drop high-cardinality labels before exporting to CloudWatch
+  metricstransform:
+    transforms:
+      - include: .*
+        match_type: regexp
+        action: update
+        operations:
+          # Strip 'le' (histogram bucket labels) — CloudWatch doesn't support them
+          - action: delete_label_value
+            label: le
+            label_value: .*
+
+exporters:
+  awsemf:
+    namespace: ECS/ContainerInsights/Prometheus
+    region: <AWS_REGION>
+    log_group_name: /aws/ecs/containerinsights/<ECS_CLUSTER_NAME>/performance
+    log_stream_name: "{TaskId}"
+    resource_to_telemetry_conversion:
+      enabled: true
+    metric_declarations:
+      # HPA-equivalent: inflight requests (server scaling signal)
+      - dimensions: [["ServiceName"]]
+        metric_name_selectors: ["mcp_inflight_requests"]
+      # HPA-equivalent: crawl queue depth (worker scaling signal)
+      - dimensions: [["ServiceName", "job"]]
+        metric_name_selectors: ["crawl_queue_depth"]
+      # Tool performance
+      - dimensions: [["ServiceName", "tool", "outcome"]]
+        metric_name_selectors: ["mcp_tool_calls_total"]
+      - dimensions: [["ServiceName", "tool"]]
+        metric_name_selectors: ["mcp_tool_duration_seconds_bucket",
+                                "mcp_tool_duration_seconds_sum",
+                                "mcp_tool_duration_seconds_count"]
+      # Fetch tier observability (ladder health)
+      - dimensions: [["ServiceName", "tier", "outcome"]]
+        metric_name_selectors: ["fetch_requests_total"]
+      - dimensions: [["ServiceName", "from_tier", "to_tier", "reason"]]
+        metric_name_selectors: ["fetch_escalations_total"]
+      # Search provider cost attribution
+      - dimensions: [["ServiceName", "provider", "outcome"]]
+        metric_name_selectors: ["search_provider_requests_total"]
+      # SSRF violations
+      - dimensions: [["ServiceName", "stage"]]
+        metric_name_selectors: ["ssrf_violations_total"]
+
+service:
+  extensions: [health_check]
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      processors: [batch]
+      exporters: [awsemf]

@@ -1,0 +1,38 @@
+{
+  "cluster": "<ECS_CLUSTER_ARN>",
+  "serviceName": "markdown-mcp-worker",
+  "taskDefinition": "markdown-mcp-worker",
+  "desiredCount": 2,
+  "launchType": "FARGATE",
+  "platformVersion": "LATEST",
+  "networkConfiguration": {
+    "awsvpcConfiguration": {
+      "subnets": [
+        "<PRIVATE_SUBNET_1>",
+        "<PRIVATE_SUBNET_2>",
+        "<PRIVATE_SUBNET_3>"
+      ],
+      "securityGroups": [
+        "<MCP_WORKER_SG>"
+      ],
+      "assignPublicIp": "DISABLED"
+    }
+  },
+  "deploymentConfiguration": {
+    "maximumPercent": 200,
+    "minimumHealthyPercent": 50,
+    "deploymentCircuitBreaker": {
+      "enable": true,
+      "rollback": true
+    }
+  },
+  "deploymentController": {
+    "type": "ECS"
+  },
+  "enableExecuteCommand": true,
+  "propagateTags": "SERVICE",
+  "tags": [
+    { "key": "Service", "value": "markdown-mcp" },
+    { "key": "Role",    "value": "worker" }
+  ]
+}

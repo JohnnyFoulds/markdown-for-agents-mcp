@@ -275,7 +275,7 @@ export async function runWorkerLoop(opts: {
   Logger.info(`[worker:${workerId}] stopped`);
 }
 
-async function getJobSpec(jobId: string, queue: import('../store/types.js').JobQueue): Promise<JobSpec | undefined> {
+async function getJobSpec(jobId: string, _queue: import('../store/types.js').JobQueue): Promise<JobSpec | undefined> {
   // The spec is embedded in the summary's rootUrl — but we need the full spec.
   // We store the spec in the job. For memory backend it's in the entry.
   // For SQLite, we need to fetch it from the crawl_jobs table.

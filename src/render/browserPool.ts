@@ -79,7 +79,6 @@ export class BrowserPool {
   }
 
   private async launchBrowser(): Promise<Browser> {
-    const config = cfg();
     const launcher = await this.getLauncher();
 
     // Resolve proxy: explicit pool proxy takes precedence; SOCKS5_UPSTREAM_URL

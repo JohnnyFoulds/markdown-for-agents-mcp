@@ -1,0 +1,46 @@
+{
+  "cluster": "<ECS_CLUSTER_ARN>",
+  "serviceName": "markdown-mcp-server",
+  "taskDefinition": "markdown-mcp-server",
+  "desiredCount": 3,
+  "launchType": "FARGATE",
+  "platformVersion": "LATEST",
+  "networkConfiguration": {
+    "awsvpcConfiguration": {
+      "subnets": [
+        "<PRIVATE_SUBNET_1>",
+        "<PRIVATE_SUBNET_2>",
+        "<PRIVATE_SUBNET_3>"
+      ],
+      "securityGroups": [
+        "<MCP_SERVER_SG>"
+      ],
+      "assignPublicIp": "DISABLED"
+    }
+  },
+  "loadBalancers": [
+    {
+      "targetGroupArn": "<ALB_TARGET_GROUP_ARN>",
+      "containerName": "mcp-server",
+      "containerPort": 3000
+    }
+  ],
+  "healthCheckGracePeriodSeconds": 120,
+  "deploymentConfiguration": {
+    "maximumPercent": 200,
+    "minimumHealthyPercent": 67,
+    "deploymentCircuitBreaker": {
+      "enable": true,
+      "rollback": true
+    }
+  },
+  "deploymentController": {
+    "type": "ECS"
+  },
+  "enableExecuteCommand": true,
+  "propagateTags": "SERVICE",
+  "tags": [
+    { "key": "Service", "value": "markdown-mcp" },
+    { "key": "Role",    "value": "server" }
+  ]
+}

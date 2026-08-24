@@ -1,0 +1,110 @@
+{
+  "family": "markdown-mcp-server",
+  "taskRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/markdown-mcp-task-role",
+  "executionRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/markdown-mcp-execution-role",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "2048",
+  "memory": "4096",
+  "ephemeralStorage": {
+    "sizeInGiB": 40
+  },
+  "containerDefinitions": [
+    {
+      "name": "mcp-server",
+      "image": "<AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/markdown-mcp:<IMAGE_TAG>",
+      "essential": true,
+      "command": ["node", "dist/index.js", "--http", "3000"],
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        { "name": "MCP_ROLE",                   "value": "server" },
+        { "name": "HTTP_PORT",                  "value": "3000" },
+        { "name": "MCP_HTTP_MODE",              "value": "stateless" },
+        { "name": "BROWSER_POOL_SIZE",          "value": "2" },
+        { "name": "RENDER_MAX_CONCURRENCY",     "value": "8" },
+        { "name": "BROWSER_DISABLE_DEV_SHM",   "value": "false" },
+        { "name": "STORE_BACKEND",              "value": "redis" },
+        { "name": "SHUTDOWN_DRAIN_MS",          "value": "5000" },
+        { "name": "SHUTDOWN_TIMEOUT_MS",        "value": "30000" },
+        { "name": "LOG_FORMAT",                 "value": "json" },
+        { "name": "RERANK_BACKEND",             "value": "local" },
+        { "name": "RERANK_DTYPE",               "value": "q8" }
+      ],
+      "secrets": [
+        {
+          "name": "MCP_AUTH_TOKEN",
+          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<AWS_ACCOUNT_ID>:secret:markdown-mcp/MCP_AUTH_TOKEN"
+        },
+        {
+          "name": "BRAVE_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<AWS_ACCOUNT_ID>:secret:markdown-mcp/BRAVE_API_KEY"
+        },
+        {
+          "name": "SERPER_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<AWS_ACCOUNT_ID>:secret:markdown-mcp/SERPER_API_KEY"
+        },
+        {
+          "name": "STORE_REDIS_URL",
+          "valueFrom": "arn:aws:secretsmanager:<AWS_REGION>:<AWS_ACCOUNT_ID>:secret:markdown-mcp/STORE_REDIS_URL"
+        }
+      ],
+      "healthCheck": {
+        "command": [
+          "CMD-SHELL",
+          "curl -sf http://localhost:3000/healthz || exit 1"
+        ],
+        "interval": 10,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      },
+      "linuxParameters": {
+        "initProcessEnabled": true,
+        "tmpfs": [
+          {
+            "containerPath": "/dev/shm",
+            "size": 1024,
+            "mountOptions": ["rw", "noexec", "nosuid"]
+          }
+        ]
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/markdown-mcp-server",
+          "awslogs-region": "<AWS_REGION>",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "stopTimeout": 90
+    },
+    {
+      "name": "adot-collector",
+      "image": "public.ecr.aws/aws-observability/aws-otel-collector:latest",
+      "essential": false,
+      "command": ["--config=/etc/ecs/ecs-cloudwatch.yaml"],
+      "environment": [
+        { "name": "AOT_CONFIG_CONTENT", "value": "" }
+      ],
+      "secrets": [
+        {
+          "name": "AOT_CONFIG_CONTENT",
+          "valueFrom": "arn:aws:ssm:<AWS_REGION>:<AWS_ACCOUNT_ID>:parameter/markdown-mcp/adot-config"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/markdown-mcp-server",
+          "awslogs-region": "<AWS_REGION>",
+          "awslogs-stream-prefix": "adot"
+        }
+      }
+    }
+  ]
+}

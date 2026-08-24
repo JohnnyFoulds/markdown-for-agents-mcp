@@ -1,0 +1,82 @@
+{
+  "_comment": "Application Auto Scaling for both ECS services. Apply after services are running and the ADOT collector is publishing metrics to CloudWatch. Replace placeholders before deploying.",
+
+  "serverScalableTarget": {
+    "ServiceNamespace": "ecs",
+    "ResourceId": "service/<ECS_CLUSTER_NAME>/markdown-mcp-server",
+    "ScalableDimension": "ecs:service:DesiredCount",
+    "MinCapacity": 3,
+    "MaxCapacity": 20
+  },
+
+  "serverInflightPolicy": {
+    "_comment": "Scale server on mcp_inflight_requests. Target 6 in-flight requests per task (matches RENDER_MAX_CONCURRENCY=8 with headroom).",
+    "ServiceNamespace": "ecs",
+    "ResourceId": "service/<ECS_CLUSTER_NAME>/markdown-mcp-server",
+    "ScalableDimension": "ecs:service:DesiredCount",
+    "PolicyName": "mcp-server-inflight-tracking",
+    "PolicyType": "TargetTrackingScaling",
+    "TargetTrackingScalingPolicyConfiguration": {
+      "TargetValue": 6.0,
+      "CustomizedMetricSpecification": {
+        "Namespace": "ECS/ContainerInsights/Prometheus",
+        "MetricName": "mcp_inflight_requests",
+        "Dimensions": [
+          { "Name": "ServiceName", "Value": "markdown-mcp-server" }
+        ],
+        "Statistic": "Average"
+      },
+      "ScaleOutCooldown": 30,
+      "ScaleInCooldown": 300,
+      "DisableScaleIn": false
+    }
+  },
+
+  "serverCpuPolicy": {
+    "_comment": "Secondary CPU guard. Only fires when inflight metric is unavailable or misbehaving.",
+    "ServiceNamespace": "ecs",
+    "ResourceId": "service/<ECS_CLUSTER_NAME>/markdown-mcp-server",
+    "ScalableDimension": "ecs:service:DesiredCount",
+    "PolicyName": "mcp-server-cpu-tracking",
+    "PolicyType": "TargetTrackingScaling",
+    "TargetTrackingScalingPolicyConfiguration": {
+      "TargetValue": 70.0,
+      "PredefinedMetricSpecification": {
+        "PredefinedMetricType": "ECSServiceAverageCPUUtilization"
+      },
+      "ScaleOutCooldown": 60,
+      "ScaleInCooldown": 300
+    }
+  },
+
+  "workerScalableTarget": {
+    "ServiceNamespace": "ecs",
+    "ResourceId": "service/<ECS_CLUSTER_NAME>/markdown-mcp-worker",
+    "ScalableDimension": "ecs:service:DesiredCount",
+    "MinCapacity": 2,
+    "MaxCapacity": 50
+  },
+
+  "workerQueuePolicy": {
+    "_comment": "Scale workers on crawl_queue_depth (pending items). Target 50 items per worker task.",
+    "ServiceNamespace": "ecs",
+    "ResourceId": "service/<ECS_CLUSTER_NAME>/markdown-mcp-worker",
+    "ScalableDimension": "ecs:service:DesiredCount",
+    "PolicyName": "mcp-worker-queue-tracking",
+    "PolicyType": "TargetTrackingScaling",
+    "TargetTrackingScalingPolicyConfiguration": {
+      "TargetValue": 50.0,
+      "CustomizedMetricSpecification": {
+        "Namespace": "ECS/ContainerInsights/Prometheus",
+        "MetricName": "crawl_queue_depth",
+        "Dimensions": [
+          { "Name": "ServiceName", "Value": "markdown-mcp-worker" }
+        ],
+        "Statistic": "Sum"
+      },
+      "ScaleOutCooldown": 30,
+      "ScaleInCooldown": 300,
+      "DisableScaleIn": false
+    }
+  }
+}
