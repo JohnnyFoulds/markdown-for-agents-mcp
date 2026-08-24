@@ -90,11 +90,9 @@ const result = spawnSync('semgrep', semgrepArgs, {
 
 // semgrep exits 1 when findings exist, 0 when clean, 2+ on error
 if (result.status !== null && result.status >= 2) {
-  console.error('[SAST] semgrep exited with error:');
+  console.error('[SAST] semgrep exited with error (exit code', result.status, '):');
   console.error('[SAST] stderr:', result.stderr?.slice(0, 2000) ?? '(no stderr)');
-  console.error('[SAST] stdout:', result.stdout?.slice(0, 2000) ?? '(no stdout)');
-  console.error('[SAST] signal:', result.signal ?? '(none)');
-  console.error('[SAST] exit code:', result.status);
+  console.error('[SAST] stdout:', result.stdout?.slice(0, 500) ?? '(no stdout)');
   process.exit(2);
 }
 
