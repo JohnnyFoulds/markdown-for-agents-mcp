@@ -1,0 +1,20 @@
+# Semgrep ignore — mirrors .gitignore patterns plus test files
+# (test files excluded from production SAST; run semgrep separately on tests if desired)
+
+node_modules/
+dist/
+coverage/
+security-reports/
+
+# Test files — SAST findings in test code are generally false positives
+**/*.test.ts
+**/*.spec.ts
+**/__mocks__/
+**/__fixtures__/
+
+# Scripts — contain intentional shell exec patterns (the scan scripts themselves)
+scripts/
+
+# Generated / vendored
+*.min.js
+*.bundle.js

