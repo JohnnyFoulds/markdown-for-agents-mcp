@@ -135,6 +135,13 @@ const configSchema = z.object({
   // PROXY_PINS: JSON array of proxy URLs for round-robin rotation, e.g. '["http://p1:3128","http://p2:3128"]'
   PROXY_PINS: z.string().optional(),
 
+  // HTTP authentication (Phase 7 hardening)
+  // Fail-closed: in HTTP mode, MCP_AUTH_TOKEN is required unless
+  // MCP_AUTH_ALLOW_ANONYMOUS=true explicitly opts out of the requirement.
+  // See src/server/auth.ts for enforcement.
+  MCP_AUTH_TOKEN: z.string().optional(),
+  MCP_AUTH_ALLOW_ANONYMOUS: z.string().default('false').transform(val => val === 'true'),
+
   // HTTP transport mode (Phase 7)
   // 'stateless' = no session affinity, any replica serves any request (default for N-replica)
   // 'session'   = stateful sessions, requires Ingress affinity on Mcp-Session-Id

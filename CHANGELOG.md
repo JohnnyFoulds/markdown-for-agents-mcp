@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — Security hardening
+
+### ⚠ Breaking change — HTTP mode now requires authentication
+
+**`MCP_AUTH_TOKEN` is now required when running in HTTP mode.** If the token
+is absent (unset or empty), the server exits at startup with an actionable
+error message rather than serving requests unauthenticated.
+
+**If you run without a token and want to keep that behaviour**, set
+`MCP_AUTH_ALLOW_ANONYMOUS=true` to explicitly opt out. Anonymous access is
+not recommended for internet-facing deployments.
+
+**Migration**: set `MCP_AUTH_TOKEN` in your `.env`, Secrets Manager entry,
+or compose/k8s environment before upgrading. The compose and k8s manifests
+already thread `MCP_AUTH_TOKEN` through — you only need to supply the value.
+
+---
+
 ## [Unreleased] — Phases 0–10 (Tavily Parity)
 
 ### Added — Phase 3: Zero-budget search reliability

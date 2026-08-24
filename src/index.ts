@@ -6,6 +6,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { validateAndInitializeConfig } from "./config.js";
+import { assertHttpAuthPolicy } from "./server/auth.js";
 import { fetcher } from "./fetcher.js";
 import { Logger } from "./utils/logger.js";
 import { registerAll } from "./server/registry.js";
@@ -77,8 +78,8 @@ async function startHttpServer(
   serverFactory: () => McpServer,
   port: number,
   mode: string,
+  authToken: string | undefined,
 ): Promise<ReturnType<typeof createServer>> {
-  const authToken = process.env['MCP_AUTH_TOKEN'];
 
   // Stateful mode: one shared server + transport (session affinity required).
   // Stateless mode: fresh server + transport per request (SDK requirement —
@@ -281,7 +282,13 @@ async function main() {
     };
 
     if (isHttpMode) {
-      httpServer = await startHttpServer(serverFactory, httpPort!, config.MCP_HTTP_MODE);
+      // Fail-closed: throw at startup if no auth token and no explicit opt-out.
+      // This must be called before binding the port so the error is visible in
+      // container logs before the health check ever passes.
+      assertHttpAuthPolicy(config.MCP_AUTH_TOKEN, config.MCP_AUTH_ALLOW_ANONYMOUS, true);
+
+      httpServer = await startHttpServer(
+        serverFactory, httpPort!, config.MCP_HTTP_MODE, config.MCP_AUTH_TOKEN);
 
       if (config.METRICS_BIND_PORT) {
         metricsServer = await startMetricsServer(config.METRICS_BIND_PORT);

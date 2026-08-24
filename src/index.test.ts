@@ -176,6 +176,21 @@ describe('MCP Server Configuration', () => {
   });
 });
 
+describe('HTTP auth fail-closed (source inspection)', () => {
+  const src = readFileSync(join(__dirname, 'index.ts'), 'utf8');
+
+  it('reads auth token from config, not raw process.env', () => {
+    // A direct process.env read bypasses Zod validation and is the root cause
+    // of the fail-open bug: unset / misspelled env var silently disables auth.
+    // After Phase 2.1, the token must come from the validated config object.
+    expect(src).not.toContain("process.env['MCP_AUTH_TOKEN']");
+  });
+
+  it('calls assertHttpAuthPolicy to enforce fail-closed startup in HTTP mode', () => {
+    expect(src).toContain('assertHttpAuthPolicy');
+  });
+});
+
 describe('validateAndInitializeConfig', () => {
   beforeEach(() => {
     resetConfig();
