@@ -19,14 +19,14 @@ RUN npm run build
 # --- Runtime stage ---
 # Use the official Playwright image which includes Chromium and all system deps.
 # Pin to the exact Playwright dep version to guarantee browser/driver compatibility.
-FROM mcr.microsoft.com/playwright:v1.40.0-jammy AS runtime
+FROM mcr.microsoft.com/playwright:v1.59.1-jammy AS runtime
 
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
-# The Playwright v1.40 jammy image ships Node.js 20; upgrade to v22 for
+# The Playwright jammy image ships Node.js 20; upgrade to v22 for
 # node:sqlite and undici (markAsUncloneable API requires v22).
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs dumb-init \
