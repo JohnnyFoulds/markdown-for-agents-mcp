@@ -222,8 +222,10 @@ async function main() {
   });
   Logger.info(`Stores initialized (backend=${config.STORE_BACKEND}, http=${isHttpMode})`);
 
-  // Wire rate limiter to shared store in HTTP mode
-  if (isHttpMode && config.RATE_LIMIT_PER_HOST_RPS > 0) {
+  // Wire rate limiter to shared store whenever rate limiting is configured.
+  // Workers must also use the shared store so aggregate RPS is honoured across
+  // all replicas — without this each worker has an independent in-memory bucket.
+  if (config.RATE_LIMIT_PER_HOST_RPS > 0) {
     const { httpClient: hc } = await import('./http/client.js');
     (hc as { setRateLimitStore?: (s: ReturnType<typeof getStores>['rateLimit']) => void })
       .setRateLimitStore?.(getStores().rateLimit);
