@@ -3,6 +3,7 @@ import type {
   KeyValueStore, RateLimitStore, JobQueue, JobSpec, QueueItem, LeasedItem,
   PageRecord, JobSummary, JobStatus, PageStatus, JobLease, Stores,
 } from '../types.js';
+import { storeOperationsTotal } from '../../obs/metrics.js';
 
 // ── KeyValueStore ─────────────────────────────────────────────────────────────
 
@@ -21,16 +22,18 @@ export class MemoryKvStore implements KeyValueStore {
   async get(key: string): Promise<Buffer | undefined> {
     this.evict();
     const entry = this.store.get(key);
-    if (!entry) return undefined;
-    if (entry.expiresAt !== null && entry.expiresAt <= Date.now()) {
-      this.store.delete(key);
+    if (!entry || (entry.expiresAt !== null && entry.expiresAt <= Date.now())) {
+      if (entry) this.store.delete(key);
+      storeOperationsTotal.inc({ backend: 'memory', op: 'get', result: 'miss' });
       return undefined;
     }
+    storeOperationsTotal.inc({ backend: 'memory', op: 'get', result: 'hit' });
     return entry.value;
   }
 
   async set(key: string, value: Buffer, ttlMs: number): Promise<void> {
     this.store.set(key, { value, expiresAt: ttlMs > 0 ? Date.now() + ttlMs : null });
+    storeOperationsTotal.inc({ backend: 'memory', op: 'set', result: 'ok' });
   }
 
   async del(key: string): Promise<void> {

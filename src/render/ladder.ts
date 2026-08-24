@@ -64,8 +64,10 @@ export class RenderLadder {
         const elapsed = (Date.now() - tierStart) / 1000;
         fetchDurationSeconds.observe({ tier }, elapsed);
 
-        // Check if the result needs escalation
-        const { escalate, targetTier } = needsEscalation(result.html, result.status, {});
+        // Check if the result needs escalation, passing response headers so that
+        // header-based bot-challenge detection (cf-mitigated, x-datadome-request,
+        // x-incapsula-error) and the non-HTML content-type guard can fire.
+        const { escalate, targetTier } = needsEscalation(result.html, result.status, result.headers ?? {});
 
         if (escalate) {
           const targetIdx = TIER_INDEX[targetTier];

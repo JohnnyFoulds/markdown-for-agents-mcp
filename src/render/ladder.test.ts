@@ -157,6 +157,74 @@ describe('RenderLadder — tier memo', () => {
   });
 });
 
+// ── Phase 1: headers pass-through ─────────────────────────────────────────────
+//
+// RED before fix: ladder.ts:68 passes {} as headers to needsEscalation(),
+// so header-based bot-challenge detection (cf-mitigated, x-datadome-request,
+// x-incapsula-error) can never fire even when the response carries these headers.
+//
+// These tests assert the DESIRED behaviour and MUST be RED until ladder.ts is fixed.
+
+function fakeTierWithHeaders(
+  name: 'http' | 'lightpanda' | 'playwright',
+  html: string,
+  responseHeaders: Record<string, string>,
+  status = 200,
+): RenderTierImpl {
+  return {
+    tier: name,
+    isAvailable: vi.fn().mockResolvedValue(true),
+    render: vi.fn().mockResolvedValue({
+      url: 'https://example.com',
+      html,
+      title: `${name} title`,
+      status,
+      tier: name,
+      escalations: [],
+      durationMs: 10,
+      headers: responseHeaders,
+    } satisfies RenderResult),
+  };
+}
+
+describe('RenderLadder — header-based escalation (Phase 1 fix)', () => {
+  it('escalates to playwright when tier-1 returns cf-mitigated header (status 200)', async () => {
+    // Static HTML body that would NOT trigger content-based escalation on its own.
+    const http = fakeTierWithHeaders('http', STATIC_HTML, { 'cf-mitigated': 'challenge' });
+    const lp   = fakeTier('lightpanda', STATIC_HTML);
+    const pw   = fakeTier('playwright', STATIC_HTML);
+    const ladder = new RenderLadder([http, lp, pw]);
+
+    const result = await ladder.render(BASE_REQ);
+    // Without the fix, result.tier === 'http' (headers ignored).
+    // With the fix, result.tier === 'playwright' (cf-mitigated → bot-challenge → playwright).
+    expect(result.tier).toBe('playwright');
+    expect(result.escalations.some(e => e.to === 'playwright')).toBe(true);
+  });
+
+  it('does NOT escalate for a 200 OK with no bot-challenge headers', async () => {
+    const http = fakeTierWithHeaders('http', STATIC_HTML, { 'content-type': 'text/html' });
+    const pw   = fakeTier('playwright', STATIC_HTML);
+    const ladder = new RenderLadder([http, pw]);
+
+    const result = await ladder.render(BASE_REQ);
+    expect(result.tier).toBe('http');
+    expect(pw.render).not.toHaveBeenCalled();
+  });
+
+  it('escalates when content-type header signals non-HTML (avoids escalating a PDF)', async () => {
+    // content-type: application/pdf — needsEscalation should return escalate:false
+    // (the non-HTML guard returns early with escalate:false), so the result stays at http.
+    const http = fakeTierWithHeaders('http', '<html></html>', { 'content-type': 'application/pdf' });
+    const pw   = fakeTier('playwright', STATIC_HTML);
+    const ladder = new RenderLadder([http, pw]);
+
+    const result = await ladder.render(BASE_REQ);
+    // With the fix: content-type is passed → heuristic returns escalate:false for non-HTML
+    expect(pw.render).not.toHaveBeenCalled();
+  });
+});
+
 describe('RenderLadder — metrics', () => {
   it('increments fetch_requests_total{outcome=success} on a clean render', async () => {
     const ladder = new RenderLadder([fakeTier('http', STATIC_HTML)]);

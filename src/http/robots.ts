@@ -10,6 +10,7 @@ type RobotsInstance = {
 const robotsParser = _require('robots-parser') as (url: string, txt: string) => RobotsInstance;
 import { RobotsDeniedError } from '../utils/errors.js';
 import type { HttpClient } from './types.js';
+import { robotsDeniedTotal } from '../obs/metrics.js';
 
 const CACHE = new LRUCache<string>({ maxBytes: 4 * 1024 * 1024, ttl: 60 * 60 * 1000 });
 
@@ -59,6 +60,7 @@ export async function assertRobotsAllowed(
 
   const robots = robotsParser(`${origin}/robots.txt`, txt);
   if (robots.isDisallowed(url, UA)) {
+    robotsDeniedTotal.inc();
     throw new RobotsDeniedError(url);
   }
 

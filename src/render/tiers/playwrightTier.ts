@@ -45,6 +45,7 @@ export class PlaywrightTier implements RenderTierImpl {
       ]);
 
       const status = response?.status() ?? 200;
+      const headers = response?.headers() ?? {};
 
       const pageData = await page.evaluate((): { html: string; title: string } => ({
         html: document.documentElement.outerHTML,
@@ -57,6 +58,7 @@ export class PlaywrightTier implements RenderTierImpl {
         html: pageData.html,
         title: pageData.title,
         status,
+        headers,
         tier: 'playwright',
         escalations: [],
         durationMs: Date.now() - start,

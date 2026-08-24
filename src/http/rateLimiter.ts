@@ -1,5 +1,6 @@
 import { RateLimitTimeoutError } from '../utils/errors.js';
 import type { RateLimitStore } from '../store/types.js';
+import { rateLimitWaitsSeconds } from '../obs/metrics.js';
 
 class TokenBucket {
   private tokens: number;
@@ -53,7 +54,10 @@ export class RateLimiter {
     if (this.store) {
       const waitMs = await this.store.take(host, this.rps, this.burst, Date.now());
       if (waitMs > this.maxWaitMs) throw new RateLimitTimeoutError(this.maxWaitMs);
-      if (waitMs > 0) await new Promise(resolve => setTimeout(resolve, waitMs));
+      if (waitMs > 0) {
+        rateLimitWaitsSeconds.observe(waitMs / 1000);
+        await new Promise(resolve => setTimeout(resolve, waitMs));
+      }
       return;
     }
 
@@ -62,7 +66,8 @@ export class RateLimiter {
       bucket = new TokenBucket(this.rps, this.burst);
       this.localBuckets.set(host, bucket);
     }
-    await bucket.take(this.maxWaitMs);
+    const waitMs = await bucket.take(this.maxWaitMs);
+    if (waitMs > 0) rateLimitWaitsSeconds.observe(waitMs / 1000);
   }
 
   /** Feed crawl-delay from robots.txt into the local limiter for a host. */

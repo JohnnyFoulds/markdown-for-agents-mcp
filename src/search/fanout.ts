@@ -2,6 +2,7 @@ import { AllProvidersFailedError } from '../utils/errors.js';
 import { Logger } from '../utils/logger.js';
 import { deduplicateByCanonical } from './canonicalize.js';
 import { passesAllowedList, passesBlockedList, passesSystemBlocklist } from './filter.js';
+import { searchProviderRequestsTotal } from '../obs/metrics.js';
 import type { SearchProvider, SearchProviderQuery, ProviderResult } from './types.js';
 
 export interface FanoutOptions {
@@ -46,8 +47,10 @@ async function runProvider(
       provider.search(q, { signal: opts.signal, requestId: opts.requestId }),
       deadline,
     ]);
+    searchProviderRequestsTotal.inc({ provider: provider.name, outcome: 'success' });
     return { provider: provider.name, results };
   } catch (err) {
+    searchProviderRequestsTotal.inc({ provider: provider.name, outcome: 'error' });
     Logger.warn(`[fanout] ${provider.name} failed: ${err instanceof Error ? err.message : String(err)}`);
     return { provider: provider.name, error: err };
   }

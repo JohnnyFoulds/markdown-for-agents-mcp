@@ -27,6 +27,7 @@ export class HttpTier implements RenderTierImpl {
       tier: 'http',
       escalations: [],
       durationMs: Date.now() - start,
+      headers: res.headers,
     };
   }
 }

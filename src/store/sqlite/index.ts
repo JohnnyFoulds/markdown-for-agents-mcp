@@ -4,6 +4,7 @@ import type {
   KeyValueStore, RateLimitStore, JobQueue, JobSpec, QueueItem, LeasedItem,
   PageRecord, JobSummary, JobStatus, PageStatus, JobLease, Stores,
 } from '../types.js';
+import { storeOperationsTotal } from '../../obs/metrics.js';
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS kv (
@@ -76,6 +77,7 @@ export class SqliteKvStore implements KeyValueStore {
     // Delete expired on read
     this.db.prepare('DELETE FROM kv WHERE key=? AND exp IS NOT NULL AND exp<=?').run(key, now);
     const row = this.db.prepare('SELECT value FROM kv WHERE key=?').get(key) as { value: Uint8Array } | undefined;
+    storeOperationsTotal.inc({ backend: 'sqlite', op: 'get', result: row ? 'hit' : 'miss' });
     if (!row) return undefined;
     return Buffer.from(row.value);
   }
@@ -83,6 +85,7 @@ export class SqliteKvStore implements KeyValueStore {
   async set(key: string, value: Buffer, ttlMs: number): Promise<void> {
     const exp = ttlMs > 0 ? Date.now() + ttlMs : null;
     this.db.prepare('INSERT OR REPLACE INTO kv(key,value,exp) VALUES(?,?,?)').run(key, value, exp);
+    storeOperationsTotal.inc({ backend: 'sqlite', op: 'set', result: 'ok' });
   }
 
   async del(key: string): Promise<void> {

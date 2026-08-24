@@ -3,6 +3,7 @@ import { renderLadder } from '../render/ladder.js';
 import { extract } from '../extract/pipeline.js';
 import { validateUrl } from '../utils/domainBlacklist.js';
 import { Logger } from '../utils/logger.js';
+import { crawlQueueDepth, crawlPagesTotal } from '../obs/metrics.js';
 import type { JobSpec, QueueItem, LeasedItem, PageRecord } from '../store/types.js';
 
 export interface CrawlPageResult {
@@ -240,6 +241,11 @@ export async function runWorkerLoop(opts: {
     while (!signal.aborted) {
       const items = await stores.queue.lease(claim.jobId, batchSize, leaseMs);
       if (items.length === 0) break;
+      // Update queue depth gauge after leasing so HPA sees the current depth.
+      const statusForDepth = await stores.queue.status(claim.jobId).catch(() => undefined);
+      if (statusForDepth) {
+        crawlQueueDepth.labels({ job: claim.jobId }).set(statusForDepth.pending ?? 0);
+      }
 
       // Heartbeat while processing
       const heartbeatInterval = setInterval(async () => {
@@ -252,8 +258,10 @@ export async function runWorkerLoop(opts: {
 
           if (record.status === 'completed') {
             await stores.queue.complete(item, record);
+            crawlPagesTotal.inc({ job: item.jobId, status: 'completed' });
           } else {
             await stores.queue.fail(item, record.error ?? 'Unknown error', false);
+            crawlPagesTotal.inc({ job: item.jobId, status: 'failed' });
           }
 
           if (discoveredLinks.length > 0) {

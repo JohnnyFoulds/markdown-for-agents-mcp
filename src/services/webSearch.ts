@@ -9,6 +9,7 @@ import { searXNGProvider } from '../search/providers/searxng.js';
 import { DuckDuckGoProvider, duckDuckGoProvider, parseDuckDuckGoHtml } from '../search/providers/duckduckgo.js';
 import { passesAllowedList, passesBlockedList, domainOf } from '../search/filter.js';
 import { chunkMarkdown, getReranker } from '../rank/index.js';
+import { rerankDurationSeconds } from '../obs/metrics.js';
 import type { SearchProvider } from '../search/types.js';
 import type { HttpClient } from '../http/types.js';
 
@@ -113,7 +114,9 @@ export async function webSearch(options: SearchOptions): Promise<SearchResponse>
         if (searchDepth === 'advanced' && reranker.isReady()) {
           const chunks = chunkMarkdown(extracted.markdown, r.url);
           if (chunks.length > 0) {
+            const rerankTimer = rerankDurationSeconds.startTimer({ backend: reranker.name });
             const scored = await reranker.rank(query, chunks, { signal: controller.signal });
+            rerankTimer();
             ranked.push({ url: r.url, markdown: scored.slice(0, chunksPerSource).map(c => c.text).join('\n\n---\n\n') });
             continue;
           }

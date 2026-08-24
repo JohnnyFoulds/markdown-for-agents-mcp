@@ -3,6 +3,7 @@ import type {
   KeyValueStore, RateLimitStore, JobQueue, JobSpec, QueueItem, LeasedItem,
   PageRecord, JobSummary, JobStatus, PageStatus, JobLease, Stores,
 } from '../types.js';
+import { storeOperationsTotal } from '../../obs/metrics.js';
 
 // Redis backend — requires `ioredis` optional dependency.
 // All three stores share one Redis connection.
@@ -28,6 +29,7 @@ export class RedisKvStore implements KeyValueStore {
 
   async get(key: string): Promise<Buffer | undefined> {
     const val: Buffer | null = await this.redis.getBuffer(key);
+    storeOperationsTotal.inc({ backend: 'redis', op: 'get', result: val !== null ? 'hit' : 'miss' });
     return val ?? undefined;
   }
 
@@ -37,6 +39,7 @@ export class RedisKvStore implements KeyValueStore {
     } else {
       await this.redis.set(key, value);
     }
+    storeOperationsTotal.inc({ backend: 'redis', op: 'set', result: 'ok' });
   }
 
   async del(key: string): Promise<void> {

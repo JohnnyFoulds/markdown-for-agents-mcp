@@ -3,6 +3,7 @@ import { getConfig } from '../config.js';
 import { generateBrowserUA, BROWSER_HEADERS } from '../http/fingerprint.js';
 import {
   browserPoolBrowsers,
+  browserPoolContexts,
   browserPoolInUse,
   browserPoolQueued,
   browserRecyclesTotal,
@@ -160,6 +161,7 @@ export class BrowserPool {
 
     this.inUse++;
     browserPoolInUse.set(this.inUse);
+    browserPoolContexts.set(this.inUse);
     browserPoolQueued.set(this.waitQueue.length);
     const slot = this.leastLoadedSlot();
     if (!slot) throw new Error('BrowserPool: no slots available');
@@ -198,6 +200,7 @@ export class BrowserPool {
       try { await context.close(); } catch { /* ignore */ }
       this.inUse = Math.max(0, this.inUse - 1);
       browserPoolInUse.set(this.inUse);
+      browserPoolContexts.set(this.inUse);
       this.waitQueue.shift()?.();
       browserPoolQueued.set(this.waitQueue.length);
 

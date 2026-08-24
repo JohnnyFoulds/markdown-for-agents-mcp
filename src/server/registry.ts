@@ -2,6 +2,11 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { ZodRawShape } from "zod";
 import { z } from "zod";
 import { Logger } from "../utils/logger.js";
+import {
+  inflightRequests,
+  toolCallsTotal,
+  toolDurationSeconds,
+} from "../obs/metrics.js";
 
 export interface AppDeps {
   // Populated per phase: httpClient (Ph1), ladder (Ph2), searchFanout (Ph3),
@@ -74,18 +79,25 @@ export function registerAll(
           logger: Logger,
           deps,
         };
+        inflightRequests.inc();
+        const timer = toolDurationSeconds.startTimer({ tool: def.name });
         try {
           const result = await def.handler(args as never, ctx);
+          toolCallsTotal.inc({ tool: def.name, outcome: "success" });
           return {
             content: [{ type: "text" as const, text: def.toText(result) }],
             structuredContent: result,
           };
         } catch (error) {
+          toolCallsTotal.inc({ tool: def.name, outcome: "error" });
           const msg = error instanceof Error ? error.message : "Unknown error";
           return {
             content: [{ type: "text" as const, text: `# Error\n\n${msg}\n` }],
             isError: true,
           };
+        } finally {
+          timer();
+          inflightRequests.dec();
         }
       },
     );

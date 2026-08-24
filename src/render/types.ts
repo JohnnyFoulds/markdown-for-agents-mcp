@@ -31,6 +31,13 @@ export interface RenderResult {
   escalations: EscalationRecord[];
   screenshotPng?: Buffer;
   durationMs: number;
+  /**
+   * Response headers from the HTTP request.  Populated by each tier so that
+   * the render ladder can pass them to needsEscalation() for header-based
+   * bot-challenge detection (cf-mitigated, x-datadome-request, etc.).
+   * Absent only for tiers that cannot surface headers (e.g. screenshot-only).
+   */
+  headers?: Record<string, string>;
 }
 
 export interface RenderTierImpl {

@@ -6,6 +6,7 @@ vi.mock('playwright', () => ({
 
 vi.mock('../obs/metrics.js', () => ({
   browserPoolBrowsers:          { set: vi.fn() },
+  browserPoolContexts:          { set: vi.fn() },
   browserPoolInUse:             { set: vi.fn() },
   browserPoolQueued:            { set: vi.fn() },
   browserRecyclesTotal:         { inc: vi.fn() },
