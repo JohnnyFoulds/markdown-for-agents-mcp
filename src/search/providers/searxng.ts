@@ -1,5 +1,5 @@
 import { getConfig } from '../../config.js';
-import { httpClient as defaultHttpClient } from '../../http/client.js';
+import { httpClient as defaultHttpClient, internalHttpClient } from '../../http/client.js';
 import { BotChallengeError } from '../../utils/errors.js';
 import type { HttpClient } from '../../http/types.js';
 import { domainOf } from '../filter.js';
@@ -74,4 +74,4 @@ export class SearXNGProvider implements SearchProvider {
   }
 }
 
-export const searXNGProvider = new SearXNGProvider();
+export const searXNGProvider = new SearXNGProvider(internalHttpClient);

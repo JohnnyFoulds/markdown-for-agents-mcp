@@ -1,6 +1,7 @@
-import { describe, test, expect, beforeEach, vi } from 'vitest';
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { fetchUrls } from './fetchUrls.js';
 import { fetcher } from '../fetcher.js';
+import { initializeConfig, resetConfig } from '../config.js';
 import type { FetchResult } from '../fetcher.js';
 
 vi.mock('../fetcher.js', () => ({
@@ -18,6 +19,10 @@ vi.mock('../extract/pipeline.js', () => ({
 describe('fetchUrls', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    resetConfig();
   });
 
   describe('successful fetches', () => {
@@ -136,6 +141,28 @@ describe('fetchUrls', () => {
       const result = await fetchUrls({ urls: [url] });
 
       expect(result.results[0].url).toBe(url);
+    });
+  });
+
+  describe('FETCH_ALLOW_REQUEST_HEADERS gate', () => {
+    beforeEach(() => {
+      vi.mocked(fetcher.fetchMultiple).mockResolvedValue([]);
+    });
+
+    test('forwards caller headers when FETCH_ALLOW_REQUEST_HEADERS=true', async () => {
+      initializeConfig({ FETCH_ALLOW_REQUEST_HEADERS: 'true' });
+      await fetchUrls({ urls: ['https://example.com'], headers: { Authorization: 'Bearer tok' } });
+      expect(fetcher.fetchMultiple).toHaveBeenCalledWith(
+        ['https://example.com'], undefined, { Authorization: 'Bearer tok' },
+      );
+    });
+
+    test('strips caller headers when FETCH_ALLOW_REQUEST_HEADERS=false', async () => {
+      initializeConfig({ FETCH_ALLOW_REQUEST_HEADERS: 'false' });
+      await fetchUrls({ urls: ['https://example.com'], headers: { Authorization: 'Bearer tok' } });
+      expect(fetcher.fetchMultiple).toHaveBeenCalledWith(
+        ['https://example.com'], undefined, undefined,
+      );
     });
   });
 });

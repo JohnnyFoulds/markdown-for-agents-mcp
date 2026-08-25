@@ -1,5 +1,5 @@
 import { getConfig } from '../config.js';
-import { httpClient as defaultHttpClient } from '../http/client.js';
+import { httpClient as defaultHttpClient, internalHttpClient } from '../http/client.js';
 import type { HttpClient } from '../http/types.js';
 import { Logger } from '../utils/logger.js';
 import { NoopReranker } from './noopReranker.js';
@@ -74,4 +74,4 @@ export class TeiReranker implements Reranker {
   }
 }
 
-export const teiReranker = new TeiReranker();
+export const teiReranker = new TeiReranker(internalHttpClient);

@@ -131,6 +131,31 @@ describe('Domain Blacklist', () => {
       expect(isDomainBlocked('DoubleClick.NET')).toBe(true);
       expect(isDomainBlocked('FACEBOOK.COM')).toBe(true);
     });
+
+    describe('ALLOWLIST_DOMAINS (USE_ALLOWLIST_MODE=true)', () => {
+      afterEach(() => { resetConfig(); });
+
+      it('blocks unlisted domains when USE_ALLOWLIST_MODE=true', () => {
+        initializeConfig({ USE_ALLOWLIST_MODE: 'true', ALLOWLIST_DOMAINS: 'internal.corp.za' });
+        expect(isDomainBlocked('evil.com')).toBe(true);
+        expect(isDomainBlocked('example.com')).toBe(true);
+      });
+
+      it('permits listed domains when USE_ALLOWLIST_MODE=true', () => {
+        initializeConfig({ USE_ALLOWLIST_MODE: 'true', ALLOWLIST_DOMAINS: 'internal.corp.za' });
+        expect(isDomainBlocked('internal.corp.za')).toBe(false);
+        expect(isDomainBlocked('api.internal.corp.za')).toBe(false);
+      });
+
+      it('BLOCKLIST_DOMAINS is NOT read in allowlist mode', () => {
+        initializeConfig({
+          USE_ALLOWLIST_MODE: 'true',
+          ALLOWLIST_DOMAINS: 'trusted.com',
+          BLOCKLIST_DOMAINS: 'trusted.com',  // should have no effect in allowlist mode
+        });
+        expect(isDomainBlocked('trusted.com')).toBe(false);  // ALLOWLIST_DOMAINS wins
+      });
+    });
   });
 
   describe('isPathBlocked', () => {
@@ -256,7 +281,7 @@ describe('Domain Blacklist', () => {
       resetConfig();
       initializeConfig({
         USE_ALLOWLIST_MODE: 'true',
-        BLOCKLIST_DOMAINS: 'allowed.com',
+        ALLOWLIST_DOMAINS: 'allowed.com',
         BLOCKLIST_URL_PATTERNS: '',
       });
       const config = getBlocklistConfig();

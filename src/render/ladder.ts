@@ -1,3 +1,4 @@
+import { getConfig } from '../config.js';
 import { Logger } from '../utils/logger.js';
 import { needsEscalation } from './heuristic.js';
 import { HttpTier } from './tiers/httpTier.js';
@@ -44,7 +45,13 @@ export class RenderLadder {
       req.minTier ? TIER_INDEX[req.minTier] : 0,
       memoedTier ? TIER_INDEX[memoedTier] : 0,
     );
-    const maxTierIdx = req.maxTier ? TIER_INDEX[req.maxTier] : TIER_ORDER.length - 1;
+    const configMaxTierIdx = (() => {
+      try { return TIER_INDEX[getConfig().RENDER_MAX_TIER]; } catch { return TIER_ORDER.length - 1; }
+    })();
+    const maxTierIdx = Math.min(
+      req.maxTier ? TIER_INDEX[req.maxTier] : TIER_ORDER.length - 1,
+      configMaxTierIdx,
+    );
 
     const escalations: EscalationRecord[] = [];
     let currentTierIdx = minTierIdx;

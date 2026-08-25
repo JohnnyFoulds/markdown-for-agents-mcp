@@ -29,6 +29,12 @@ function buildAgent(proxyUrl?: string, isSocks5?: boolean): Dispatcher {
   return new Agent({ connect: connectOpts });
 }
 
+// Internal-service agent: no dnsGuardLookup, no proxy.
+// Only for operator-configured in-cluster endpoints (SEARXNG_URL, RERANK_TEI_URL).
+function buildInternalAgent(): Dispatcher {
+  return new Agent();
+}
+
 function purposeHeaders(purpose: HttpRequest['purpose'], ua: string): Record<string, string> {
   if (purpose === 'page' || purpose === 'search') {
     return { 'User-Agent': ua, ...BROWSER_HEADERS };
@@ -57,9 +63,13 @@ class UndiciHttpClient implements HttpClient {
   private rateLimiter: RateLimiter;
   private readonly ua = generateBrowserUA();
 
-  constructor() {
-    const proxy = resolveProxy();
-    this.dispatcher = buildAgent(proxy?.url, proxy?.isSocks5);
+  constructor(private readonly internal = false) {
+    if (internal) {
+      this.dispatcher = buildInternalAgent();
+    } else {
+      const proxy = resolveProxy();
+      this.dispatcher = buildAgent(proxy?.url, proxy?.isSocks5);
+    }
     const cfg = this.cfg();
     this.rateLimiter = new RateLimiter(
       cfg.RATE_LIMIT_PER_HOST_RPS,
@@ -97,8 +107,10 @@ class UndiciHttpClient implements HttpClient {
     while (attempts < maxAttempts) {
       attempts++;
       try {
-        const validation = validateUrl(currentUrl, { skipPathPatterns: req.purpose === 'download' });
-        if (!validation.valid) throw new DomainBlockedError(new URL(currentUrl).hostname);
+        if (!this.internal) {
+          const validation = validateUrl(currentUrl, { skipPathPatterns: req.purpose === 'download' });
+          if (!validation.valid) throw new DomainBlockedError(new URL(currentUrl).hostname);
+        }
 
         if (!req.skipRateLimit) {
           await this.rateLimiter.take(new URL(currentUrl).hostname);
@@ -269,3 +281,7 @@ class UndiciHttpClient implements HttpClient {
 }
 
 export const httpClient = new UndiciHttpClient();
+
+// For operator-configured in-cluster services (SearXNG ClusterIP, TEI reranker).
+// Bypasses SSRF/dnsGuard — only use for URLs from operator config, never user input.
+export const internalHttpClient = new UndiciHttpClient(true);

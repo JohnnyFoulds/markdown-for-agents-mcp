@@ -1,3 +1,4 @@
+import { getConfig } from "../config.js";
 import { fetcher } from "../fetcher.js";
 import { extract } from "../extract/pipeline.js";
 import { FetchUrlsResult } from "./types.js";
@@ -9,7 +10,11 @@ export interface FetchUrlsOptions {
 }
 
 export async function fetchUrls(options: FetchUrlsOptions): Promise<FetchUrlsResult> {
-  const { urls, timeout, headers } = options;
+  const { urls, timeout } = options;
+  let headers = options.headers;
+  try {
+    if (!getConfig().FETCH_ALLOW_REQUEST_HEADERS) headers = undefined;
+  } catch { /* config not initialised — allow by default */ }
   const results = await fetcher.fetchMultiple(urls, timeout, headers);
   const now = new Date().toISOString();
 

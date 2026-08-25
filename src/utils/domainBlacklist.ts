@@ -142,8 +142,11 @@ function getBlocklistConfigFromConfig(): {
 } {
   try {
     const config = getConfig();
-    const customDomains = config.BLOCKLIST_DOMAINS
-      ? config.BLOCKLIST_DOMAINS.split(',').map(d => d.trim().toLowerCase())
+    // In allowlist mode read ALLOWLIST_DOMAINS; in blocklist mode read BLOCKLIST_DOMAINS.
+    // The two vars have opposite semantics — reading the wrong one in each mode was the naming inversion.
+    const domainSource = config.USE_ALLOWLIST_MODE ? config.ALLOWLIST_DOMAINS : config.BLOCKLIST_DOMAINS;
+    const customDomains = domainSource
+      ? domainSource.split(',').map(d => d.trim().toLowerCase())
       : [];
     const customPatterns: RegExp[] = config.BLOCKLIST_URL_PATTERNS
       ? config.BLOCKLIST_URL_PATTERNS.split(',').reduce<RegExp[]>((acc, raw) => {
