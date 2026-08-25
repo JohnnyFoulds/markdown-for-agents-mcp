@@ -24,18 +24,3 @@ export const dnsGuardLookup: LookupFn = (hostname, options, callback) => {
   });
 };
 
-export async function guardDns(hostname: string): Promise<string[]> {
-  return new Promise((resolve, reject) => {
-    dns.lookup(hostname, { all: true }, (err, addresses) => {
-      if (err) return reject(err);
-      const addrs = Array.isArray(addresses) ? addresses : [{ address: addresses as unknown as string }];
-      for (const { address } of addrs) {
-        if (isPrivateIp(address)) {
-          ssrfViolationsTotal.labels({ stage: 'dns_guard' }).inc();
-          return reject(new SsrfViolationError(hostname, address));
-        }
-      }
-      resolve(addrs.map(a => a.address));
-    });
-  });
-}

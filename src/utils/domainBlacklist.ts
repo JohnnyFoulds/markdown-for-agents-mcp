@@ -325,7 +325,14 @@ export function validateUrl(
 }
 
 /**
- * Exported alias used by the DNS guard (Phase 1) and Chromium pre-flight (Phase 2).
+ * Exported alias used by `dnsGuardLookup` (src/http/dnsGuard.ts) as undici's
+ * `connect.lookup` callback — this is the live, wired SSRF guard for the HTTP tier.
+ *
+ * The browser tiers (Lightpanda, Playwright) resolve DNS internally via Chromium,
+ * so `dnsGuardLookup` is never consulted for them. The egress NetworkPolicy is the
+ * authoritative control for those tiers and is only present in k8s deployments.
+ * There is no Chromium pre-flight; that path was never implemented.
+ *
  * Checks lexically — caller must also do a post-DNS check to close the TOCTOU window.
  */
 export function isPrivateIp(hostname: string): boolean {

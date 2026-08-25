@@ -81,16 +81,29 @@ browser-native exploitation of the Chromium process itself.
 
 **There are two SSRF mitigations, with different guarantees.**
 
-### 3.1 App-level guard (`isPrivateIp()`)
+### 3.1 App-level guard (`isPrivateIp()` / `validateUrl()`)
 
 `src/utils/domainBlacklist.ts` checks the destination hostname against RFC1918,
-link-local, and loopback ranges before any HTTP request is made by the Node.js process
-or Chromium.
+link-local, loopback, CGNAT (100.64.0.0/10), IPv4-mapped IPv6, and cloud-provider
+metadata hostnames (GCP, AWS, Azure, Oracle) before any HTTP request is made by the
+Node.js process.
 
-**Ceiling:** Chrome resolves DNS *internally* (not through the Node.js process). A
-DNS record that resolves to a public IP at check time but to a private IP at connection
-time (DNS rebinding) bypasses `isPrivateIp()`. The guard is detect-and-discard on the
-hostname string, not on the resolved IP.
+`dnsGuardLookup` (`src/http/dnsGuard.ts`) wires this check as undici's
+`connect.lookup` callback, so it fires post-DNS for the **HTTP tier** only.
+
+**Critical ceiling — browser tiers do not consult `dnsGuardLookup`.**
+The Lightpanda and Playwright tiers call `page.goto()` directly; Chromium and
+Lightpanda resolve DNS internally (not through the Node.js process). There is no
+application-level Chromium pre-flight — that path was never implemented.
+
+Consequence: if a tier-0 (HTTP) SSRF guard fires and throws `SsrfViolationError`,
+the render ladder now re-throws immediately without escalating (Phase 2 fix, commit
+`b5125d1`). However, **heuristic escalation** (content-based, not error-based) can
+still hand a tier-0-approved URL to Chromium, which will re-resolve DNS. This is a
+TOCTOU window. The NetworkPolicy is the authoritative control for that case.
+
+**This gap is present under `docker run`, local dev, and stdio deployments, which
+have no equivalent of the k8s NetworkPolicy.**
 
 The `ssrf_violations_total{stage="dns_guard"}` metric counts detections by this guard.
 A spike is evidence that a DNS rebinding attempt is in progress, not necessarily that
