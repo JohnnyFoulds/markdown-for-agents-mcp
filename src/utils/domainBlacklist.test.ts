@@ -367,3 +367,99 @@ describe('Domain Blacklist', () => {
     });
   });
 });
+
+// ── Phase 3: unconditional metadata hostname denylist + IP-form gaps ──────────
+//
+// RED before fix:
+// - metadata.google.internal / metadata.azure.com / etc. currently return
+//   {valid:true} because they are not private IP literals and not in DEFAULT_BLOCKLIST
+// - 169.254.169.254. (trailing dot) bypasses the IPv4 regex
+// - [::ffff:169.254.169.254] (IPv4-mapped IPv6) bypasses isPrivateOrLocalAddress
+// - 100.100.100.200 (Oracle/Alibaba IMDS in CGNAT range 100.64/10) passes
+// - ALLOWLIST_DOMAINS must NOT re-enable a metadata hostname
+
+describe('domainBlacklist — Phase 3: cloud metadata unconditional denylist', () => {
+  describe('metadata hostname denylist', () => {
+    it('blocks GCP metadata hostname', () => {
+      expect(validateUrl('http://metadata.google.internal/computeMetadata/v1/').valid).toBe(false);
+    });
+
+    it('blocks GCP short-form metadata hostname', () => {
+      expect(validateUrl('http://metadata.goog/').valid).toBe(false);
+    });
+
+    it('blocks AWS EC2 instance-data hostname', () => {
+      expect(validateUrl('http://instance-data/latest/meta-data/').valid).toBe(false);
+    });
+
+    it('blocks AWS EC2 instance-data.ec2.internal', () => {
+      expect(validateUrl('http://instance-data.ec2.internal/').valid).toBe(false);
+    });
+
+    it('blocks Azure IMDS hostname', () => {
+      expect(validateUrl('http://metadata.azure.com/').valid).toBe(false);
+    });
+
+    it('blocks Oracle Cloud IMDS hostname', () => {
+      expect(validateUrl('http://metadata.oraclecloud.com/').valid).toBe(false);
+    });
+
+    it('cannot be re-enabled via ALLOWLIST_DOMAINS', () => {
+      // This is the critical invariant: the metadata denylist must be unconditional,
+      // checked BEFORE allowlist/blocklist resolution.
+      resetConfig();
+      initializeConfig({
+        USE_ALLOWLIST_MODE: 'true',
+        ALLOWLIST_DOMAINS: 'metadata.google.internal',
+        BLOCKLIST_DOMAINS: '',
+        BLOCKLIST_URL_PATTERNS: '',
+      });
+      expect(validateUrl('http://metadata.google.internal/').valid).toBe(false);
+    });
+
+    it('cannot be re-enabled via BLOCKLIST_DOMAINS being overridden', () => {
+      // Even in allowlist mode with the host explicitly listed, it must still be blocked
+      resetConfig();
+      initializeConfig({
+        USE_ALLOWLIST_MODE: 'false',
+        BLOCKLIST_DOMAINS: '',
+        BLOCKLIST_URL_PATTERNS: '',
+      });
+      expect(validateUrl('http://metadata.google.internal/').valid).toBe(false);
+    });
+  });
+
+  describe('IP-form bypass gaps', () => {
+    it('blocks 169.254.169.254 with trailing dot (trailing-dot bypass)', () => {
+      // A trailing dot is a valid DNS FQDN suffix. The IPv4 dotted-decimal regex
+      // does not match "169.254.169.254." — so this currently slips through.
+      expect(validateUrl('http://169.254.169.254./latest/meta-data/').valid).toBe(false);
+    });
+
+    it('blocks IPv4-mapped IPv6 [::ffff:169.254.169.254] (AWS metadata via mapped form)', () => {
+      expect(validateUrl('http://[::ffff:169.254.169.254]/').valid).toBe(false);
+    });
+
+    it('blocks IPv4-mapped IPv6 [::ffff:a9fe:a9fe] (hex-encoded 169.254.169.254)', () => {
+      // 169.254 = 0xa9fe, so ::ffff:a9fe:a9fe = ::ffff:169.254.169.254
+      expect(validateUrl('http://[::ffff:a9fe:a9fe]/').valid).toBe(false);
+    });
+
+    it('blocks CGNAT 100.64.0.0 (covers Oracle/Alibaba IMDS 100.100.100.200)', () => {
+      expect(validateUrl('http://100.100.100.200/').valid).toBe(false);
+    });
+
+    it('blocks lower bound of CGNAT range 100.64.0.1', () => {
+      expect(validateUrl('http://100.64.0.1/').valid).toBe(false);
+    });
+
+    it('blocks upper bound of CGNAT range 100.127.255.255', () => {
+      expect(validateUrl('http://100.127.255.255/').valid).toBe(false);
+    });
+
+    it('allows 100.128.0.0 — outside CGNAT range', () => {
+      // 100.128+ is not in 100.64/10, so not blocked by the CGNAT rule
+      expect(validateUrl('http://100.128.0.0/').valid).toBe(true);
+    });
+  });
+});

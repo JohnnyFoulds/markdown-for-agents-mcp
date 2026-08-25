@@ -8,12 +8,40 @@ import { getConfig } from '../config.js';
 import { Logger } from './logger.js';
 
 /**
+ * Cloud-provider instance metadata endpoints — blocked unconditionally.
+ *
+ * These hostnames serve credentials, environment variables, and IAM role keys to
+ * any process that can reach them. They must not be reachable regardless of
+ * allowlist / blocklist configuration.
+ *
+ * Note: this is a lexical denylist of *known* metadata hostnames. It is not
+ * complete — an attacker-controlled domain with a private A record (e.g. pointing
+ * to 169.254.169.254) is blocked at the IP layer, not here. The egress
+ * NetworkPolicy is the authoritative control for the browser tiers (Lightpanda,
+ * Playwright) which resolve DNS internally via Chromium.
+ */
+const METADATA_HOSTNAMES = new Set([
+  'metadata.google.internal',     // GCP instance metadata
+  'metadata.goog',                 // GCP short-form
+  'metadata.google.com',           // GCP alternate
+  'instance-data',                 // AWS EC2 instance-data (short name)
+  'instance-data.ec2.internal',    // AWS EC2 instance-data FQDN
+  'metadata.azure.com',            // Azure IMDS
+  'metadata.oraclecloud.com',      // Oracle Cloud IMDS
+]);
+
+/**
  * SSRF protection: check if a hostname resolves to a private or loopback address.
  * Rejects localhost, loopback (127.x), link-local (169.254.x), RFC1918 ranges,
- * IPv6 loopback/ULA, and decimal/octal IP representations.
+ * CGNAT (100.64.0.0/10, covers Oracle/Alibaba IMDS 100.100.100.200),
+ * IPv6 loopback/ULA, IPv4-mapped IPv6 (::ffff:…), and decimal/octal IP
+ * representations.
  */
 function isPrivateOrLocalAddress(hostname: string): boolean {
-  const lower = hostname.toLowerCase();
+  // Strip a single trailing dot (DNS FQDN suffix, e.g. "169.254.169.254.").
+  // The IPv4 dotted-decimal regex is anchored and does not match the trailing dot form.
+  const stripped = hostname.endsWith('.') ? hostname.slice(0, -1) : hostname;
+  const lower = stripped.toLowerCase();
 
   // Strip IPv6 brackets: [::1] → ::1
   const bare = lower.startsWith('[') && lower.endsWith(']') ? lower.slice(1, -1) : lower;
@@ -33,6 +61,25 @@ function isPrivateOrLocalAddress(hostname: string): boolean {
     return true;
   }
 
+  // IPv4-mapped IPv6 (::ffff:…) — two forms:
+  //   dotted-decimal: ::ffff:169.254.169.254
+  //   two-group hex:  ::ffff:a9fe:a9fe  (0xa9fe = [169, 254])
+  // Recursively check the embedded IPv4 address.
+  if (/^::ffff:/i.test(bare)) {
+    const rest = bare.slice(7);
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(rest)) {
+      return isPrivateOrLocalAddress(rest);
+    }
+    const hexMatch = rest.match(/^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+    if (hexMatch) {
+      const hi = parseInt(hexMatch[1]!, 16);
+      const lo = parseInt(hexMatch[2]!, 16);
+      const ipv4 = `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+      return isPrivateOrLocalAddress(ipv4);
+    }
+    return true; // unrecognised ::ffff: form — fail closed
+  }
+
   // Reject non-standard IP representations that bypass dotted-decimal check:
   // decimal (http://2130706433/ = 127.0.0.1), octal (0177.0.0.1), hex (0x7f000001)
   // These are not valid hostnames in DNS but some HTTP clients resolve them.
@@ -43,8 +90,9 @@ function isPrivateOrLocalAddress(hostname: string): boolean {
     return true; // octal segment
   }
 
-  // Parse standard dotted-decimal IPv4 addresses
-  const ipv4 = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  // Parse standard dotted-decimal IPv4 addresses.
+  // Note: use `stripped` not `hostname` so the trailing-dot form still matches.
+  const ipv4 = stripped.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
   if (ipv4) {
     const a = Number(ipv4[1]);
     const b = Number(ipv4[2]);
@@ -54,6 +102,10 @@ function isPrivateOrLocalAddress(hostname: string): boolean {
     if (a === 192 && b === 168) return true;             // 192.168.0.0/16 RFC1918
     if (a === 169 && b === 254) return true;             // 169.254.0.0/16 link-local / AWS metadata
     if (a === 0) return true;                            // 0.0.0.0/8
+    // CGNAT 100.64.0.0/10 (covers Oracle/Alibaba IMDS at 100.100.100.200).
+    // Note: some ISPs and CDNs legitimately use this range; blocking it is the
+    // correct default for an SSRF guard but is a deliberate availability trade-off.
+    if (a === 100 && b >= 64 && b <= 127) return true;  // 100.64.0.0/10 CGNAT
   }
 
   return false;
@@ -243,6 +295,12 @@ export function validateUrl(
     // Only allow http/https
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       return { valid: false, error: `Invalid URL: ${parsed.protocol} protocol not supported` };
+    }
+
+    // Unconditional cloud-metadata hostname denylist — checked before allowlist /
+    // blocklist resolution so no configuration can re-enable these endpoints.
+    if (METADATA_HOSTNAMES.has(parsed.hostname.toLowerCase())) {
+      return { valid: false, error: `SSRF protection: private or local addresses not allowed` };
     }
 
     // SSRF protection: block private/local addresses
