@@ -35,10 +35,15 @@ const configSchema = z.object({
   SEARCH_ENABLE_DUCKDUCKGO: z.string().default('true').transform(val => val === 'true'),
 
   // POPIA mode: enforce = block on detection; monitor = audit only; off = disabled (loud warning)
-  // Phase 4 uses this for the audit_events_total metric label; enforcement logic lands in Phase 6
   POPIA_MODE: z.string().default('enforce').refine(v => ['enforce', 'monitor', 'off'].includes(v), {
     message: 'POPIA_MODE must be enforce, monitor, or off',
   }),
+  // POPIA_SCAN_CONTENT: scan fetched page bodies for PII (default false — see plan §6)
+  // Off by default: by the time you scan a fetched page you have already processed the PII,
+  // so detection creates an obligation rather than discharging one. Enable for forensic audit.
+  POPIA_SCAN_CONTENT: z.string().default('false').transform(val => val === 'true'),
+  // POPIA_AUDIT_ENABLED: emit audit events to stderr (POPIA s22 trail; default true)
+  POPIA_AUDIT_ENABLED: z.string().default('true').transform(val => val === 'true'),
 
   // File Download
   DOWNLOAD_TIMEOUT_MS: z.string().default('60000').transform(Number),

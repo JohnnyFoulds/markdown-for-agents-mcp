@@ -43,6 +43,10 @@ data:
   SEARCH_ENABLE_DUCKDUCKGO: "true"
   # enforce = block on detection; monitor = audit-only; off = all controls disabled (loud warning)
   POPIA_MODE: "enforce"
+  # Scan fetched page bodies for PII (default false — detection creates obligation, not just discharge)
+  POPIA_SCAN_CONTENT: "false"
+  # Emit POPIA s22 audit events to stderr (default true)
+  POPIA_AUDIT_ENABLED: "true"
   # Restrict download_file outputPath to these prefixes (POPIA s19 disk surface)
   DOWNLOAD_DIR_ALLOWLIST: "/tmp"
 

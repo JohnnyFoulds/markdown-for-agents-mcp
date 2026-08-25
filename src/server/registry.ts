@@ -4,10 +4,14 @@ import { z } from "zod";
 import { Logger } from "../utils/logger.js";
 import {
   inflightRequests,
+  piiDetectionsTotal,
+  piiScanTruncatedTotal,
   toolCallsTotal,
   toolDurationSeconds,
 } from "../obs/metrics.js";
 import type { AuditEvent } from "../privacy/audit.js";
+import { detectPii } from "../privacy/detect.js";
+import { evaluatePolicy } from "../privacy/policy.js";
 
 export interface AppDeps {
   // Populated per phase: httpClient (Ph1), ladder (Ph2), searchFanout (Ph3),
@@ -81,9 +85,35 @@ export function registerAll(
           logger: Logger,
           deps,
         };
+        // PII scan on tool arguments (capped at 8 KB — tool inputs are unbounded z.string())
+        const argsJson = JSON.stringify(args);
+        const truncated = argsJson.length > 8192;
+        if (truncated) piiScanTruncatedTotal.inc({ tool: def.name });
+        const piiClasses = detectPii(truncated ? argsJson.slice(0, 8192) : argsJson);
+        const policy = evaluatePolicy(piiClasses);
+        for (const cls of piiClasses) {
+          piiDetectionsTotal.inc({ class: cls, action: policy.action });
+        }
+
         inflightRequests.inc();
         const timer = toolDurationSeconds.startTimer({ tool: def.name });
         try {
+          if (policy.action === 'block') {
+            toolCallsTotal.inc({ tool: def.name, outcome: 'error' });
+            deps.audit?.({
+              requestId,
+              tool: def.name,
+              timestamp: Date.now(),
+              outcome: 'blocked',
+              piiClasses,
+              action: 'blocked',
+            });
+            return {
+              content: [{ type: 'text' as const, text: `# Blocked\n\nThis request was blocked: POPIA enforcement detected ${piiClasses.join(', ')} in the tool arguments.\n` }],
+              isError: true,
+            };
+          }
+
           const result = await def.handler(args as never, ctx);
           toolCallsTotal.inc({ tool: def.name, outcome: "success" });
           deps.audit?.({
@@ -91,8 +121,8 @@ export function registerAll(
             tool: def.name,
             timestamp: Date.now(),
             outcome: 'success',
-            piiClasses: [],
-            action: 'logged',
+            piiClasses,
+            action: policy.action === 'audit' ? 'audited' : 'logged',
           });
           return {
             content: [{ type: "text" as const, text: def.toText(result) }],
@@ -105,7 +135,7 @@ export function registerAll(
             tool: def.name,
             timestamp: Date.now(),
             outcome: 'error',
-            piiClasses: [],
+            piiClasses,
             action: 'logged',
           });
           const msg = error instanceof Error ? error.message : "Unknown error";

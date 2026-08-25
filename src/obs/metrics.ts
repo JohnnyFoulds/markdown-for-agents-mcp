@@ -194,6 +194,23 @@ export const auditEventsTotal = new Counter({
   registers: [registry],
 });
 
+// PII detection (POPIA Phase 6 — s10, s19, s105)
+// NEVER add a label that captures a detected value or data sample —
+// that would push personal information into the /metrics scrape endpoint.
+export const piiDetectionsTotal = new Counter({
+  name: 'pii_detections_total',
+  help: 'PII classes detected in tool arguments, by class and enforcement action taken.',
+  labelNames: ['class', 'action'] as const,
+  registers: [registry],
+});
+
+export const piiScanTruncatedTotal = new Counter({
+  name: 'pii_scan_truncated_total',
+  help: 'Tool argument scans capped at 8 KB — silent under-scanning is visible here.',
+  labelNames: ['tool'] as const,
+  registers: [registry],
+});
+
 // Retention sweep (POPIA Phase 2 — s14)
 export const retentionPurgedTotal = new Counter({
   name: 'retention_purged_total',

@@ -35,6 +35,16 @@ already thread `MCP_AUTH_TOKEN` through — you only need to supply the value.
 - `src/utils/logger.ts` — `Logger.metrics[]` age-bounded by `CRAWL_RETENTION_MS` (raw URLs must not persist beyond the retention window)
 - `CRAWL_RETENTION_MS` (default `604800000`, 7 days) and `RETENTION_SWEEP_INTERVAL_MS` (default `3600000`, 1 hour) added to all six config locations
 
+### Added — POPIA Phase 6: PII detection and enforcement (s10, s19, s105)
+
+- `src/privacy/detect.ts` — zero-dependency heuristic detector: SA ID (13 digits, valid `YYMMDD`, Luhn-valid; a s105(5) unique identifier), MSISDN (`+27XXXXXXXXX` / `0[6-8]XXXXXXXX`), email, PAN (13–19 digits, optional space/hyphen separators, Luhn-valid); PAN scan capped at 4 KB to bound wall-clock time on adversarial input
+- `src/privacy/policy.ts` — class→action table: `enforce` blocks `sa_id`/`msisdn`/`pan`; `monitor` audits all; `off` passes all. Email treatment (`audit` rather than `block`) is a **policy decision requiring legal sign-off** — see POPIA_ASSESSMENT.md §9
+- `src/server/registry.ts` — PII scan on `JSON.stringify(args)` capped at 8 KB before every tool dispatch; `block` returns a POPIA error without calling the handler; `audit` calls the handler and emits the detected classes; `piiClasses` flows through to the audit event
+- `src/obs/metrics.ts` — `pii_detections_total{class,action}` counter (note: no value/sample label — that would push PII into `/metrics`); `pii_scan_truncated_total{tool}` counter (visible signal for silent under-scanning)
+- `POPIA_SCAN_CONTENT` (default `false`) and `POPIA_AUDIT_ENABLED` (default `true`) added to all six config locations
+
+**Known limitations:** Detection is heuristic structured-identifier matching only. Free-text names, addresses, and employee numbers (e.g. "John Smith employee number 12345") are **false negatives by design** — this is documented in `detect.test.ts` as a passing test. A 50 MB arg string is capped at 8 KB with a metric increment; the remaining bytes are not scanned.
+
 ### Added — POPIA Phase 5: Redaction — per-process salt, URL/header scrubbing
 
 - `src/privacy/redact.ts` — new primitives: `redactUrl()` (removes embedded credentials, replaces query-param values with `[redacted]`, keeps keys); `redactHeaders()` (scrubs `authorization`, `cookie`, `set-cookie`, `proxy-authorization`, `x-api-key`, `x-auth-token`, `x-csrf-token`)
