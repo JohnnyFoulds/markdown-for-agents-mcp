@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — DAST remediation
+
+### ⚠ Breaking change — `crawl_cancel` and `crawl_results` now reject unknown job IDs
+
+Previously, calling `crawl_cancel` with an unknown `jobId` returned
+`{"cancelled": true}` and `crawl_results` returned `{"pages": [], "total": 0}` —
+both silently succeeded. They now throw `Job not found: <jobId>`, consistent with
+`crawl_status` which has always thrown for unknown IDs.
+
+**Migration**: callers that relied on `crawl_cancel` being idempotent for
+non-existent jobs should check the job exists first via `crawl_status`, or catch
+and ignore the error. Callers that expected an empty `crawl_results` for a missing
+job should do the same.
+
+### Fixed — DAST false positives and real SSRF gaps
+
+- Render ladder now fails closed on policy-block errors — `SsrfViolationError`,
+  `DomainBlockedError`, and related policy errors no longer escalate to a weaker
+  render tier
+- Cloud metadata hostnames (`metadata.google.internal`, `169.254.169.254`, etc.)
+  are unconditionally denied in `validateUrl` before allowlist resolution; trailing
+  dot, IPv4-mapped IPv6, and CGNAT `100.64.0.0/10` bypass forms are also blocked
+- Dead `guardDns()` export removed; DAST overlay now runs at the production
+  `RENDER_MAX_TIER` (playwright) so browser tiers are exercised
+- DAST probe detectors rewritten: `inconclusive` verdict distinguishes DNS failure
+  from a genuine block; echo-stripping prevents self-matching false positives
+
+### Added
+
+- `docs/enterprise/SECURITY_FINDINGS_REGISTER.md` — test-backed false-positive
+  register for predictable scanner findings (XSS echo in JSON, MCP GET/DELETE
+  verb probes, metadata URL echoed in error bodies)
+
+---
+
 ## [Unreleased] — Security hardening
 
 ### ⚠ Breaking change — HTTP mode now requires authentication
