@@ -32,6 +32,7 @@ The owner is the first point of contact for:
 | 2 — Primary owner | [OWNER_EMAIL] | Incident not resolved by on-call within 30 min |
 | 3 — Engineering lead | [LEAD_EMAIL] | P1 incident, regulatory concern, or security breach |
 | 4 — Legal / Compliance | [LEGAL_EMAIL] | POPIA data subject request, regulator inquiry |
+| 5 — Security incident | Follow `RUNBOOK.md §10` first; escalate to tier 3 if unresolved within 1 h | SEC-01/02/03 alert firing, credential compromise, CVE requiring emergency patch |
 
 ---
 
@@ -94,6 +95,7 @@ When ownership transfers, the incoming owner must confirm:
 - [ ] Access to `mcp-secrets` Kubernetes Secret
 - [ ] Access to Prometheus / Grafana for metrics
 - [ ] Membership in the on-call rotation
-- [ ] Familiarity with `docs/enterprise/RUNBOOK.md` (execute at least one procedure)
+- [ ] Familiarity with `docs/enterprise/RUNBOOK.md` (execute at least one procedure, including §10 security incidents)
 - [ ] Familiarity with `docs/enterprise/THREAT_MODEL.md`
+- [ ] Familiarity with [`docs/security/SECURITY_SCANNING.md`](../security/SECURITY_SCANNING.md) — scan tools, thresholds, CI gate
 - [ ] Updated `OWNERSHIP.md` with new owner details, committed and merged

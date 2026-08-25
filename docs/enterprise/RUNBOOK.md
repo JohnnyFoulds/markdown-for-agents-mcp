@@ -471,6 +471,179 @@ kubectl exec -n mcp-system deployment/mcp-server -- curl -s http://localhost:300
 
 ---
 
+## 10. Security incidents {#10-security-incidents}
+
+This section provides procedures for the three security alerts mandated by the ATO (`PRODUCTION_AUTHORISATION.md` SEC-01 through SEC-03) and for common security response actions.  Each subsection names the metric that triggers it.
+
+---
+
+### 10.1 Retention sweep stalled (SEC-01)
+
+**Alert:** `time() - retention_last_sweep_timestamp_seconds > 7200`
+**Metric:** `retention_last_sweep_timestamp_seconds` (`src/obs/metrics.ts`)
+
+The retention sweep that purges records older than `CRAWL_RETENTION_MS` has not run in over 2 hours.  Data that should have been deleted under POPIA s14 may be accumulating.
+
+**Diagnosis:**
+
+```bash
+# Check the metric value directly
+kubectl exec -n mcp-system deployment/mcp-server -- \
+  curl -s http://localhost:3000/metrics | grep retention_last_sweep
+
+# Check for worker errors
+kubectl logs -n mcp-system deployment/mcp-worker --since=3h | grep -i "retention\|sweep\|error"
+
+# Confirm worker role
+kubectl exec -n mcp-system deployment/mcp-worker -- \
+  env | grep MCP_ROLE
+```
+
+**Resolution:**
+
+1. If the worker pod is not running or is crash-looping, investigate and restore the worker (`MCP_ROLE=worker` or `both`).
+2. If the worker is running but the metric is stale, check the store backend connectivity (`STORE_BACKEND`, `STORE_REDIS_URL`).
+3. After restoring, confirm the metric updates within 15 minutes.
+
+**POPIA note.** A stalled sweep may constitute a failure to comply with the s14 storage-limitation obligation.  If the sweep was stalled for more than 24 hours, record the incident and assess whether a breach notification is required.
+
+---
+
+### 10.2 POPIA controls disabled (SEC-02)
+
+**Alert:** `increase(audit_events_total{popia_mode="off"}[5m]) > 0`
+**Metric:** `audit_events_total` (`src/obs/metrics.ts`)
+
+`POPIA_MODE=off` has been applied to a running pod, disabling all privacy enforcement.  This alert fires if any audit event is emitted with `popia_mode="off"`.
+
+**Diagnosis:**
+
+```bash
+# Confirm current POPIA_MODE in all pods
+kubectl get pods -n mcp-system -o name | xargs -I{} \
+  kubectl exec -n mcp-system {} -- env | grep POPIA_MODE
+
+# Check recent audit lines for popia_mode=off
+kubectl logs -n mcp-system deployment/mcp-server --since=15m | \
+  grep '"audit":true' | grep '"popiaMode":"off"'
+```
+
+**Resolution:**
+
+1. Immediately restore `POPIA_MODE=enforce` (or `monitor`) — do not leave `off` in production.
+
+   ```bash
+   # Hot-patch via ConfigMap (requires git reconciliation — see §10.5)
+   kubectl patch configmap mcp-config -n mcp-system \
+     --type=merge -p '{"data":{"POPIA_MODE":"enforce"}}'
+   kubectl rollout restart deployment/mcp-server -n mcp-system
+   kubectl rollout restart deployment/mcp-worker -n mcp-system
+   ```
+
+2. Determine who set `POPIA_MODE=off` and when (check change-management records, `RUNBOOK.md §9`, git history).
+3. Assess whether data processed during the `off` window requires breach assessment under POPIA s22.
+
+---
+
+### 10.3 PII scan truncation spike (SEC-03)
+
+**Alert:** `pii_scan_truncated_total` counter advancing unexpectedly
+**Metric:** `pii_scan_truncated_total` (`src/obs/metrics.ts`)
+
+Tool arguments exceed the 8 KB scan cap.  Content beyond 8 KB is forwarded to external services **without PII scanning**.  In `enforce` mode, large arguments are partially scanned; PII in the tail may egress unchecked.
+
+**Diagnosis:**
+
+```bash
+kubectl exec -n mcp-system deployment/mcp-server -- \
+  curl -s http://localhost:3000/metrics | grep pii_scan_truncated
+
+# Which tools are producing large arguments?
+kubectl logs -n mcp-system deployment/mcp-server --since=1h | \
+  grep '"audit":true' | jq -r '.tool' | sort | uniq -c | sort -rn
+```
+
+**Resolution:**
+
+1. If the spike is a client sending unexpectedly large queries, work with the client operator to reduce payload size.
+2. If the spike is legitimate (large batch operations), assess whether to raise the 8 KB cap (source: `src/server/registry.ts`).  A higher cap increases PII detection coverage but also increases scan duration and memory pressure.
+3. If PII may have egressed without detection, raise a breach assessment.
+
+---
+
+### 10.4 Credential rotation
+
+The following credentials require a documented rotation schedule under the FSP's secrets management policy.
+
+**`MCP_AUTH_TOKEN` (bearer token for all HTTP clients)**
+
+```bash
+# Generate a new token (or use Secrets Manager to generate and store)
+NEW_TOKEN=$(openssl rand -hex 32)
+
+# Update the Kubernetes Secret
+kubectl create secret generic mcp-secrets -n mcp-system \
+  --from-literal=MCP_AUTH_TOKEN="$NEW_TOKEN" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Restart the server to pick up the new token
+kubectl rollout restart deployment/mcp-server -n mcp-system
+```
+
+After rotation, all clients must be updated with the new token before the old one is invalidated.  Coordinate with all consumers before restarting.
+
+**`BRAVE_API_KEY` / `SERPER_API_KEY`**
+
+Rotate in the provider console, then update the Kubernetes Secret and restart.  Both providers allow a brief overlap period — activate the new key before invalidating the old one.
+
+**`MCP_CALLER_ID_SALT`**
+
+Rotating this salt invalidates all existing `callerHash` values in the audit trail — they will no longer match a re-hash of the same identity.  Coordinate with the security/audit team before rotating.  If audit-trail continuity is required across the rotation, archive the audit logs with the old-salt timestamp before applying the new salt.
+
+---
+
+### 10.5 Emergency change control
+
+An emergency `kubectl set env` or `kubectl patch configmap` applied to a running pod bypasses the standard PR process.  Any such change must be reconciled back into git within one business day.
+
+**Record-keeping checklist:**
+
+- [ ] Incident ticket created with: symptom, time of change, exact command run, operator name.
+- [ ] Change applied and verified (rollout status, `/readyz` green on all pods).
+- [ ] Git commit raised with the equivalent change to `deploy/k8s/base/configmap.yaml` (or overlay).
+- [ ] PR reviewed and merged before next scheduled maintenance window.
+
+---
+
+### 10.6 Post-incident evidence preservation
+
+```bash
+# Capture all current metrics before a pod restart
+kubectl exec -n mcp-system deployment/mcp-server -- \
+  curl -s http://localhost:3000/metrics > incident-metrics-$(date +%Y%m%d-%H%M%S).txt
+
+# Capture pod logs (all containers, all pods in the namespace)
+kubectl logs -n mcp-system -l app=mcp-server --all-containers > incident-server-logs-$(date +%Y%m%d).txt
+kubectl logs -n mcp-system -l app=mcp-worker --all-containers > incident-worker-logs-$(date +%Y%m%d).txt
+
+# Capture current ConfigMap (evidence of config state at incident time)
+kubectl get configmap mcp-config -n mcp-system -o yaml > incident-configmap-$(date +%Y%m%d).yaml
+```
+
+Retain these artefacts in accordance with the FSP's incident-management and POPIA s22 evidence-retention policies.
+
+---
+
+### Quick-reference: security alert → runbook section
+
+| Alert condition | Metric | Section |
+|---|---|---|
+| `time() - retention_last_sweep_timestamp_seconds > 7200` | `retention_last_sweep_timestamp_seconds` | §10.1 |
+| `increase(audit_events_total{popia_mode="off"}[5m]) > 0` | `audit_events_total` | §10.2 |
+| `pii_scan_truncated_total` advancing unexpectedly | `pii_scan_truncated_total` | §10.3 |
+
+---
+
 ## Appendix: useful one-liners
 
 ```bash
