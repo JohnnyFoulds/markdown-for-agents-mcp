@@ -35,6 +35,12 @@ already thread `MCP_AUTH_TOKEN` through — you only need to supply the value.
 - `src/utils/logger.ts` — `Logger.metrics[]` age-bounded by `CRAWL_RETENTION_MS` (raw URLs must not persist beyond the retention window)
 - `CRAWL_RETENTION_MS` (default `604800000`, 7 days) and `RETENTION_SWEEP_INTERVAL_MS` (default `3600000`, 1 hour) added to all six config locations
 
+### Added — Phase 8: Standards register + corrected POPIA assessment
+
+- `docs/enterprise/STANDARDS.md` — graded conformance register: Grade A (implemented and tested: RFC 1928/1929 SOCKS5, RFC 1918/3927/4193 address blocking, RFC 9111 shared-cache subset), Grade B (inherited from `undici`/`robots-parser`/`prom-client`/MCP SDK), Grade C (RFC 9309 opt-in by default; §2.3.1.4 resolved by `ROBOTS_ON_ERROR=deny`; RFC 9111 §4.3 out of scope). States 7 remaining ceilings. Carries the rule: cite the grade, never the bare standard number.
+- `src/standards.test.ts` — verifies every Grade A row: source file exists, test file exists, and test file contains the exact cited test name. Delete or rename a cited test → register goes RED. Prevents the document from drifting ahead of the code.
+- `docs/enterprise/POPIA_ASSESSMENT.md` — updated for Phases 1–7: re-asserts only what the code now enforces, each claim naming the test or metric that demonstrates it. Summary table updated (Purpose specification ✓, Further processing ✓, Openness ✓). §9 sign-off checklist updated with 8 items marked resolved and 5 remaining open items. Dead-field gap, cache gap, retention gap, redaction gap all marked resolved.
+
 ### Added — Phase 7: Config parity — bidirectional .env.example ↔ configSchema
 
 - `src/config.parity.test.ts` — bidirectional parity test: every key in `.env.example` must be in `configSchema` (catches documented-but-ignored vars), and every key in `configSchema` must be in `.env.example` (catches undocumented vars). Fails at compile time before a bad commit can push.
