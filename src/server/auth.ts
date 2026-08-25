@@ -104,6 +104,25 @@ export function assertPrivacyPolicy(config: Config): string[] {
     );
   }
 
+  // Per-caller attribution warnings
+  if (config.MCP_REQUIRE_CALLER_IDENTITY && !config.MCP_CALLER_ID_SALT) {
+    warnings.push(
+      'MCP_REQUIRE_CALLER_IDENTITY=true without MCP_CALLER_ID_SALT: enforcement is active but ' +
+      'hashes are uncorrelatable across replicas and restarts (per-process random salt). ' +
+      'This is almost always a mistake — set MCP_CALLER_ID_SALT in a Secret for fleet-wide ' +
+      'incident attribution, or leave MCP_REQUIRE_CALLER_IDENTITY=false during the observe phase.',
+    );
+  }
+
+  if (config.MCP_REQUIRE_CALLER_IDENTITY) {
+    warnings.push(
+      'MCP_REQUIRE_CALLER_IDENTITY=true: the x-mcp-caller-id header is required on every /mcp ' +
+      'request. Attribution is only trustworthy when a trusted upstream gateway sets the header ' +
+      'AND strips any client-supplied copy. Without gateway enforcement, any caller holding the ' +
+      'shared bearer token can spoof any identity.',
+    );
+  }
+
   return warnings;
 }
 
@@ -122,5 +141,30 @@ export function assertHttpAuthPolicy(
     '\n' +
     '  MCP_AUTH_ALLOW_ANONYMOUS=true is not recommended for internet-facing deployments.\n' +
     '  See docs/security/SECURITY_SCANNING.md for guidance.',
+  );
+}
+
+/**
+ * Asserts that per-caller identity enforcement is compatible with the transport mode.
+ *
+ * MCP_REQUIRE_CALLER_IDENTITY=true is unsatisfiable in stdio mode: stdio has no
+ * HTTP headers, so every audit line would emit callerHash:null while the config
+ * claims identity is required.  That is a compliance illusion — the same kind that
+ * assertHttpAuthPolicy exists to prevent.
+ *
+ * Throw before the port binds (or before stdio connects) so the error is visible
+ * in container logs before the health check ever passes.
+ */
+export function assertCallerIdentityPolicy(
+  requireIdentity: boolean,
+  isHttpMode: boolean,
+): void {
+  if (!requireIdentity) return;
+  if (isHttpMode) return;
+  throw new Error(
+    'MCP_REQUIRE_CALLER_IDENTITY=true is not supported in stdio mode.\n' +
+    '  stdio has no HTTP headers; every audit line would emit callerHash:null forever\n' +
+    '  while the config claims identity is required.\n' +
+    '  Set HTTP_PORT to use HTTP mode, or set MCP_REQUIRE_CALLER_IDENTITY=false.',
   );
 }

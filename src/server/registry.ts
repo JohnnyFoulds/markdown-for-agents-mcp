@@ -12,6 +12,7 @@ import {
 import type { AuditEvent } from "../privacy/audit.js";
 import { detectPii } from "../privacy/detect.js";
 import { evaluatePolicy } from "../privacy/policy.js";
+import { hashCallerIdentity } from "../privacy/redact.js";
 
 export interface AppDeps {
   // Populated per phase: httpClient (Ph1), ladder (Ph2), searchFanout (Ph3),
@@ -76,7 +77,7 @@ export function registerAll(
         outputSchema: def.outputSchema,
         annotations: def.annotations,
       },
-      async (args: unknown) => {
+      async (args: unknown, extra?: unknown) => {
         const requestId = Logger.generateRequestId();
         const controller = new AbortController();
         const ctx: ToolContext = {
@@ -85,6 +86,19 @@ export function registerAll(
           logger: Logger,
           deps,
         };
+
+        // Derive per-caller hash from the SDK-supplied request context.
+        // extra.requestInfo.headers is built per-POST by webStandardStreamableHttp.js:388
+        // and is available in both stateless and session modes.  Optional chaining
+        // is load-bearing: all existing tests pass {} as extra (no requestInfo).
+        // Derive per-caller hash. The metric is incremented in src/index.ts at the
+        // HTTP gateway level (once per /mcp POST) rather than here (once per tool call),
+        // because an operator's question is "what fraction of requests send identity?"
+        // not "what fraction of tool calls?"  The HMAC is idempotent so re-hashing is safe.
+        const rawCallerId = (extra as { requestInfo?: { headers?: Record<string, string> } } | undefined)
+          ?.requestInfo?.headers?.['x-mcp-caller-id'];
+        const callerHash = hashCallerIdentity(rawCallerId).hash;
+
         // PII scan on tool arguments (capped at 8 KB — tool inputs are unbounded z.string())
         const argsJson = JSON.stringify(args);
         const truncated = argsJson.length > 8192;
@@ -102,6 +116,7 @@ export function registerAll(
             toolCallsTotal.inc({ tool: def.name, outcome: 'error' });
             deps.audit?.({
               requestId,
+              callerHash,
               tool: def.name,
               timestamp: Date.now(),
               outcome: 'blocked',
@@ -118,6 +133,7 @@ export function registerAll(
           toolCallsTotal.inc({ tool: def.name, outcome: "success" });
           deps.audit?.({
             requestId,
+            callerHash,
             tool: def.name,
             timestamp: Date.now(),
             outcome: 'success',
@@ -132,6 +148,7 @@ export function registerAll(
           toolCallsTotal.inc({ tool: def.name, outcome: "error" });
           deps.audit?.({
             requestId,
+            callerHash,
             tool: def.name,
             timestamp: Date.now(),
             outcome: 'error',

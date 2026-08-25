@@ -184,6 +184,19 @@ export const cacheNotStoredTotal = new Counter({
   registers: [registry],
 });
 
+// Per-caller identity (FSP readiness — s19/s22)
+// NEVER add a label that carries a detected value — only classification labels
+// (present/absent, rejection reason).  This lets operators track what fraction
+// of traffic is sending identity without pushing personal information into metrics.
+export const callerIdentityTotal = new Counter({
+  name: 'caller_identity_total',
+  help: 'Requests classified by whether a valid x-mcp-caller-id header was present. ' +
+    'present=true/reason=ok: header present and valid. ' +
+    'present=false: header absent, too_long, bad_chars, or multi_value.',
+  labelNames: ['present', 'reason'] as const,
+  registers: [registry],
+});
+
 // Audit trail (POPIA Phase 4 — s22)
 export const auditEventsTotal = new Counter({
   name: 'audit_events_total',

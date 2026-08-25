@@ -15,9 +15,9 @@
  */
 
 import { vi, describe, it, expect, afterEach } from 'vitest';
-import { redactUrl, redactHeaders } from './redact.js';
+import { redactUrl, redactHeaders, hashCallerIdentity, _resetCallerSaltForTest } from './redact.js';
 import { redactQuery, _resetQuerySaltForTest, Logger } from '../utils/logger.js';
-import { initializeConfig } from '../config.js';
+import { initializeConfig, resetConfig } from '../config.js';
 
 // ── redactUrl ─────────────────────────────────────────────────────────────────
 
@@ -121,6 +121,149 @@ describe('redactQuery — per-process random salt', () => {
   it('returns query unchanged when LOG_REDACT_QUERIES=false', () => {
     initializeConfig({ LOG_REDACT_QUERIES: 'false' });
     expect(redactQuery('my sensitive query')).toBe('my sensitive query');
+  });
+});
+
+// ── hashCallerIdentity ────────────────────────────────────────────────────────
+// N6: x-mcp-caller-id is treated as sensitive by redactHeaders
+describe('redactHeaders — x-mcp-caller-id is sensitive', () => {
+  it('redacts X-Mcp-Caller-Id value (PascalCase key)', () => {
+    const r = redactHeaders({ 'X-Mcp-Caller-Id': 'alice@corp.co.za' });
+    expect(r['X-Mcp-Caller-Id']).toBe('[redacted]');
+  });
+
+  it('redacts x-mcp-caller-id value (lowercase key)', () => {
+    const r = redactHeaders({ 'x-mcp-caller-id': 'alice@corp.co.za' });
+    expect(r['x-mcp-caller-id']).toBe('[redacted]');
+  });
+});
+
+// N7/N8: hashCallerIdentity shape, determinism, salt isolation
+describe('hashCallerIdentity — per-process salt', () => {
+  afterEach(() => {
+    _resetCallerSaltForTest();
+    resetConfig();
+    initializeConfig({});
+  });
+
+  it('produces 16-character hex hash for a valid identity', () => {
+    initializeConfig({});
+    const result = hashCallerIdentity('alice@corp.co.za');
+    expect(result.hash).toMatch(/^[0-9a-f]{16}$/);
+    expect(result.reason).toBe('ok');
+  });
+
+  it('is deterministic within the same process (same salt)', () => {
+    initializeConfig({});
+    expect(hashCallerIdentity('alice@corp').hash).toBe(hashCallerIdentity('alice@corp').hash);
+  });
+
+  it('produces a different hash after salt reset — simulates a fresh process', () => {
+    initializeConfig({});
+    const h1 = hashCallerIdentity('alice@corp').hash;
+    _resetCallerSaltForTest();
+    resetConfig();
+    initializeConfig({});
+    const h2 = hashCallerIdentity('alice@corp').hash;
+    // p(h1 === h2) ≈ 1/2^128; treat as impossible
+    expect(h1).not.toBe(h2);
+  });
+
+  it('is deterministic across resets when MCP_CALLER_ID_SALT is set', () => {
+    initializeConfig({ MCP_CALLER_ID_SALT: 'explicit-test-salt-xyz' });
+    const h1 = hashCallerIdentity('alice@corp').hash;
+    _resetCallerSaltForTest();
+    initializeConfig({ MCP_CALLER_ID_SALT: 'explicit-test-salt-xyz' });
+    const h2 = hashCallerIdentity('alice@corp').hash;
+    expect(h1).toBe(h2);
+  });
+
+  // N8: WRITE THIS FIRST — the invariant that proves separate salts landed
+  it('N8 — identity hash differs from redactQuery hash for the same input (separate salt spaces)', () => {
+    initializeConfig({});
+    const identityResult = hashCallerIdentity('test-subject');
+    const queryHash = redactQuery('test-subject');
+    // If the same salt were used, HMAC('salt', 'x').slice(0,16) would be equal
+    expect(identityResult.hash).not.toBe(queryHash.replace(/^\[redacted:([0-9a-f]{16})\]$/, '$1'));
+  });
+
+  it('normalises case — Alice@Corp and alice@corp produce the same hash', () => {
+    initializeConfig({});
+    expect(hashCallerIdentity('Alice@Corp').hash).toBe(hashCallerIdentity('alice@corp').hash);
+  });
+
+  it('normalises leading/trailing whitespace before hashing', () => {
+    initializeConfig({});
+    expect(hashCallerIdentity('  alice@corp  ').hash).toBe(hashCallerIdentity('alice@corp').hash);
+  });
+});
+
+// N19: validation table — every rejection/absent case
+describe('hashCallerIdentity — validation', () => {
+  afterEach(() => {
+    _resetCallerSaltForTest();
+    resetConfig();
+    initializeConfig({});
+  });
+
+  it('treats empty string as absent', () => {
+    initializeConfig({});
+    const r = hashCallerIdentity('');
+    expect(r.hash).toBeNull();
+    expect(r.reason).toBe('absent');
+  });
+
+  it('treats whitespace-only as absent', () => {
+    initializeConfig({});
+    const r = hashCallerIdentity('   ');
+    expect(r.hash).toBeNull();
+    expect(r.reason).toBe('absent');
+  });
+
+  it('rejects a 257-character value as too_long (not truncated)', () => {
+    initializeConfig({});
+    const long = 'a'.repeat(257);
+    const r = hashCallerIdentity(long);
+    expect(r.hash).toBeNull();
+    expect(r.reason).toBe('too_long');
+  });
+
+  it('accepts a 256-character value', () => {
+    initializeConfig({});
+    const r = hashCallerIdentity('a'.repeat(256));
+    expect(r.hash).toMatch(/^[0-9a-f]{16}$/);
+    expect(r.reason).toBe('ok');
+  });
+
+  it('rejects a multi-value (comma-joined duplicate header) as multi_value', () => {
+    initializeConfig({});
+    const r = hashCallerIdentity('alice@corp, attacker@evil.com');
+    expect(r.hash).toBeNull();
+    expect(r.reason).toBe('multi_value');
+  });
+
+  it('rejects non-ASCII characters as bad_chars', () => {
+    initializeConfig({});
+    // latin1-encoded UTF-8: café arrives as cafÃ©
+    const r = hashCallerIdentity('caf\xc3\xa9');
+    expect(r.hash).toBeNull();
+    expect(r.reason).toBe('bad_chars');
+  });
+
+  it('rejects a value with a space (non-printable-outside-trim) as bad_chars', () => {
+    initializeConfig({});
+    // Space is 0x20, which is below the 0x21–0x7E printable range.
+    // But trim() runs first, so only inner spaces trigger bad_chars.
+    const r = hashCallerIdentity('alice corp');  // inner space
+    expect(r.hash).toBeNull();
+    expect(r.reason).toBe('bad_chars');
+  });
+
+  it('undefined input is treated as absent', () => {
+    initializeConfig({});
+    const r = hashCallerIdentity(undefined);
+    expect(r.hash).toBeNull();
+    expect(r.reason).toBe('absent');
   });
 });
 

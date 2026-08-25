@@ -65,3 +65,38 @@ describe('configSchema → .env.example (every schema var must be in .env.exampl
     });
   }
 });
+
+// ── configmap.yaml → configSchema (one-directional: every live ConfigMap key must exist in schema) ───
+//
+// NOT bidirectional: the ConfigMap legitimately omits secrets (MCP_AUTH_TOKEN,
+// MCP_CALLER_ID_SALT, API keys) and vars with acceptable defaults (LOG_FORMAT, etc.).
+// Requiring the ConfigMap to enumerate all ~90 schema keys would be wrong.
+//
+// One-directional catches the class of bug we already hit: POPIA_SCAN_CONTENT was
+// deleted from configSchema but remained live in the ConfigMap — silently doing nothing
+// in every deployment.  Any time a var is removed from the schema, this test turns RED.
+//
+// Phase B RED (before fixes): fails on POPIA_SCAN_CONTENT (deleted from configSchema).
+
+function configmapKeys(): Set<string> {
+  const text = readFileSync(join(ROOT, 'deploy/k8s/base/configmap.yaml'), 'utf8');
+  const keys = new Set<string>();
+  for (const line of text.split('\n')) {
+    // Match live YAML keys (not commented-out lines) — format: "  KEY_NAME: value"
+    const m = line.match(/^\s{1,4}([A-Z][A-Z0-9_]+):/);
+    if (m) keys.add(m[1]);
+  }
+  return keys;
+}
+
+const cmKeys = configmapKeys();
+
+describe('configmap.yaml → configSchema (every live ConfigMap key must exist in schema)', () => {
+  for (const key of cmKeys) {
+    it(`${key} is in configSchema`, () => {
+      expect(schemaKeys.has(key),
+        `${key} is live in configmap.yaml but absent from configSchema — it is silently ignored in every deployment`
+      ).toBe(true);
+    });
+  }
+});

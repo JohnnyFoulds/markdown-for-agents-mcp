@@ -38,17 +38,33 @@ data:
   CRAWL_RETENTION_MS: "604800000"        # 7 days
   RETENTION_SWEEP_INTERVAL_MS: "3600000" # 1 hour
 
+  # Render-ladder cap — prevent browser launch in Tier 1 deployments
+  # Set 'http' to disable all JS rendering; 'lightpanda' for JS-lite only.
+  RENDER_MAX_TIER: "playwright"
+
+  # Header forwarding — set false to strip Authorization / Cookie from fetch_url
+  # (required for Tier 1 POPIA deployments where authenticated fetches are not permitted)
+  FETCH_ALLOW_REQUEST_HEADERS: "true"
+
+  # Domain filtering — allowlist mode off by default (blocklist mode)
+  # To restrict to internal domains only, set USE_ALLOWLIST_MODE=true and
+  # configure ALLOWLIST_DOMAINS in an overlay patch.
+  ALLOWLIST_DOMAINS: ""
+
   # POPIA Phase 3 — egress surface controls
   # DuckDuckGo is US-hosted with no data-processing agreement; set false to remove from fanout
   SEARCH_ENABLE_DUCKDUCKGO: "true"
   # enforce = block on detection; monitor = audit-only; off = all controls disabled (loud warning)
   POPIA_MODE: "enforce"
-  # Scan fetched page bodies for PII (default false — detection creates obligation, not just discharge)
-  POPIA_SCAN_CONTENT: "false"
   # Emit POPIA s22 audit events to stderr (default true)
   POPIA_AUDIT_ENABLED: "true"
   # Restrict download_file outputPath to these prefixes (POPIA s19 disk surface)
   DOWNLOAD_DIR_ALLOWLIST: "/tmp"
+
+  # Per-caller attribution (POPIA s19/s22 — FSP readiness)
+  MCP_REQUIRE_CALLER_IDENTITY: "false"
+  # MCP_CALLER_ID_SALT must be stored in a Secret, not this ConfigMap.
+  # See .env.example and deploy/k8s/DEPLOYMENT.md for details.
 
   # Prometheus scraping is handled by existing cluster Prometheus via pod
   # annotations on the server pods (prometheus.io/scrape=true on port 3000).

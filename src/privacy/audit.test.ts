@@ -21,6 +21,11 @@ const BASE_EVENT: AuditEvent = {
   action: 'logged',
 };
 
+const BASE_EVENT_WITH_CALLER: AuditEvent = {
+  ...BASE_EVENT,
+  callerHash: '0123456789abcdef',
+};
+
 describe('emitAudit', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -53,19 +58,48 @@ describe('emitAudit', () => {
     // Assert allowed keys are present
     expect(keys).toContain('audit');
     expect(keys).toContain('requestId');
+    expect(keys).toContain('callerHash');
     expect(keys).toContain('tool');
     expect(keys).toContain('timestamp');
     expect(keys).toContain('outcome');
     expect(keys).toContain('piiClasses');
     expect(keys).toContain('action');
     expect(keys).toContain('popiaMode');
-    // Assert prohibited keys are absent
+    // Assert prohibited keys — 'caller' without the 'Hash' suffix must never appear
+    // (it would be a raw-identity field, which is exactly what this feature must not do)
+    expect(keys).not.toContain('caller');
     expect(keys).not.toContain('query');
     expect(keys).not.toContain('url');
     expect(keys).not.toContain('headers');
     expect(keys).not.toContain('body');
-    // Exactly 8 allowed keys
-    expect(keys).toHaveLength(8);
+    // Exactly 9 allowed keys (callerHash added)
+    expect(keys).toHaveLength(9);
+  });
+
+  // N4: callerHash placed immediately after requestId, value preserved
+  it('N4 — callerHash appears immediately after requestId in key order', () => {
+    initializeConfig({});
+    const spy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+
+    emitAudit(BASE_EVENT_WITH_CALLER);
+
+    const parsed: Record<string, unknown> = JSON.parse(spy.mock.calls[0]![0] as string);
+    const keys = Object.keys(parsed);
+    const requestIdIdx = keys.indexOf('requestId');
+    const callerHashIdx = keys.indexOf('callerHash');
+    expect(callerHashIdx).toBe(requestIdIdx + 1);
+    expect(parsed['callerHash']).toBe('0123456789abcdef');
+  });
+
+  // N4 (cont.): absent callerHash emits null (not undefined / missing key)
+  it('N4 — callerHash emits null when not set on the event', () => {
+    initializeConfig({});
+    const spy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+
+    emitAudit(BASE_EVENT);  // no callerHash field
+
+    const parsed: Record<string, unknown> = JSON.parse(spy.mock.calls[0]![0] as string);
+    expect(parsed['callerHash']).toBeNull();
   });
 
   it('caps piiClasses at 8 names', () => {
@@ -79,17 +113,31 @@ describe('emitAudit', () => {
     expect((parsed['piiClasses'] as string[]).length).toBeLessThanOrEqual(8);
   });
 
-  it('output is under 4 KB (safe for pipe atomicity)', () => {
+  // N20: PIPE_BUF structural guarantee (286 bytes worst-case << 4096)
+  it('N20 — output is under 4 KB with worst-case callerHash and all 8 PII classes (structural PIPE_BUF guarantee)', () => {
     initializeConfig({});
     const spy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
 
     emitAudit({
-      ...BASE_EVENT,
+      requestId: '12345678-1234-1234-1234-123456789012',  // 36-char UUID (worst-case)
+      tool: 'fetch_url',
+      timestamp: 1_700_000_000_000,
+      outcome: 'success',
       piiClasses: ['sa_id', 'email', 'msisdn', 'pan', 'account', 'vat', 'employee_id', 'name'],
+      action: 'logged',
+      callerHash: '0123456789abcdef',  // 16-hex worst-case caller
     });
 
     const written = spy.mock.calls[0]![0] as string;
     expect(Buffer.byteLength(written, 'utf8')).toBeLessThan(4096);
+
+    // Structural guarantee: callerHash is either null or exactly 16 hex chars.
+    // This converts the "it fits" observation into a fixed-width proof.
+    const parsed: Record<string, unknown> = JSON.parse(written);
+    const callerHash = parsed['callerHash'];
+    if (callerHash !== null) {
+      expect(callerHash).toMatch(/^[0-9a-f]{16}$/);
+    }
   });
 
   it('includes popiaMode from config', () => {

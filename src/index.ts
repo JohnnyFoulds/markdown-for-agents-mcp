@@ -6,7 +6,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { validateAndInitializeConfig } from "./config.js";
-import { assertHttpAuthPolicy, assertPrivacyPolicy } from "./server/auth.js";
+import { assertHttpAuthPolicy, assertCallerIdentityPolicy, assertPrivacyPolicy } from "./server/auth.js";
+import { hashCallerIdentity } from "./privacy/redact.js";
 import { emitAudit } from "./privacy/audit.js";
 import { fetcher } from "./fetcher.js";
 import { Logger } from "./utils/logger.js";
@@ -16,7 +17,7 @@ import { initStores, closeStores, getStores } from "./store/factory.js";
 import { runRetentionSweep, startRetentionTimer } from "./store/retention.js";
 import { gracefulDrain, setReady, isReady } from "./server/lifecycle.js";
 import { Socks5Server } from "./proxy/socks5Server.js";
-import { registry as metricsRegistry, rerankerReady as rerankerReadyGauge } from "./obs/metrics.js";
+import { callerIdentityTotal, registry as metricsRegistry, rerankerReady as rerankerReadyGauge } from "./obs/metrics.js";
 import { getReranker } from "./rank/index.js";
 
 const require = createRequire(import.meta.url);
@@ -98,6 +99,7 @@ async function startHttpServer(
   port: number,
   mode: string,
   authToken: string | undefined,
+  requireIdentity: boolean,
 ): Promise<ReturnType<typeof createServer>> {
 
   // Stateful mode: one shared server + transport (session affinity required).
@@ -150,6 +152,23 @@ async function startHttpServer(
       }
 
       if (req.url === '/mcp' || req.url?.startsWith('/mcp?')) {
+        // Per-caller identity enforcement gate.
+        // Positioned inside the /mcp branch so probes (/healthz, /readyz) and
+        // /metrics are never affected — an early gate would 400 every k8s probe.
+        // Using 400 (not 401): the bearer token already passed the auth guard above,
+        // so a missing identity header is malformed input, not an auth failure.
+        // return (not throw): a throw here would put the offending value in the log
+        // stream via the catch block at src/index.ts:173-176.
+        {
+          const rawCallerId = (req.headers['x-mcp-caller-id'] as string | undefined);
+          const callerResult = hashCallerIdentity(rawCallerId);
+          callerIdentityTotal.inc({ present: String(callerResult.reason === 'ok'), reason: callerResult.reason });
+          if (requireIdentity && callerResult.reason !== 'ok') {
+            sendJson(res, 400, { error: 'Missing or invalid x-mcp-caller-id header' });
+            return;
+          }
+        }
+
         if (mode === 'stateless') {
           // Per-request server + transport — required by the SDK for stateless mode.
           const reqServer = serverFactory();
@@ -321,7 +340,8 @@ async function main() {
       assertHttpAuthPolicy(config.MCP_AUTH_TOKEN, config.MCP_AUTH_ALLOW_ANONYMOUS, true);
 
       httpServer = await startHttpServer(
-        serverFactory, httpPort!, config.MCP_HTTP_MODE, config.MCP_AUTH_TOKEN);
+        serverFactory, httpPort!, config.MCP_HTTP_MODE, config.MCP_AUTH_TOKEN,
+        config.MCP_REQUIRE_CALLER_IDENTITY);
 
       if (config.METRICS_BIND_PORT) {
         metricsServer = await startMetricsServer(config.METRICS_BIND_PORT);
@@ -345,6 +365,10 @@ async function main() {
           : 'Server is ready'
       );
     } else {
+      // Fail-closed: stdio mode has no HTTP headers; MCP_REQUIRE_CALLER_IDENTITY=true
+      // would silently produce callerHash:null on every audit line.
+      assertCallerIdentityPolicy(config.MCP_REQUIRE_CALLER_IDENTITY, false);
+
       const server = serverFactory();
       const transport = new StdioServerTransport();
       await server.connect(transport);

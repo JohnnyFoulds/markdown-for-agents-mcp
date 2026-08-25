@@ -26,6 +26,11 @@ export const configSchema = z.object({
 
   // Security
   USE_ALLOWLIST_MODE: z.string().default('false').transform(val => val === 'true'),
+  // ALLOWLIST_DOMAINS: comma-separated domains permitted when USE_ALLOWLIST_MODE=true.
+  // All other domains are denied. Empty string = deny-all (safe default for Tier 1).
+  ALLOWLIST_DOMAINS: z.string().optional(),
+  // BLOCKLIST_DOMAINS: comma-separated extra domains to block in blocklist mode (USE_ALLOWLIST_MODE=false).
+  // Not read in allowlist mode — use ALLOWLIST_DOMAINS there.
   BLOCKLIST_DOMAINS: z.string().optional(),
   BLOCKLIST_URL_PATTERNS: z.string().optional(),
 
@@ -38,12 +43,13 @@ export const configSchema = z.object({
   POPIA_MODE: z.string().default('enforce').refine(v => ['enforce', 'monitor', 'off'].includes(v), {
     message: 'POPIA_MODE must be enforce, monitor, or off',
   }),
-  // POPIA_SCAN_CONTENT: scan fetched page bodies for PII (default false — see plan §6)
-  // Off by default: by the time you scan a fetched page you have already processed the PII,
-  // so detection creates an obligation rather than discharging one. Enable for forensic audit.
-  POPIA_SCAN_CONTENT: z.string().default('false').transform(val => val === 'true'),
-  // POPIA_AUDIT_ENABLED: emit audit events to stderr (POPIA s22 trail; default true)
+  // POPIA_AUDIT_ENABLED: emit audit events to stderr (POPIA s22 trail; default true).
+  // Set false to suppress the audit line (metric counter still increments).
   POPIA_AUDIT_ENABLED: z.string().default('true').transform(val => val === 'true'),
+  // FETCH_ALLOW_REQUEST_HEADERS: when false, caller-supplied headers (Authorization, Cookie, etc.)
+  // are stripped from fetch_url / fetch_urls requests. Default true (existing behaviour).
+  // Set false in Tier 1 deployments to prevent authenticated fetches.
+  FETCH_ALLOW_REQUEST_HEADERS: z.string().default('true').transform(val => val === 'true'),
 
   // File Download
   DOWNLOAD_TIMEOUT_MS: z.string().default('60000').transform(Number),
@@ -81,6 +87,9 @@ export const configSchema = z.object({
   RENDER_SETTLE_MS: z.string().default('2000').transform(Number),
   BROWSER_MAX_JOBS: z.string().default('50').transform(Number),
   RENDER_BLOCK_RESOURCES: z.string().default('true').transform(val => val === 'true'),
+  // Cap the highest render tier the ladder may reach. Default 'playwright' = full escalation.
+  // Set 'http' to prevent any browser launch; 'lightpanda' to allow JS-lite rendering only.
+  RENDER_MAX_TIER: z.enum(['http', 'lightpanda', 'playwright']).default('playwright'),
 
   // Lightpanda (Tier 2)
   LIGHTPANDA_ENABLED: z.string().default('false').transform(val => val === 'true'),
@@ -186,6 +195,19 @@ export const configSchema = z.object({
 
   // Metrics (Phase 7)
   METRICS_BIND_PORT: z.string().optional().transform(v => v ? Number(v) : undefined),
+
+  // Per-caller attribution (FSP readiness — s19 safeguards / s22 accountability)
+  // Requires MCP_REQUIRE_CALLER_IDENTITY=true and a trusted upstream gateway that
+  // sets x-mcp-caller-id and STRIPS any client-supplied copy.  Without gateway
+  // enforcement the field is a self-asserted hint, not authenticated identity.
+  // MCP_REQUIRE_CALLER_IDENTITY: when true, requests without a valid x-mcp-caller-id
+  //   header are rejected with 400.  Default false (observe phase).
+  MCP_REQUIRE_CALLER_IDENTITY: z.string().default('false').transform(val => val === 'true'),
+  // MCP_CALLER_ID_SALT: HMAC salt for hashCallerIdentity.  Unset = per-process
+  //   random salt (privacy-safe, but hashes are uncorrelatable across replicas and
+  //   restarts).  Set to a stable secret to enable fleet-wide attribution — store
+  //   in Secrets Manager, never in the ConfigMap.  See deploy/k8s/DEPLOYMENT.md.
+  MCP_CALLER_ID_SALT: z.string().optional(),
 });
 
 export type Config = z.infer<typeof configSchema>;

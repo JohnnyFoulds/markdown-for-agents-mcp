@@ -145,9 +145,13 @@ All variables are set in `base/configmap.yaml` and overridden in overlay patches
 | `DOWNLOAD_DIR_ALLOWLIST` | `/tmp` | Comma-separated path prefixes allowed as `download_file` `outputPath`. Extend with caution — files are not retention-scoped (POPIA s19). |
 | `ROBOTS_ON_ERROR` | `allow` | Behaviour when `robots.txt` is unreachable (5xx/timeout). `deny` reaches RFC 9309 §2.3.1.4 SHOULD-disallow behaviour. |
 | `POPIA_MODE` | `enforce` | `enforce` (block on detection) \| `monitor` (audit-only) \| `off` (disabled — loud startup warning). |
-| `POPIA_SCAN_CONTENT` | `false` | Scan fetched page bodies for PII. Off by default — see POPIA plan §6 for the policy rationale. |
 | `POPIA_AUDIT_ENABLED` | `true` | Emit POPIA s22 audit events to stderr. |
 | `LOG_REDACT_SALT` | — | HMAC salt for `redactQuery`. Unset = per-process random (privacy-safe). Set via a Kubernetes Secret for cross-replica query-hash correlation. |
+| `RENDER_MAX_TIER` | `playwright` | Cap the highest render tier: `http` \| `lightpanda` \| `playwright`. Set `http` to prevent any browser launch (Tier 1 POPIA restriction). |
+| `FETCH_ALLOW_REQUEST_HEADERS` | `true` | Forward caller-supplied headers (Authorization, Cookie) on fetch requests. Set `false` in Tier 1 deployments. |
+| `ALLOWLIST_DOMAINS` | — | Comma-separated domains permitted when `USE_ALLOWLIST_MODE=true`. Empty = deny-all. |
+| `MCP_REQUIRE_CALLER_IDENTITY` | `false` | Require `x-mcp-caller-id` on every `/mcp` request (400 if absent). Enable only after traffic is confirmed sending identity (`caller_identity_total{present="true"}`). Attribution is trustworthy only when a **trusted upstream gateway** sets the header and strips any client-supplied copy. |
+| `MCP_CALLER_ID_SALT` | — | HMAC salt for per-caller identity hashing. **Set in a Secret, not this ConfigMap** — a leaked salt makes the hash trivially invertible against a known-staff directory. Unset = per-process random (privacy-safe but no cross-replica attribution). |
 
 ### Rate limiting
 

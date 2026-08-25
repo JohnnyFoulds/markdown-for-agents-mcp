@@ -590,9 +590,13 @@ The full reference is in `.env.example`. Key variables:
 | `SEARCH_ENABLE_DUCKDUCKGO` | `true` | Include DuckDuckGo in the search fanout. US-hosted, no agreement — set `false` to remove (POPIA s72). |
 | `DOWNLOAD_DIR_ALLOWLIST` | `/tmp` | Comma-separated path prefixes allowed as `download_file` `outputPath` (POPIA s19). |
 | `POPIA_MODE` | `enforce` | `enforce` (block on PII detection) \| `monitor` (audit-only) \| `off` (disabled — loud warning). |
-| `POPIA_SCAN_CONTENT` | `false` | Scan fetched page bodies for PII. Off by default — see POPIA plan §6 for the policy rationale. |
 | `POPIA_AUDIT_ENABLED` | `true` | Emit POPIA s22 audit events to stderr. |
 | `LOG_REDACT_SALT` | — | HMAC salt for `redactQuery`. Unset = per-process random (uncorrelatable). Set for cross-replica correlation. |
+| `RENDER_MAX_TIER` | `playwright` | Cap the highest render tier: `http` \| `lightpanda` \| `playwright`. Set `http` to prevent any browser launch. |
+| `FETCH_ALLOW_REQUEST_HEADERS` | `true` | Forward caller-supplied headers (Authorization, Cookie) on fetch requests. Set `false` in Tier 1 POPIA deployments. |
+| `ALLOWLIST_DOMAINS` | — | Comma-separated domains permitted when `USE_ALLOWLIST_MODE=true`. Empty = deny-all. |
+| `MCP_REQUIRE_CALLER_IDENTITY` | `false` | Require `x-mcp-caller-id` on every `/mcp` request (400 if absent). Enable only after confirming traffic is sending identity. Requires a trusted gateway that sets the header and strips client copies. |
+| `MCP_CALLER_ID_SALT` | — | HMAC salt for per-caller identity hashing. Store in Secrets Manager — never in source. Unset = per-process random (no cross-replica attribution). |
 
 All logs are written to `stderr` to keep `stdout` clean for the MCP protocol.
 
