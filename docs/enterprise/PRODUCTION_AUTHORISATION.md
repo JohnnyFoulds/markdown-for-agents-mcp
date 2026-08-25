@@ -44,43 +44,24 @@ the Tier 1 conditions in §3 are signed.
 | `SEARCH_ENABLE_DUCKDUCKGO` | `false` | Machine-enforced |
 | `BRAVE_API_KEY` | unset | Machine-enforced (provider fails closed on missing key) |
 | `SERPER_API_KEY` | unset | Machine-enforced (provider fails closed on missing key) |
-| `SEARXNG_URL` | unset OR in-cluster address | Machine-enforced only if unset; in-cluster URL is policy-only |
+| `SEARXNG_URL` | unset OR in-cluster address | Machine-enforced only if unset; in-cluster URLs (ClusterIP/RFC1918) are supported via `internalHttpClient` (bypasses dnsGuard — operator-configured endpoint) |
 | `RERANK_BACKEND` | `none` | Machine-enforced (`tei` would send content to `RERANK_TEI_URL`) |
 | `RERANK_TEI_URL` | unset | Machine-enforced (TEI path only reached when backend=tei) |
-| `USE_ALLOWLIST_MODE` | `true` | Machine-enforced — **requires `BLOCKLIST_DOMAINS` to be non-empty** |
-| `BLOCKLIST_DOMAINS` | `<explicit internal domain list>` | Machine-enforced (empty = deny-all; allowlist logic in `src/utils/domainBlacklist.ts:192`) |
+| `USE_ALLOWLIST_MODE` | `true` | Machine-enforced |
+| `ALLOWLIST_DOMAINS` | `<explicit internal domain list>` | Machine-enforced (empty = deny-all when `USE_ALLOWLIST_MODE=true`; set to the operator's known-good domain list) |
 | `SOCKS5_LISTEN_ENABLED` | `false` (default) | Machine-enforced (intercept mode causes `process.exit(1)` at startup) |
 | `SOCKS5_UPSTREAM_URL`, `HTTP_PROXY_URL`, `PLAYWRIGHT_PROXY`, `PROXY_PINS` | all unset | Machine-enforced (proxy bypasses dnsGuard — a removal of the SSRF guard) |
 | `LIGHTPANDA_ENABLED` | `false` (default) | Machine-enforced |
 | `STEALTH_ENABLED` | `false` (default) | Machine-enforced |
 | `LOG_REDACT_QUERIES` | `true` (default) | Machine-enforced |
+| `RENDER_MAX_TIER` | `http` | Machine-enforced — prevents any browser launch; set `lightpanda` to allow JS-lite rendering only |
+| `FETCH_ALLOW_REQUEST_HEADERS` | `false` | Machine-enforced — strips caller-supplied `Authorization`/`Cookie` headers from `fetch_url`/`fetch_urls` |
+| `MCP_REQUIRE_CALLER_IDENTITY` | `false` (default) | Machine-enforced as to **presence only** — does not authenticate identity; see `FSP_DEPLOYMENT.md §4` |
+| `MCP_CALLER_ID_SALT` | unset (per-process random) | Not machine-enforced; store in Secrets Manager for cross-replica correlation |
 
 **Tier 1 ceilings that cannot be addressed by configuration:**
 
-1. **Chromium egress is not configurable.** `render/ladder.ts` has no `RENDER_MAX_TIER`
-   cap. `PlaywrightTier.isAvailable()` is hardcoded `return true`. Chromium in-browser
-   subresource loading (XHR, fetch, scripts) passes through a route handler that filters
-   only `image/stylesheet/font/media` — all other resource types are forwarded with no
-   domain check. A `page.goto` to a target URL on an allowed domain can load scripts
-   from arbitrary third-party CDNs. This is an **accepted ceiling** — sign-off required
-   in §3 (ATC-01).
-
-2. **`USE_ALLOWLIST_MODE` uses the `BLOCKLIST_DOMAINS` variable for its allowlist.**
-   Adding a domain to a variable named `BLOCKLIST_DOMAINS` *permits* it in allowlist mode.
-   This is a naming inversion and a change-control risk — sign-off required (ATC-01).
-
-3. **`SEARXNG_URL` pointing to a ClusterIP (`10.x`)** is blocked by `src/http/dnsGuard.ts`
-   which rejects RFC1918 addresses. This creates an architectural conflict: the shipped
-   in-cluster SearXNG component uses a ClusterIP address that the dnsGuard refuses. Tier 1
-   with SearXNG requires either a public/non-RFC1918 SearXNG endpoint, or a code change
-   to the dnsGuard. Policy-only "use in-cluster SearXNG" does not work as-is.
-
-4. **`POPIA_SCAN_CONTENT` and `POPIA_AUDIT_ENABLED` are dead config.** Both are accepted
-   by the config schema but have zero call sites. They do not control any behaviour. See
-   known-gap 5 in `DATA_FLOW.md`.
-
-5. **`fetch_url` / `fetch_urls` caller-supplied headers.** There is no config var to
-   disable them. Restricting authenticated fetches to Tier 2 is policy-only.
+None. All previously identified configuration ceilings have been resolved.
 
 ### Tier 2 — Full (requires complete §3 sign-off)
 
@@ -108,6 +89,7 @@ duplicating them — a second copy is a second thing to go stale.
 | PII detection — SA ID (Luhn + date), MSISDN, PAN — blocks pre-handler, pre-egress in `enforce` mode | s105(4) defence | `src/privacy/detect.test.ts`, `src/privacy/policy.test.ts` |
 | `DOWNLOAD_DIR_ALLOWLIST` enforced in `download_file` handler | s19 safeguards | `src/services/downloadFile.test.ts` |
 | `allowRemoteModels: false` on both TEI `from_pretrained` calls | s19 safeguards | `src/rank/transformersReranker.test.ts` |
+| Per-caller attribution — `callerHash` on every tool-call audit event; 16-hex HMAC of `x-mcp-caller-id`; self-asserted ceiling stated | s19/s22 | `src/privacy/redact.test.ts` N7/N8; `src/server/registerAll.test.ts` N1–N3; `src/privacy/audit.test.ts` N4 |
 | `readOnlyRootFilesystem: true` on both server and worker manifests | s19 safeguards | `src/server/k8sManifests.test.ts` — `has readOnlyRootFilesystem: true` |
 | `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities: drop: ALL` | s19 safeguards | `src/server/k8sManifests.test.ts` |
 
@@ -141,11 +123,13 @@ The build test `src/authorisation.test.ts` asserts that the status line in §4 r
   be recorded here.
   *Basis: POPIA s18.*
 
-- [ ] **IO-03** · Tier 1 · Accept the s23–25 structural gap: no principal identity exists
-  (single shared bearer token). Records cannot be attributed to a specific data subject,
-  data-subject access/correction/erasure rights cannot be exercised, and affected individuals
-  cannot be individually notified in a s22 breach. This is a documented structural
-  limitation, not an oversight.
+- [ ] **IO-03** · Tier 1 · Accept the s23–25 structural gap: caller attribution is
+  available (`callerHash` on audit events) but does not deliver data-subject rights.
+  The data subject is the person *named inside a query or fetched page*, not the operator
+  that submitted it. Records cannot be attributed to a specific data subject,
+  data-subject access/correction/erasure rights cannot be exercised, and affected
+  individuals cannot be individually notified in a s22 breach. This is a documented
+  structural limitation, not an oversight.
   *Basis: POPIA Part 3; `POPIA_ASSESSMENT.md §7`.*
 
 - [ ] **IO-04** · Tier 1 · Accept the heuristic-detection ceiling: `src/privacy/detect.ts`
@@ -155,11 +139,11 @@ The build test `src/authorisation.test.ts` asserts that the status line in §4 r
   "documented false negatives" suite).
   *Basis: POPIA s19; s105(4) "reasonable steps" argument.*
 
-- [ ] **IO-05** · Tier 1 · Accept the Chromium-egress ceiling (ATC-01): `page.goto` in the
-  Playwright render tier bypasses `validateUrl`, `dnsGuard`, and the rate limiter.
-  In-browser subresource requests (scripts, XHR, fetch) are domain-unfiltered. There is
-  no config var to disable this. The risk is documented in `THREAT_MODEL.md §5` and
-  `STANDARDS.md §Remaining ceilings`.
+- [ ] **IO-05** · Tier 1 · Setting `RENDER_MAX_TIER=http` in the Tier 1 ConfigMap prevents
+  any browser launch. If the operator permits a higher tier (`lightpanda` or `playwright`),
+  accept the residual risk: `page.goto` bypasses `validateUrl`, `dnsGuard`, and the rate
+  limiter, and in-browser subresource requests (scripts, XHR, fetch) are domain-unfiltered.
+  The risk is documented in `THREAT_MODEL.md §5` and `STANDARDS.md §Remaining ceilings`.
   *Basis: POPIA s19; `THREAT_MODEL.md §5`.*
 
 - [ ] **IO-06** · Tier 1 · Accept that `POPIA_MODE=enforce` is a ConfigMap value, not a
@@ -330,9 +314,11 @@ plainly rather than claimed away.
    happen by default in Tier 2. The assessment records the lawful basis; the code does
    not prevent transfers that lack a basis.
 
-7. **No principal identity.** Accepted by IO-03. Data-subject rights (POPIA Part 3)
-   cannot be exercised against this system. POPIA s22 breach notification cannot
-   identify affected individuals.
+7. **Caller attribution ≠ data-subject rights (IO-03).** Audit events carry `callerHash`
+   — a pseudonymous identifier of the invoking operator. The data subject is the person
+   *named inside a query or fetched page*, not the operator. s23–25 rights (access,
+   correction, erasure) cannot be exercised against this system. s22 breach notification
+   cannot identify affected individuals.
 
 8. **Grade B standards conformance is not our conformance.** `undici`, `robots-parser`,
    `prom-client`, and the MCP SDK implement the relevant RFC/protocol clauses. A

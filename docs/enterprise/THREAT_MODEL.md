@@ -33,9 +33,12 @@ this port at the NetworkPolicy or firewall level so only Prometheus scrape IPs c
 reach it. Never expose it on a public interface.
 
 **Ceiling:** The bearer token is a shared secret, not per-user or per-session. There is
-no RBAC, no audit log of which agent called which tool, and no rate-limiting by caller
-identity. For department-wide deployment, this is acceptable; for multi-tenant exposure
-it is not.
+no RBAC, and no rate-limiting by caller identity. Audit events carry a `callerHash`
+field (HMAC-SHA-256 of the `x-mcp-caller-id` header value) — providing tool-call
+attribution when a trusted upstream gateway sets that header. Attribution is
+**self-asserted**: any caller holding the bearer token can supply any identity value,
+so `callerHash` is trustworthy only when the gateway sets and strips the header. For
+department-wide deployment this is acceptable; for multi-tenant exposure it is not.
 
 ---
 

@@ -168,7 +168,8 @@ Fields that only appear in JSON format:
 
 | Field | Content | Notes |
 |---|---|---|
-| `requestId` | UUID (generated per request) | Not linked to user identity |
+| `requestId` | UUID (generated per request) | Not linked to caller or data-subject identity |
+| `callerHash` | 16-hex HMAC of `x-mcp-caller-id` header (null when absent) | Pseudonymous caller attribution — self-asserted, not authenticated; trustworthy only when gateway sets the header |
 | `url` | Fetch target URL (query-parameter values replaced with `[redacted]`) | Only at DEBUG level for page fetches |
 
 `LOG_REDACT_QUERIES=true` (default) hashes query text using HMAC-SHA-256 with a
@@ -202,14 +203,16 @@ deployment-tier definitions.
 
 ## Known gaps
 
-1. **No principal identity:** No mechanism exists to identify or notify an affected data
-   subject (POPIA s22/s23–25). Single shared bearer token; `requestId` is not linked to
-   any user identity.
+1. **Caller attribution ≠ data-subject identity:** Audit events carry `callerHash` —
+   a pseudonymous identifier of the operator that invoked the tool. The data subject is
+   the person *named inside a query or fetched page*. Caller attribution does not enable
+   individual s22 notification or s23–25 rights. Single shared bearer token; `requestId`
+   and `callerHash` are not linked to data-subject identity.
 
-2. **Chromium egress unguarded:** `page.goto` in the Playwright render tier bypasses
-   `validateUrl`, `dnsGuard`, and the rate limiter. In-browser subresource requests
-   (XHR, fetch, scripts) are domain-unfiltered. There is no config var to disable the
-   Chromium tier.
+2. **Chromium egress partially mitigated:** `RENDER_MAX_TIER` (default `playwright`)
+   caps the render ladder — set to `http` to prevent any browser launch. However, when
+   Playwright is permitted, `page.goto` bypasses `validateUrl`, `dnsGuard`, and the rate
+   limiter. In-browser subresource requests (XHR, fetch, scripts) are domain-unfiltered.
 
 3. **Audit durability is at-most-once:** Audit events are written directly to `stderr`
    bypassing `LOG_LEVEL`/`LOG_FORMAT`. Durability depends on the cluster log pipeline —
@@ -220,9 +223,11 @@ deployment-tier definitions.
    (DuckDuckGo). The assessment records the lawful basis per provider; the code does not
    prevent transfers that lack a basis.
 
-5. **`POPIA_SCAN_CONTENT` and `POPIA_AUDIT_ENABLED` are dead config:** Both env vars
-   are accepted by the config schema but have zero call sites in the application code.
-   They do not control any behaviour.
+5. **`POPIA_SCAN_CONTENT` removed; `POPIA_AUDIT_ENABLED` wired:** `POPIA_SCAN_CONTENT`
+   was removed from the schema — scanning fetched page bodies creates a POPIA obligation
+   rather than discharging one (the PII was already processed before the scan). 
+   `POPIA_AUDIT_ENABLED` now gates the stderr write in `emitAudit()` (default `true`;
+   metric counter increments regardless).
 
 6. **`urlCache` is outside the retention sweep:** The process-global search result cache
    (`src/fetcher.ts`) is not swept by `CRAWL_RETENTION_MS`. It is bounded by

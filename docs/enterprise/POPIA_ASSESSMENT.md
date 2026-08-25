@@ -22,7 +22,7 @@
 | Information quality | N/A | No personal records maintained |
 | Openness | ✓ Implemented | `SEARCH_ENABLE_DUCKDUCKGO` gate added; DuckDuckGo excluded when set to `false` |
 | Security safeguards | ⚠ Partial | RFC 9111 shared-cache conformance, log redaction, PII detection implemented; structural gaps remain (§5) |
-| Data subject participation | ✗ Not achievable | No principal identity in the system — structural gap, explicitly deferred (§7) |
+| Data subject participation | ✗ Not achievable | Caller attribution available (`callerHash`), but data-subject identity is structural gap — the caller is not the data subject (§7) |
 | Trans-border flow | ⚠ Requires sign-off | s72 basis documented per provider; legal sign-off still required (§6) |
 
 ---
@@ -162,9 +162,11 @@ and `LOG_FORMAT`. Fields: `requestId`, `tool`, `timestamp`, `outcome`, `piiClass
 (names only, max 8), `action`, `popiaMode`.
 
 **Known limitations (s22):**
-- s22 requires notifying the Regulator *and* affected data subjects. With a single
-  shared bearer token and no principal identity, this system cannot identify affected
-  data subjects.
+- s22 requires notifying the Regulator *and* affected data subjects. Audit events now
+  carry a `callerHash` field — a pseudonymous identifier of the operator that invoked
+  each tool — but the data subject is the person *mentioned in a query or fetched page*,
+  not the operator. Caller attribution does not resolve this gap: the system cannot
+  identify affected data subjects.
 - The audit trail is **at-most-once**. Durability depends on the cluster log pipeline
   (pod OOMKill mid-buffer, log rotation before ship, shipper backpressure). In stdio
   mode, stderr is the MCP client's log channel with no shipper.
@@ -205,12 +207,15 @@ part of the production checklist.
 
 **No data subject can currently exercise rights because:**
 
-1. No principal identity exists. The single shared bearer token means records cannot be
-   attributed to a specific data subject.
+1. **Caller ≠ data subject.** Audit events carry a `callerHash` (pseudonymous identity
+   of the operator that invoked the tool), but the data subject is the person *named
+   inside a query or a fetched page*. Per-caller attribution does not enable individual
+   notification or subject-scoped erasure.
 2. There is no s23–25 tooling (access, correction, deletion by subject).
 
-**This gap is structural** and cannot be resolved without a per-principal identity
-model. The POPIA remediation plan explicitly defers this. `purgeOlderThan` (Phase 2)
+**This gap is structural** and cannot be resolved without per-data-subject identity —
+which would require knowing *who is named in external content*, not just who submitted
+a query. The POPIA remediation plan explicitly defers this. `purgeOlderThan` (Phase 2)
 is the primitive a subject-scoped erasure would extend — it would require a predicate,
 not a rewrite.
 

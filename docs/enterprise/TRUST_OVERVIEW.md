@@ -148,13 +148,16 @@ everything else. A reviewer who finds stated gaps trusts that the rest is honest
    client's log channel with no shipper at all. A pod OOMKill mid-buffer loses the event.
 
 4. **No data-subject rights tooling.** There is no mechanism for a data subject to
-   exercise POPIA Part 3 rights (access, correction, deletion). The single shared bearer
-   token means records cannot be attributed to a specific individual.
+   exercise POPIA Part 3 rights (access, correction, deletion). Audit events carry a
+   `callerHash` — a pseudonymous identifier of the operator that invoked the tool — but
+   the data subject is the person *named inside a query or fetched page*, not the
+   operator. Caller attribution does not substitute for subject-rights tooling.
 
-5. **Chromium egress is unguarded by configuration.** The Playwright render tier (`page.goto`)
-   bypasses application-level URL filtering, the SSRF guard, and the rate limiter.
-   In-browser subresource requests (scripts, XHR, fetch) are not domain-filtered.
-   There is no config var to disable the Chromium tier.
+5. **Chromium egress is unguarded when the Playwright tier is permitted.** Setting
+   `RENDER_MAX_TIER=http` prevents any browser launch. If Playwright is permitted (the
+   default), `page.goto` bypasses application-level URL filtering, the SSRF guard, and
+   the rate limiter; in-browser subresource requests (scripts, XHR, fetch) are not
+   domain-filtered.
 
 6. **Inherited conformance is not our conformance.** Grade B standards (`undici`,
    `robots-parser`, `prom-client`, `@modelcontextprotocol/sdk`) are implemented by those

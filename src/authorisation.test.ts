@@ -30,10 +30,14 @@ const REPO_ROOT = join(__dirname, '..');
 const DOCS = join(REPO_ROOT, 'docs/enterprise');
 const ATO_PATH = join(DOCS, 'PRODUCTION_AUTHORISATION.md');
 const TRUST_PATH = join(DOCS, 'TRUST_OVERVIEW.md');
+const FSP_PATH = join(DOCS, 'FSP_DEPLOYMENT.md');
+const DEP_PATH = join(DOCS, 'DEPENDENCY_MANAGEMENT.md');
 const README_PATH = join(REPO_ROOT, 'README.md');
 
 const ato = readFileSync(ATO_PATH, 'utf8');
 const trust = readFileSync(TRUST_PATH, 'utf8');
+const fsp = existsSync(FSP_PATH) ? readFileSync(FSP_PATH, 'utf8') : '';
+const dep = existsSync(DEP_PATH) ? readFileSync(DEP_PATH, 'utf8') : '';
 const readme = readFileSync(README_PATH, 'utf8');
 
 // ── Helper: extract status line ───────────────────────────────────────────────
@@ -265,6 +269,38 @@ describe('TRUST_OVERVIEW.md — no overclaim phrases', () => {
   });
 });
 
+// ── 8b. FSP_DEPLOYMENT.md and DEPENDENCY_MANAGEMENT.md — no overclaim phrases ──
+
+describe('FSP_DEPLOYMENT.md — no overclaim phrases', () => {
+  const FORBIDDEN = [
+    /\bPOPIA compliant\b/i,
+    /\bfully compliant\b/i,
+    /\bcertified\b/i,
+    /\bguarantee\b/i,
+  ];
+
+  for (const pattern of FORBIDDEN) {
+    it(`does NOT contain "${pattern.source}"`, () => {
+      expect(fsp).not.toMatch(pattern);
+    });
+  }
+});
+
+describe('DEPENDENCY_MANAGEMENT.md — no overclaim phrases', () => {
+  const FORBIDDEN = [
+    /\bPOPIA compliant\b/i,
+    /\bfully compliant\b/i,
+    /\bcertified\b/i,
+    /\bguarantee\b/i,
+  ];
+
+  for (const pattern of FORBIDDEN) {
+    it(`does NOT contain "${pattern.source}"`, () => {
+      expect(dep).not.toMatch(pattern);
+    });
+  }
+});
+
 // ── 9. Discoverability — every docs/enterprise/ file linked from README.md ────
 
 describe('README.md — enterprise docs discoverability', () => {
@@ -280,6 +316,8 @@ describe('README.md — enterprise docs discoverability', () => {
     'ENTERPRISE_READINESS.md',
     'OWNERSHIP.md',
     'TERMS_OF_SERVICE.md',
+    'DEPENDENCY_MANAGEMENT.md',
+    'FSP_DEPLOYMENT.md',
   ];
 
   for (const doc of enterpriseDocs) {

@@ -85,7 +85,7 @@ controls implemented in this repository:
 | s72 trans-border | `SEARCH_ENABLE_DUCKDUCKGO` gate; s72 basis documented per provider | ✓ Phase 3 |
 | s105(4) defence | PII detection (SA ID, MSISDN, PAN); `POPIA_MODE=enforce` blocks on detection | ✓ Phase 6 |
 | s105(5) email | Email detected but not auto-blocked — **legal sign-off required** | ⚠ Phase 6 open item |
-| s23–25 subject rights | No principal identity; erasure by subject not achievable | ✗ Structural gap — deferred |
+| s23–25 subject rights | Caller attribution available (`callerHash`) but data-subject identity is structural gap; the caller is not the data subject | ✗ Structural gap — deferred |
 
 ---
 

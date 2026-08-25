@@ -742,11 +742,14 @@ production deployment. All claims name the test or metric that demonstrates them
 | [DATA_FLOW.md](docs/enterprise/DATA_FLOW.md) | Inventory of what data enters and leaves the system, where it is stored, and for how long. |
 | [STANDARDS.md](docs/enterprise/STANDARDS.md) | Graded conformance register (Grade A/B/C). Machine-verified against `src/standards.test.ts`. |
 | [THREAT_MODEL.md](docs/enterprise/THREAT_MODEL.md) | Threat model for the Kubernetes deployment. States mitigations and residual risks honestly. |
-| [RUNBOOK.md](docs/enterprise/RUNBOOK.md) | Operations runbook — nine incident procedures keyed to Prometheus metrics. |
+| [RUNBOOK.md](docs/enterprise/RUNBOOK.md) | Operations runbook — ten incident procedures keyed to Prometheus metrics, including §10 security incidents (SEC-01/02/03). |
 | [SLO.md](docs/enterprise/SLO.md) | Service level objectives and error budget. Values are TBD until measured against a live deployment. |
 | [ENTERPRISE_READINESS.md](docs/enterprise/ENTERPRISE_READINESS.md) | Operational readiness review — where the answer is yes, where it is not yet, and what closes the gap. |
 | [OWNERSHIP.md](docs/enterprise/OWNERSHIP.md) | Named-owner, escalation path, and handoff checklist. |
 | [TERMS_OF_SERVICE.md](docs/enterprise/TERMS_OF_SERVICE.md) | Per-engine-profile statement of whether automated access is permitted under each search engine's ToS. |
+| [DEPENDENCY_MANAGEMENT.md](docs/enterprise/DEPENDENCY_MANAGEMENT.md) | Dependency and vulnerability management policy — patch SLA, exception process, Grade B dependency inventory. |
+| [FSP_DEPLOYMENT.md](docs/enterprise/FSP_DEPLOYMENT.md) | Regulated FSP addendum — TPRM evidence map, FSCA overlay, model-risk positioning, per-caller attribution, POPIA s18 template. |
+| [SECURITY_SCANNING.md](docs/security/SECURITY_SCANNING.md) | Four-layer security scanning suite (SCA, SAST, secrets, DAST) — tool configuration, thresholds, and CI integration. |
 
 ---
 
