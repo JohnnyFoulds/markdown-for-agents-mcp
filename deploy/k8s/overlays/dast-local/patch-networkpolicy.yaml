@@ -1,0 +1,4 @@
+- op: replace
+  path: /spec/egress/1/to/0/namespaceSelector/matchLabels
+  value:
+    kubernetes.io/metadata.name: mcp-dast

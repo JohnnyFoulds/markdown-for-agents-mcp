@@ -1,0 +1,65 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Isolated namespace — created by the script, deleted on teardown.
+namespace: mcp-dast
+
+resources:
+  - ../../base
+  - secret.yaml
+
+# Include Valkey so the server has a working store backend.
+components:
+  - ../../components/valkey
+
+images:
+  # dast-k8s.sh imports the image into the k8s.io containerd namespace via
+  # docker exec + ctr before applying this overlay, so imagePullPolicy: Never
+  # finds it correctly. The docker.io/library/ prefix matches what ctr assigns
+  # when importing an image built with a bare name (no registry prefix).
+  - name: markdown-for-agents-mcp:latest
+    newName: docker.io/library/markdown-for-agents-mcp
+    newTag: dast-local
+
+patches:
+  # Server: replicas=1, imagePullPolicy=Never (local image), reduced resource requests
+  - path: patch-server.yaml
+    target:
+      kind: Deployment
+      name: mcp-server
+  # Remove topologySpreadConstraints — single-node Docker Desktop cluster
+  - path: patch-topology.yaml
+    target:
+      kind: Deployment
+      name: mcp-server
+  # Worker: replicas=1, imagePullPolicy=Never, reduced resources
+  - path: patch-worker.yaml
+    target:
+      kind: Deployment
+      name: mcp-worker
+  # HPA: pin server to 1 replica (no metrics-server in Docker Desktop)
+  - path: patch-hpa-server.yaml
+    target:
+      kind: HorizontalPodAutoscaler
+      name: mcp-server-hpa
+  # HPA: pin worker to 0 replicas
+  - path: patch-hpa-worker.yaml
+    target:
+      kind: HorizontalPodAutoscaler
+      name: mcp-worker-hpa
+  # PDB: minAvailable=0 so the single pod can be disrupted during teardown
+  - path: patch-pdb.yaml
+    target:
+      kind: PodDisruptionBudget
+      name: mcp-server-pdb
+  # ConfigMap: disable Playwright (RENDER_MAX_TIER=http) for fast deterministic DAST
+  - path: patch-configmap.yaml
+    target:
+      kind: ConfigMap
+      name: mcp-config
+  # NetworkPolicy: mcp-egress uses a hardcoded mcp-system namespace label; remap to
+  # mcp-dast so the server can reach Valkey (the valkey component sets STORE_BACKEND=redis)
+  - path: patch-networkpolicy.yaml
+    target:
+      kind: NetworkPolicy
+      name: mcp-egress
