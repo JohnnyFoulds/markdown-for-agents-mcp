@@ -410,6 +410,63 @@ def mode_F_rightsized(region="af-south-1", spot=False):
     }
 
 
+# OpenShift / existing-infra assumptions
+ASSUMPTION_OCP_FTE_ONGOING = C(0.015, "FTE", "assumed", "2026-08-25",
+                                confidence="assumed",
+                                notes="Midpoint of 0.01-0.02 FTE range for a containerized service "
+                                      "running on existing OpenShift with mature CI/CD. "
+                                      "Replaces the 0.06 FTE cloud-infra floor: no nodes, no NAT, "
+                                      "no ALB to manage. Dominated by Playwright/Chromium image "
+                                      "update reviews (~30 min each × 4-6/yr) + Dependabot triage.")
+ASSUMPTION_OCP_SETUP_WEEKS = C(10, "weeks", "assumed", "2026-08-25",
+                                confidence="assumed",
+                                notes="One-time setup: OpenShift Route, SecurityContextConstraints, "
+                                      "Chromium proxy passthrough (browserPool.ts launch args), "
+                                      "KEDA/prometheus-adapter for HPA custom metrics, "
+                                      "initial SLO validation. Amortised over 3 years.")
+
+
+def mode_G_openshift_cost():
+    """
+    Mode G: Existing OpenShift cluster + in-house web proxy + free providers.
+    Marginal infra = $0.  Engineering is the only variable.
+    """
+    return {
+        "compute":           0,
+        "nat":               0,
+        "alb_routes":        0,
+        "ocp_control_plane": 0,
+        "redis":             0,
+        "logs":              0,
+        "vendor_search":     0,
+        "total_infra":       0,
+        "note": ("Existing OpenShift + in-house proxy + free providers (SearXNG clean profile). "
+                 "Marginal infrastructure cost is zero. "
+                 "Engineering is the only recurring cost. "
+                 "Caveats: disable DDG (ToS), recall lower than Tavily, "
+                 "Chromium proxy config needed, SCC required for worker pods."),
+    }
+
+
+def mode_G_engineering():
+    """Engineering costs for Mode G: setup amortised + low ongoing."""
+    rate = ASSUMPTION_ENGINEERING_RATE["value"]
+    setup_fte_yr = ASSUMPTION_OCP_SETUP_WEEKS["value"] / 52
+    setup_mo = (setup_fte_yr * rate) / 36  # amortised over 3 years
+    ongoing_mo = ASSUMPTION_OCP_FTE_ONGOING["value"] * rate / 12
+    return {
+        "setup_weeks":        ASSUMPTION_OCP_SETUP_WEEKS["value"],
+        "setup_fte":          round(setup_fte_yr, 3),
+        "setup_amortised_mo": round(setup_mo, 2),
+        "ongoing_fte":        ASSUMPTION_OCP_FTE_ONGOING["value"],
+        "ongoing_mo":         round(ongoing_mo, 2),
+        "total_mo":           round(setup_mo + ongoing_mo, 2),
+        "total_yr":           round((setup_mo + ongoing_mo) * 12, 2),
+        "total_zar_yr":       round((setup_mo + ongoing_mo) * 12
+                                    * ASSUMPTION_ZAR_USD["value"], 2),
+    }
+
+
 # ---------------------------------------------------------------------------
 # 7.  Throughput and unit-cost estimates
 # ---------------------------------------------------------------------------
@@ -438,15 +495,16 @@ def self_host_unit_cost(infra_mo, pages_mo):
 # 8.  Break-even analysis
 # ---------------------------------------------------------------------------
 
-def breakeven_volume(infra_mo, eng_fte, vendor_unit_cost):
+def breakeven_volume(infra_mo, eng_fte, vendor_unit_cost, fte_floor=None):
     """
     Monthly volume at which self-host TCO = vendor cost (list prices).
     infra_mo:         fixed monthly infrastructure cost
-    eng_fte:          ongoing FTE fraction (floor 0.06)
-    vendor_unit_cost: cost per page for the best-fit vendor tier (iterative)
+    eng_fte:          ongoing FTE fraction
+    fte_floor:        minimum FTE (defaults to ASSUMPTION_FTE_FLOOR)
     Returns pages/month, or None if no crossover within 10M pages.
     """
-    fte_effective = max(eng_fte, ASSUMPTION_FTE_FLOOR["value"])
+    floor = fte_floor if fte_floor is not None else ASSUMPTION_FTE_FLOOR["value"]
+    fte_effective = max(eng_fte, floor)
     eng_mo = engineering_monthly(fte_effective)
 
     for v in range(1000, 10_000_001, 1000):
@@ -506,6 +564,8 @@ def build_output():
     out["mode_F_hpa_max_af_south_1"]    = mode_F_cost("af-south-1", at_max=True)
     out["mode_F_rightsized_af_south_1"] = mode_F_rightsized("af-south-1", spot=False)
     out["mode_F_rightsized_spot_af_south_1"] = mode_F_rightsized("af-south-1", spot=True)
+    out["mode_G_openshift"]           = mode_G_openshift_cost()
+    out["mode_G_openshift_eng"]       = mode_G_engineering()
 
     # --- scale multiplier (HPA max / desired) ---
     shipped_desired = out["mode_F_desired_af_south_1"]["total"]
@@ -535,16 +595,24 @@ def build_output():
     rightsized_infra = out["mode_F_rightsized_af_south_1"]["total"]
 
     out["breakeven"] = {}
-    for label, infra in [("shipped_ecs", shipped_infra), ("rightsized", rightsized_infra)]:
+    ocp_floor = ASSUMPTION_OCP_FTE_ONGOING["value"]
+    configs = [
+        ("shipped_ecs", shipped_infra,  ASSUMPTION_FTE_FLOOR["value"]),
+        ("rightsized",  rightsized_infra, ASSUMPTION_FTE_FLOOR["value"]),
+        ("openshift",   0,              ocp_floor),
+    ]
+    for label, infra, floor in configs:
         out["breakeven"][label] = {}
-        for fte in [0.0, 0.06, 0.10, 0.25, 0.50]:
-            bev = breakeven_volume(infra, fte, None)
-            out["breakeven"][label][f"fte_{fte:.2f}"] = {
+        fte_values = [0.0, floor, 0.10, 0.25, 0.50] if label != "openshift" else [ocp_floor, 0.05, 0.10, 0.25]
+        for fte in fte_values:
+            bev = breakeven_volume(infra, fte, None, fte_floor=floor)
+            eff_fte = max(fte, floor)
+            out["breakeven"][label][f"fte_{fte:.3f}"] = {
                 "pages_per_month": bev,
                 "pages_per_day":   round(bev / 30) if bev else None,
                 "infra_mo":        round(infra, 2),
-                "eng_mo":          round(engineering_monthly(max(fte, ASSUMPTION_FTE_FLOOR["value"])), 2),
-                "total_mo":        round(infra + engineering_monthly(max(fte, ASSUMPTION_FTE_FLOOR["value"])), 2),
+                "eng_mo":          round(engineering_monthly(eff_fte), 2),
+                "total_mo":        round(infra + engineering_monthly(eff_fte), 2),
             }
 
     # --- token efficiency context ---
@@ -890,7 +958,7 @@ def main():
     print(f"HPA cost multiplier:                 {out['hpa_cost_multiplier']}×")
 
     print("\n--- Break-even vs Firecrawl (pages/month) ---")
-    for label in ["shipped_ecs", "rightsized"]:
+    for label in ["shipped_ecs", "rightsized", "openshift"]:
         bev = out["breakeven"][label]
         print(f"  {label}:")
         for k, v in bev.items():
@@ -899,6 +967,11 @@ def main():
             total_mo = v["total_mo"]
             pages_str = f"{pages/1_000_000:.1f}M" if pages and pages >= 1_000_000 else (f"{pages/1000:.0f}k" if pages else ">10M")
             print(f"    {k}: {pages_str}/mo ({daily}/day) at ${total_mo:.0f}/mo self-host total")
+
+    print("\n--- Mode G (OpenShift) engineering ---")
+    g = out["mode_G_openshift_eng"]
+    print(f"  Setup: {g['setup_weeks']} weeks ({g['setup_fte']} FTE-yr), amortised ${g['setup_amortised_mo']}/mo")
+    print(f"  Ongoing: {g['ongoing_fte']} FTE = ${g['ongoing_mo']}/mo = ${g['total_yr']:.0f}/yr = R{g['total_zar_yr']:,.0f}/yr")
 
     print("\n--- LLM vs retrieval context ---")
     ctx = out["llm_vs_retrieval_context"]

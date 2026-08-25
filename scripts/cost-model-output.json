@@ -287,6 +287,27 @@
     "total": 112.97,
     "note": "Right-sized single task (Spot), af-south-1, role=both, SQLite"
   },
+  "mode_G_openshift": {
+    "compute": 0,
+    "nat": 0,
+    "alb_routes": 0,
+    "ocp_control_plane": 0,
+    "redis": 0,
+    "logs": 0,
+    "vendor_search": 0,
+    "total_infra": 0,
+    "note": "Existing OpenShift + in-house proxy + free providers (SearXNG clean profile). Marginal infrastructure cost is zero. Engineering is the only recurring cost. Caveats: disable DDG (ToS), recall lower than Tavily, Chromium proxy config needed, SCC required for worker pods."
+  },
+  "mode_G_openshift_eng": {
+    "setup_weeks": 10,
+    "setup_fte": 0.192,
+    "setup_amortised_mo": 427.35,
+    "ongoing_fte": 0.015,
+    "ongoing_mo": 100.0,
+    "total_mo": 527.35,
+    "total_yr": 6328.21,
+    "total_zar_yr": 117071.79
+  },
   "hpa_cost_multiplier": 14.2,
   "vendor_cost_by_volume": {
     "1000": {
@@ -352,35 +373,35 @@
   },
   "breakeven": {
     "shipped_ecs": {
-      "fte_0.00": {
+      "fte_0.000": {
         "pages_per_month": 2965000,
         "pages_per_day": 98833,
         "infra_mo": 862.68,
         "eng_mo": 912.82,
         "total_mo": 1775.5
       },
-      "fte_0.06": {
+      "fte_0.060": {
         "pages_per_month": 2965000,
         "pages_per_day": 98833,
         "infra_mo": 862.68,
         "eng_mo": 912.82,
         "total_mo": 1775.5
       },
-      "fte_0.10": {
+      "fte_0.100": {
         "pages_per_month": 3410000,
         "pages_per_day": 113667,
         "infra_mo": 862.68,
         "eng_mo": 1179.49,
         "total_mo": 2042.17
       },
-      "fte_0.25": {
+      "fte_0.250": {
         "pages_per_month": 5079000,
         "pages_per_day": 169300,
         "infra_mo": 862.68,
         "eng_mo": 2179.49,
         "total_mo": 3042.17
       },
-      "fte_0.50": {
+      "fte_0.500": {
         "pages_per_month": 7862000,
         "pages_per_day": 262067,
         "infra_mo": 862.68,
@@ -389,40 +410,70 @@
       }
     },
     "rightsized": {
-      "fte_0.00": {
+      "fte_0.000": {
         "pages_per_month": 1943000,
         "pages_per_day": 64767,
         "infra_mo": 250.51,
         "eng_mo": 912.82,
         "total_mo": 1163.33
       },
-      "fte_0.06": {
+      "fte_0.060": {
         "pages_per_month": 1943000,
         "pages_per_day": 64767,
         "infra_mo": 250.51,
         "eng_mo": 912.82,
         "total_mo": 1163.33
       },
-      "fte_0.10": {
+      "fte_0.100": {
         "pages_per_month": 2388000,
         "pages_per_day": 79600,
         "infra_mo": 250.51,
         "eng_mo": 1179.49,
         "total_mo": 1430.0
       },
-      "fte_0.25": {
+      "fte_0.250": {
         "pages_per_month": 4057000,
         "pages_per_day": 135233,
         "infra_mo": 250.51,
         "eng_mo": 2179.49,
         "total_mo": 2430.0
       },
-      "fte_0.50": {
+      "fte_0.500": {
         "pages_per_month": 6840000,
         "pages_per_day": 228000,
         "infra_mo": 250.51,
         "eng_mo": 3846.15,
         "total_mo": 4096.66
+      }
+    },
+    "openshift": {
+      "fte_0.015": {
+        "pages_per_month": 1024000,
+        "pages_per_day": 34133,
+        "infra_mo": 0,
+        "eng_mo": 612.82,
+        "total_mo": 612.82
+      },
+      "fte_0.050": {
+        "pages_per_month": 1413000,
+        "pages_per_day": 47100,
+        "infra_mo": 0,
+        "eng_mo": 846.15,
+        "total_mo": 846.15
+      },
+      "fte_0.100": {
+        "pages_per_month": 1970000,
+        "pages_per_day": 65667,
+        "infra_mo": 0,
+        "eng_mo": 1179.49,
+        "total_mo": 1179.49
+      },
+      "fte_0.250": {
+        "pages_per_month": 3639000,
+        "pages_per_day": 121300,
+        "infra_mo": 0,
+        "eng_mo": 2179.49,
+        "total_mo": 2179.49
       }
     }
   },

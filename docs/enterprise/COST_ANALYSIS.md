@@ -170,6 +170,7 @@ POPIA residency means paying more for older silicon.
 | A | Local stdio / npx / CLI | $0 (no server) |
 | B | Single VM, Docker Compose, no HA | $74/mo (m6g.large) |
 | C | Single VM, `--role=both`, SQLite | $74/mo |
+| **G** | **Existing OpenShift + in-house proxy + free providers** | **$0 infra (see §6.3)** |
 | **F-right-sized** | **Single Fargate task, SQLite, 1 NAT GW** | **$251/mo** |
 | F-right-sized+Spot | Same, Fargate Spot workers | $113/mo |
 | E | K8s, 3×m6i.xlarge, EKS + NAT + ALB | $682/mo |
@@ -211,28 +212,88 @@ consumer) architecturally earns. This does not deliver HA, but neither does the
 shipped topology: the 3-replica ECS deployment bottlenecks availability on a single
 ElastiCache node with no Multi-AZ configuration.
 
+### 6.3 Mode G: Existing OpenShift + in-house proxy + free providers
+
+This is the deployment scenario for an enterprise that already operates OpenShift
+and already owns a corporate web proxy for internet egress. Every cloud cost line
+item disappears:
+
+| Component | Cloud (ECS af-south-1) | Mode G (existing OpenShift) |
+|---|---|---|
+| Compute | $691/mo | $0 (existing nodes) |
+| NAT Gateway | $99/mo | $0 (existing proxy) |
+| Load balancer | $16/mo | $0 (OpenShift Routes) |
+| Cluster control plane | $73/mo | $0 (existing OpenShift) |
+| Managed Redis | $50/mo | $0 (SQLite or existing Redis) |
+| Logging/metrics | $3/mo | $0 (existing EFK/Prometheus) |
+| Vendor search fees | $0 (free providers) | $0 (same) |
+| **Total infra** | **$863/mo** | **$0** |
+
+**Engineering is the only cost**, and it is lower than in a cloud scenario because
+there is no infrastructure to manage. With mature CI/CD (automated image builds,
+test gates, streamlined change approval for dependency updates), the ongoing
+maintenance reduces to periodic PR reviews:
+
+| Phase | FTE | Duration | Cost |
+|---|---|---|---|
+| Initial setup (Routes, SCC, proxy, KEDA) | 0.15–0.25 FTE | 10 weeks once | ~$4,274 amortised over 3 yr → $427/mo |
+| Ongoing (Playwright updates, Dependabot reviews) | **0.015 FTE** | Continuous | **$100/mo** ($1,200/yr = R22,200/yr) |
+
+The 0.015 FTE floor corresponds to approximately **10–15 hours per year** of a
+senior engineer's time: reviewing Playwright release notes, approving automated
+Dependabot PRs once CI is green, and handling occasional incidents.
+
+**Total ongoing after setup amortisation ends (year 4+): $100/mo = R1,850/mo.**
+
+> ⚠ **Three caveats apply regardless of cost:**
+>
+> 1. **Disable DuckDuckGo.** Set `SEARCH_ENABLE_DUCKDUCKGO=false`. DDG's ToS prohibits
+>    automated scraping; this is documented in `docs/enterprise/TERMS_OF_SERVICE.md`.
+>    Use `SEARXNG_ENGINE_PROFILE=clean` (Mojeek + Marginalia + Brave free), which
+>    permits automated access. This results in lower recall on ambiguous queries —
+>    see `docs/enterprise/SLO.md` Ceiling #2. This is a product gap, not a cost gap.
+>
+> 2. **Chromium does not automatically respect environment proxy settings.** Playwright
+>    launches Chromium with explicit flags. To route through the in-house proxy,
+>    `--proxy-server=<host>:<port>` must be added to the Chromium launch arguments in
+>    `src/render/tiers/playwrightTier.ts` (or `src/render/browserPool.ts`). The HTTP
+>    tier (Tier 1) respects `HTTPS_PROXY` / `http_proxy` env vars via undici. Set these
+>    in the ConfigMap; also add `--proxy-server` for Tier 3.
+>
+> 3. **OpenShift SecurityContextConstraints.** Worker pods launch Chromium, which
+>    requires a custom SCC or the `--no-sandbox` flag. In a dedicated namespace with
+>    trusted workloads, `--no-sandbox` is acceptable; in a multi-tenant cluster, scope
+>    a custom SCC to the `mcp-system` namespace. Document the choice.
+
 ---
 
 ## 7. Break-even analysis
 
-Self-host break-even against **Firecrawl Scale** (the cheapest $/page option,
-$0.000599/page at 1M pages) — monthly volume above which self-host total cost is lower.
+Self-host break-even against **Firecrawl Scale** ($0.000599/page at 1M pages) —
+monthly volume above which self-host total cost is lower.
 
-| Topology | FTE | Break-even volume | Pages/day |
+| Topology | FTE | Break-even vs Firecrawl | Pages/day |
 |---|---|---|---|
-| Shipped ECS | 0.06 (floor) | ~3.0M/mo | ~99 000 |
+| Shipped ECS | 0.06 (cloud floor) | ~3.0M/mo | ~99 000 |
 | Shipped ECS | 0.25 FTE | ~5.1M/mo | ~170 000 |
-| Shipped ECS | 0.50 FTE | ~7.9M/mo | ~262 000 |
-| Right-sized | 0.06 (floor) | ~1.9M/mo | ~65 000 |
-| Right-sized | 0.25 FTE | ~4.1M/mo | ~135 000 |
-| Right-sized | 0.50 FTE | ~6.8M/mo | ~228 000 |
+| Right-sized Fargate | 0.06 (cloud floor) | ~1.9M/mo | ~65 000 |
+| Right-sized Fargate | 0.25 FTE | ~4.1M/mo | ~135 000 |
+| **OpenShift (Mode G)** | **0.015 FTE (floor)** | **~1.0M/mo** | **~34 000** |
+| OpenShift (Mode G) | 0.10 FTE | ~2.0M/mo | ~66 000 |
+| OpenShift (Mode G) | 0.25 FTE | ~3.6M/mo | ~121 000 |
 
-> **No SA enterprise department fetches 65 000–170 000 pages per day at list prices.**
-> Sub-scale workloads consistently lose on cost. The break-even volume is not a target
-> to reach — it is the threshold below which buying is cheaper, full stop.
->
-> Note: 0 FTE is not an admissible scenario (see §9). The hard floor is 0.06 FTE
-> for CVE maintenance, Chromium upgrade cycles, and Dependabot triage.
+**Mode G changes the economics materially.** The break-even floor drops from
+65 000 pages/day (right-sized Fargate) to 34 000 pages/day (OpenShift). More
+importantly, for **search-only workloads** the break-even is **the first query**:
+Mode G uses free providers ($0/query) vs Tavily Growth ($0.005/credit); any search
+volume above zero is cheaper on Mode G, and engineering is the only cost to cover.
+
+> ⚠ **Cloud scenarios (ECS, K8s):** The 0.06 FTE cloud floor includes infrastructure
+> management overhead. **OpenShift scenario:** The 0.015 FTE floor assumes mature CI/CD
+> where Dependabot PRs are auto-approved on green tests and Playwright updates take
+> ~30 min each. If Vodacom's change-management process requires manual approval per
+> dependency update at 4–8h each, the floor is closer to 0.03–0.05 FTE — still
+> substantially lower than the cloud scenario.
 >
 > See `docs/enterprise/assets/cost-chart5-breakeven-fte.png` and
 > `docs/enterprise/assets/cost-chart1-ratio-map.png`.
@@ -329,15 +390,24 @@ ZAR/USD assumption is a named sensitivity parameter, not a fixed fact.
 
 ## 9. Engineering cost
 
-The hard floor for engineering is **0.06 FTE** (~60h/yr):
+Engineering floors depend on the deployment context.
 
+**Cloud scenario (ECS / new K8s cluster) — 0.06 FTE floor** (~60h/yr):
 - ~10–15 Chromium CVEs/yr requiring image rebuild + regression + change approval
-  (4–8h each in a regulated enterprise = 60–120h/yr)
-- Playwright monthly release cadence pinning Chromium
-- Dependabot: up to 13 PRs/week across the dependency tree
+  at 4–8h each in a regulated enterprise with manual change processes
+- Playwright monthly release cadence + Dependabot triage
+- Infrastructure management (node scaling, NAT, ALB, ElastiCache)
 
-**0 FTE is not an admissible scenario.** The break-even chart's y-axis starts at the
-floor, not at zero.
+**Existing OpenShift scenario (Mode G) — 0.015 FTE floor** (~15h/yr):
+- Playwright/Chromium updates ~4–6 times/year at ~30 min each = ~3h/yr
+- Dependabot PR review when CI is green: ~5–10 min per batch = ~5h/yr
+- Occasional incident: ~5h/yr
+- **No** infrastructure management (nodes, proxy, metrics already exist)
+- The 4–8h figure only applies when change management requires manual approval per
+  dependency. With automated CI gates and batch approval, it drops to ~30 min/update.
+
+**0 FTE is not an admissible scenario in either case.** The break-even chart's
+y-axis starts at the relevant floor, not at zero.
 
 At 0.25 FTE (central estimate), monthly engineering cost is:
 
@@ -421,18 +491,57 @@ Specifically:
    is 10× more expensive than Firecrawl Standard for comparable volume. This is a
    two-day effort.
 
+### 11.1 Mode G: for enterprises already on OpenShift
+
+If the deploying organisation already runs OpenShift and already owns a corporate
+web proxy, the calculus changes significantly:
+
+**Deploy Mode G (§6.3) for all workloads, buy nothing.**
+
+At ~$100/mo ongoing engineering cost ($1,200/yr = R22,200/yr after setup amortisation
+ends) with $0 marginal infra, the cost argument for buying Firecrawl disappears at any
+meaningful search or extract volume. The POPIA and governance arguments remain
+decisive, not supplemental.
+
+The decision tree simplifies to:
+
+```
+Already on OpenShift + have in-house proxy?
+├── YES → Deploy Mode G.
+│         Set SEARCH_ENABLE_DUCKDUCKGO=false.
+│         Set SEARXNG_ENGINE_PROFILE=clean.
+│         Configure --proxy-server for Chromium in browserPool.ts.
+│         Add OpenShift Route + SCC for worker pods.
+│         Wire KEDA for HPA (OpenShift Custom Metrics Autoscaler Operator).
+│         Total setup: ~10 weeks. Ongoing: ~15h/yr.
+└── NO  → Use right-sized Fargate ($251/mo) or evaluate buy vs build on §7 numbers.
+```
+
+For **search-only workloads**: Mode G beats Tavily at the first query. The search
+providers are free; the infra is paid for. Engineering is the only cost, and at
+R22,200/yr it is well below any Tavily tier above Researcher.
+
+For **extract/crawl workloads on public web**: Mode G beats Firecrawl Standard ($83/mo)
+once engineering exceeds ~1M pages/month at the 0.015 FTE floor — which at 10% duty
+cycle corresponds to roughly 34 000 pages/day. Below that, Firecrawl Standard is
+marginally cheaper in direct cost but loses on residency, governance, and licence.
+
+For **internal/residency-bound URLs**: no vendor alternative exists at any price.
+Mode G is the only option.
+
 ### Conditions under which the recommendation flips
 
 **"Buy Firecrawl entirely" if:**
-- Volume is consistently below 1M pages/month AND data is not residency-sensitive
+- Deployer is NOT on existing OpenShift (cloud-only, paying for infra from scratch)
+- Volume is below 1M pages/month AND data is not residency-sensitive
 - The buyer has no POPIA s72 constraint AND no AGPL licence restriction
-- Engineering capacity is below 0.06 FTE
+- Engineering capacity is below 0.015 FTE even with automated CI/CD
 
-**"Expand self-host aggressively" if:**
-- Volume sustainably exceeds 5M pages/month AND duty cycle is above 30%
+**"Expand self-host aggressively" if (OpenShift scenario):**
+- Already deployed and working for internal URLs
 - Token-efficiency benchmark (§12) confirms ≥20% verbosity advantage
-- Maintenance team is funded at 0.25+ FTE
-- The buyer has ATO signed and a 24/7 on-call rota
+- The ATO is signed and on-call rota is in place
+- No reason remains to route public-web bulk through a third party
 
 ---
 
