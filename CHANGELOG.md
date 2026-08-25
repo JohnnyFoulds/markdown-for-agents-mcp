@@ -23,6 +23,27 @@ already thread `MCP_AUTH_TOKEN` through — you only need to supply the value.
 
 ---
 
+## [Unreleased] — Production authorisation & trust documents
+
+### Added — POPIA Phase A: Correct stale governance docs
+
+- `docs/enterprise/DATA_FLOW.md` — rewritten for post-Phase-8 truth: DuckDuckGo trigger is now configurable (`SEARCH_ENABLE_DUCKDUCKGO`); retention rows describe the `CRAWL_RETENTION_MS` sweep and `PRAGMA secure_delete = ON`; RFC 9111 clause table replaces the phase-straddle prose; log hash updated to HMAC-SHA-256 per-process salt; HuggingFace section corrected (`allowRemoteModels:false`, no runtime pull); Known gaps updated — four resolved gaps deleted, three new gaps added (Chromium egress, audit durability, dead config)
+- `docs/enterprise/ENTERPRISE_READINESS.md` — data-sovereignty paragraph made conditional (default config does egress query text); "Five-item legal checklist" count corrected; test count corrected (1014+); enterprise-doc count corrected (nine); Security posture scorecard row changed to ⚠ Partial (Chromium ceiling); gaps table points to PRODUCTION_AUTHORISATION.md
+- `src/server/popiaPhase0.test.ts` — Phase A `describe` block: 10 negative-grep assertions for the stale claims corrected above (all RED on the previous document versions, all GREEN after)
+
+### Added — Phase B: PRODUCTION_AUTHORISATION.md (deployment gate)
+
+- `docs/enterprise/PRODUCTION_AUTHORISATION.md` — internal Authorisation to Operate. Prominent disclaimer: not legal advice, not a compliance certificate. Two deployment tiers: Tier 1 (no cross-border PII egress) and Tier 2 (full). Each Tier 1 config var labelled machine-enforced vs policy-only. 22 conditions across 5 signatory roles (IO s55, Legal Counsel, Engineering Owner, Platform Owner, SecOps). Status line parsed by `src/authorisation.test.ts`; build fails if `AUTHORISED` while any condition is unchecked.
+
+### Added — Phase C: TRUST_OVERVIEW.md (outward-facing)
+
+- `docs/enterprise/TRUST_OVERVIEW.md` — for procurement reviewers, security teams, and DPOs. Never says "compliant". Every claim names its test (§8 — how to verify) or states it is a limitation (§7 — known limitations). Sub-processor table includes DuckDuckGo (no DPA). Overclaim guard in `src/authorisation.test.ts` blocks forbidden phrases.
+
+### Added — Phase D: authorisation guard test + README discoverability
+
+- `src/authorisation.test.ts` — 51 assertions: status-line coherence (AUTHORISED only when all §3 checkboxes ticked), disclaimer present, no placeholders when AUTHORISED, expiry parseable, machine-enforced vars in `configSchema`, cited metrics defined, cited test names resolve, TRUST_OVERVIEW.md overclaim guard, all docs reachable from README.md
+- `README.md` — new `## Enterprise & governance` section with a table linking all 11 docs under `docs/enterprise/` — the governance pack was previously unreachable from the README
+
 ## [Unreleased] — Phases 0–10 (Tavily Parity)
 
 ### Added — POPIA Phase 2: Retention (s14)

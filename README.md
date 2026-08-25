@@ -725,6 +725,27 @@ For the full security model and reporting vulnerabilities, see [SECURITY.md](SEC
 
 ---
 
+## Enterprise & governance
+
+The following documents support enterprise evaluation, procurement review, and regulated
+production deployment. All claims name the test or metric that demonstrates them.
+
+| Document | Purpose |
+|---|---|
+| [PRODUCTION_AUTHORISATION.md](docs/enterprise/PRODUCTION_AUTHORISATION.md) | **Start here.** Two-tier Authorisation to Operate — the deployment gate. Conditions register by signatory. Build test refuses `AUTHORISED` status while any condition is unchecked. |
+| [TRUST_OVERVIEW.md](docs/enterprise/TRUST_OVERVIEW.md) | Outward-facing overview for procurement reviewers. Data handling, sub-processors, limitations, and how to verify each claim independently. |
+| [POPIA_ASSESSMENT.md](docs/enterprise/POPIA_ASSESSMENT.md) | Full POPIA (Protection of Personal Information Act 4 of 2013) compliance assessment. Every claim names its test. |
+| [DATA_FLOW.md](docs/enterprise/DATA_FLOW.md) | Inventory of what data enters and leaves the system, where it is stored, and for how long. |
+| [STANDARDS.md](docs/enterprise/STANDARDS.md) | Graded conformance register (Grade A/B/C). Machine-verified against `src/standards.test.ts`. |
+| [THREAT_MODEL.md](docs/enterprise/THREAT_MODEL.md) | Threat model for the Kubernetes deployment. States mitigations and residual risks honestly. |
+| [RUNBOOK.md](docs/enterprise/RUNBOOK.md) | Operations runbook — nine incident procedures keyed to Prometheus metrics. |
+| [SLO.md](docs/enterprise/SLO.md) | Service level objectives and error budget. Values are TBD until measured against a live deployment. |
+| [ENTERPRISE_READINESS.md](docs/enterprise/ENTERPRISE_READINESS.md) | Operational readiness review — where the answer is yes, where it is not yet, and what closes the gap. |
+| [OWNERSHIP.md](docs/enterprise/OWNERSHIP.md) | Named-owner, escalation path, and handoff checklist. |
+| [TERMS_OF_SERVICE.md](docs/enterprise/TERMS_OF_SERVICE.md) | Per-engine-profile statement of whether automated access is permitted under each search engine's ToS. |
+
+---
+
 ## Architecture
 
 ```

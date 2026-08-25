@@ -90,7 +90,9 @@ by `SEARCH_CACHE_TTL_MS` and LRU eviction, not by the crawl retention sweep.
 Conformance claims are graded, not a badge list. The grading rule, stated explicitly in
 `docs/enterprise/STANDARDS.md`, is: **cite the grade, never the bare standard number.**
 "Implements RFC 1928/1929 SOCKS5 with authentication" is a defensible Grade A claim.
-"RFC 9309 compliant" is not accurate while `RESPECT_ROBOTS_TXT` defaults to `false`.
+A bare "compliant with RFC N" claim must name the grade — otherwise a reviewer cannot
+tell whether the behaviour is tested here, inherited from a dependency, or merely
+opt-in.
 
 Full clause-level register: `docs/enterprise/STANDARDS.md`.
 
