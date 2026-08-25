@@ -62,7 +62,9 @@ export class DuckDuckGoProvider implements SearchProvider {
 
   constructor(private readonly client: HttpClient = defaultHttpClient) {}
 
-  isConfigured(): boolean { return true; }
+  isConfigured(): boolean {
+    try { return getConfig().SEARCH_ENABLE_DUCKDUCKGO; } catch { return true; }
+  }
 
   supports(_q: SearchProviderQuery): { ok: true } | { ok: false; reason: string } {
     return { ok: true };

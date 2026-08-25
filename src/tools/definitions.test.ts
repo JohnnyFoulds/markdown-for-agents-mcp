@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach, beforeAll } from 'vitest';
 
 vi.mock('./webSearch.js', () => ({
   webSearch: vi.fn().mockResolvedValue({ query: '', results: [], durationMs: 0 }),
@@ -13,7 +13,12 @@ vi.mock('../services/mapSite.js', () => ({
   mapSite: vi.fn(),
 }));
 
+vi.mock('../services/downloadFile.js', () => ({
+  downloadFile: vi.fn().mockResolvedValue({ path: '/tmp/file', size: 0, mime: 'text/plain', filename: 'file' }),
+}));
+
 import { TOOLS } from './definitions.js';
+import { initializeConfig } from '../config.js';
 import { webSearch } from './webSearch.js';
 
 const wst = TOOLS.find(t => t.name === 'web_search')!;
@@ -153,5 +158,33 @@ describe('Phase 4.1 — DAST probe coverage contract', () => {
     // This assertion is intentionally strict: any new tool triggers a red test
     // until the author verifies probe coverage and updates this count.
     expect(TOOLS).toHaveLength(13);
+  });
+});
+
+// Phase 3 RED (before adding DOWNLOAD_DIR_ALLOWLIST check to download_file handler)
+describe('download_file — DOWNLOAD_DIR_ALLOWLIST enforcement', () => {
+  const dl = TOOLS.find(t => t.name === 'download_file')!;
+
+  beforeAll(() => {
+    // Initialise config with explicit allowlist so the handler can call getConfig()
+    initializeConfig({ DOWNLOAD_DIR_ALLOWLIST: '/tmp' });
+  });
+
+  it('rejects outputPath outside the allowlist', async () => {
+    await expect(
+      (dl.handler as (a: Record<string, unknown>) => Promise<unknown>)({
+        url: 'http://example.com/file.txt',
+        outputPath: '/etc/x',
+      }),
+    ).rejects.toThrow(/allowed/i);
+  });
+
+  it('accepts outputPath within the allowlist', async () => {
+    await expect(
+      (dl.handler as (a: Record<string, unknown>) => Promise<unknown>)({
+        url: 'http://example.com/file.txt',
+        outputPath: '/tmp/safe-output.pdf',
+      }),
+    ).resolves.toBeDefined();
   });
 });

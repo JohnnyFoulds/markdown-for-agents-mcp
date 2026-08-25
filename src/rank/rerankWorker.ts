@@ -31,10 +31,12 @@ async function init() {
   // @ts-expect-error optional dependency — not declared in devDependencies
   const { AutoTokenizer, AutoModelForSequenceClassification } = await import('@huggingface/transformers');
 
-  const tokenizer = await AutoTokenizer.from_pretrained(modelName);
+  // allowRemoteModels:false prevents runtime HuggingFace pulls — bake the model into the image
+  const tokenizer = await AutoTokenizer.from_pretrained(modelName, { allowRemoteModels: false });
   const model = await AutoModelForSequenceClassification.from_pretrained(modelName, {
     dtype: dtype as 'q8',
     device: device as 'cpu',
+    allowRemoteModels: false,
   });
 
   parentPort!.postMessage({ type: 'ready' });

@@ -141,6 +141,8 @@ All variables are set in `base/configmap.yaml` and overridden in overlay patches
 | `CRAWL_MAX_CONCURRENCY` | `5` (server), `10` (worker) | Concurrent fetches per crawl job. |
 | `CRAWL_RETENTION_MS` | `604800000` | Job + page retention window in ms (default 7 days). Unconditional — not under POPIA_MODE. |
 | `RETENTION_SWEEP_INTERVAL_MS` | `3600000` | How often the retention sweep runs in ms (default 1 hour). |
+| `SEARCH_ENABLE_DUCKDUCKGO` | `true` | Include DuckDuckGo in the search fanout. US-hosted, no data-processing agreement — set `false` to remove (POPIA s72). |
+| `DOWNLOAD_DIR_ALLOWLIST` | `/tmp` | Comma-separated path prefixes allowed as `download_file` `outputPath`. Extend with caution — files are not retention-scoped (POPIA s19). |
 
 ### Rate limiting
 

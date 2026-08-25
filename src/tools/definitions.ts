@@ -3,6 +3,7 @@ import { fetchUrl } from "./fetchUrl.js";
 import { fetchUrls } from "./fetchUrls.js";
 import { webSearch } from "./webSearch.js";
 import { downloadFile } from "../services/downloadFile.js";
+import { getConfig } from "../config.js";
 import { extractUrls } from "../services/extractUrls.js";
 import { mapSite } from "../services/mapSite.js";
 import { crawlSync, startAsyncCrawl } from "../crawl/engine.js";
@@ -365,6 +366,14 @@ export const TOOLS: ToolDefinition[] = [
       const path = String(a.outputPath);
       if (!path.startsWith("/") && !(/^[A-Za-z]:[/\\]/.test(path))) {
         throw new Error("outputPath must be an absolute path");
+      }
+      const allowlist = getConfig().DOWNLOAD_DIR_ALLOWLIST
+        .split(',').map(s => s.trim()).filter(Boolean);
+      if (!allowlist.some(prefix => path.startsWith(prefix))) {
+        throw new Error(
+          `outputPath must be within an allowed directory. Allowed: ${allowlist.join(', ')} ` +
+          '(set DOWNLOAD_DIR_ALLOWLIST to extend — POPIA s19)',
+        );
       }
       return downloadFile(String(a.url), path) as unknown as Promise<Record<string, unknown>>;
     },

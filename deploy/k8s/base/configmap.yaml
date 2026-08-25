@@ -37,6 +37,12 @@ data:
   CRAWL_RETENTION_MS: "604800000"        # 7 days
   RETENTION_SWEEP_INTERVAL_MS: "3600000" # 1 hour
 
+  # POPIA Phase 3 — egress surface controls
+  # DuckDuckGo is US-hosted with no data-processing agreement; set false to remove from fanout
+  SEARCH_ENABLE_DUCKDUCKGO: "true"
+  # Restrict download_file outputPath to these prefixes (POPIA s19 disk surface)
+  DOWNLOAD_DIR_ALLOWLIST: "/tmp"
+
   # Prometheus scraping is handled by existing cluster Prometheus via pod
   # annotations on the server pods (prometheus.io/scrape=true on port 3000).
   # No Prometheus or Grafana is deployed by these manifests.

@@ -6,7 +6,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { validateAndInitializeConfig } from "./config.js";
-import { assertHttpAuthPolicy } from "./server/auth.js";
+import { assertHttpAuthPolicy, assertPrivacyPolicy } from "./server/auth.js";
 import { fetcher } from "./fetcher.js";
 import { Logger } from "./utils/logger.js";
 import { registerAll } from "./server/registry.js";
@@ -251,6 +251,11 @@ async function main() {
     redisUrl: config.STORE_REDIS_URL,
   });
   Logger.info(`Stores initialized (backend=${config.STORE_BACKEND}, http=${isHttpMode})`);
+
+  // POPIA privacy policy — warn about operator-controlled egress and redaction settings
+  for (const w of assertPrivacyPolicy(config)) {
+    Logger.warn(`[privacy] ${w}`);
+  }
 
   // POPIA s14 retention — unconditional; runs on all roles
   void runRetentionSweep(getStores());                   // immediate sweep on startup

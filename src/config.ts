@@ -31,10 +31,14 @@ const configSchema = z.object({
 
   // Web Search
   WEB_SEARCH_DEFAULT_TIMEOUT_MS: z.string().default('30000').transform(Number),
+  // POPIA s72 egress gate — set false to remove DuckDuckGo from the search fanout
+  SEARCH_ENABLE_DUCKDUCKGO: z.string().default('true').transform(val => val === 'true'),
 
   // File Download
   DOWNLOAD_TIMEOUT_MS: z.string().default('60000').transform(Number),
   MAX_DOWNLOAD_BYTES: z.string().default('52428800').transform(Number), // 50 MB
+  // Comma-separated path prefixes allowed as download_file outputPath (POPIA s19 disk surface)
+  DOWNLOAD_DIR_ALLOWLIST: z.string().default('/tmp'),
 
   // HTTP server mode
   HTTP_PORT: z.string().optional().transform(v => v ? Number(v) : undefined),

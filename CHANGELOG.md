@@ -35,6 +35,14 @@ already thread `MCP_AUTH_TOKEN` through — you only need to supply the value.
 - `src/utils/logger.ts` — `Logger.metrics[]` age-bounded by `CRAWL_RETENTION_MS` (raw URLs must not persist beyond the retention window)
 - `CRAWL_RETENTION_MS` (default `604800000`, 7 days) and `RETENTION_SWEEP_INTERVAL_MS` (default `3600000`, 1 hour) added to all six config locations
 
+### Added — POPIA Phase 3: Egress and disk surface controls (s19, s72)
+- `src/server/auth.ts` — `assertPrivacyPolicy(config)` warns at startup for `LOG_REDACT_QUERIES=false`, `SOCKS5_LISTEN_MODE=intercept`, external `RERANK_TEI_URL`/`SEARXNG_URL`, and `PROXY_PINS`/`SOCKS5_UPSTREAM_URL` set; `looksExternal()` heuristic treats single-label hostnames, RFC 1918, and `*.cluster.local` as in-cluster
+- `src/index.ts` — wire `assertPrivacyPolicy` after `initStores()`; warnings logged at WARN level with `[privacy]` prefix
+- `src/search/providers/duckduckgo.ts` — `isConfigured()` now returns `getConfig().SEARCH_ENABLE_DUCKDUCKGO`; was `return true` unconditionally
+- `src/tools/definitions.ts` — `download_file` handler enforces `DOWNLOAD_DIR_ALLOWLIST`; rejects paths outside allowed prefixes with an actionable error
+- `src/rank/rerankWorker.ts` — `allowRemoteModels: false` on both `from_pretrained` calls; prevents runtime HuggingFace model pulls
+- `SEARCH_ENABLE_DUCKDUCKGO` (default `true`) and `DOWNLOAD_DIR_ALLOWLIST` (default `/tmp`) added to all six config locations
+
 ### Added — Phase 3: Zero-budget search reliability
 - `src/search/providers/searxng.ts` — detect HTML/403/429 responses and throw `BotChallengeError` (was bare `SyntaxError`); add `language` and `time_range` (from `freshness`) params to outgoing SearXNG query
 - `src/search/fanout.ts` — wire `CircuitBreaker` into every provider call; open breakers skip the provider and increment `search_degraded_total{reason:breaker_open}` instead of wasting every request on a failing upstream

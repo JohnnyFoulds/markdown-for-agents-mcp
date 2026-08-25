@@ -1,4 +1,4 @@
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, afterEach } from 'vitest';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -96,5 +96,28 @@ describe('DuckDuckGoProvider', () => {
       { signal: new AbortController().signal, requestId: 'r1' },
     );
     expect(results).toHaveLength(2);
+  });
+});
+
+// Phase 3 RED (before adding SEARCH_ENABLE_DUCKDUCKGO to config and gating isConfigured)
+describe('DuckDuckGoProvider.isConfigured() — privacy gate', () => {
+  afterEach(() => {
+    // Restore to the module-level default so other test files are unaffected
+    initializeConfig({ WEB_SEARCH_DEFAULT_TIMEOUT_MS: '30000' });
+  });
+
+  test('returns false when SEARCH_ENABLE_DUCKDUCKGO=false', () => {
+    initializeConfig({ SEARCH_ENABLE_DUCKDUCKGO: 'false' });
+    expect(new DuckDuckGoProvider().isConfigured()).toBe(false);
+  });
+
+  test('returns true when SEARCH_ENABLE_DUCKDUCKGO=true', () => {
+    initializeConfig({ SEARCH_ENABLE_DUCKDUCKGO: 'true' });
+    expect(new DuckDuckGoProvider().isConfigured()).toBe(true);
+  });
+
+  test('returns true by default (no env var set)', () => {
+    initializeConfig({});
+    expect(new DuckDuckGoProvider().isConfigured()).toBe(true);
   });
 });

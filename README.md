@@ -586,6 +586,8 @@ The full reference is in `.env.example`. Key variables:
 | `OTEL_ENABLED` | `false` | Enable OpenTelemetry tracing |
 | `CRAWL_RETENTION_MS` | `604800000` | Job + page retention window in ms (7 days). Unconditional — POPIA s14. |
 | `RETENTION_SWEEP_INTERVAL_MS` | `3600000` | Retention sweep interval in ms (1 hour). |
+| `SEARCH_ENABLE_DUCKDUCKGO` | `true` | Include DuckDuckGo in the search fanout. US-hosted, no agreement — set `false` to remove (POPIA s72). |
+| `DOWNLOAD_DIR_ALLOWLIST` | `/tmp` | Comma-separated path prefixes allowed as `download_file` `outputPath` (POPIA s19). |
 
 All logs are written to `stderr` to keep `stdout` clean for the MCP protocol.
 
