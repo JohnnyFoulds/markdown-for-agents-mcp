@@ -293,7 +293,7 @@ Parallelism is controlled by `MAX_CONCURRENT_FETCHES` (default: 5).
 
 ### `web_search`
 
-Searches DuckDuckGo and optionally fetches top results as markdown. Uses a plain HTTP endpoint to avoid bot detection — no Playwright for the search itself.
+Searches the web using multiple providers (SearXNG, Brave, Serper, DuckDuckGo) and optionally fetches top results as markdown. Uses plain HTTP — no Playwright for the search itself.
 
 **Arguments:**
 
@@ -438,10 +438,9 @@ Fetches multiple URLs with optional CSS selector targeting, output format contro
 | `urls` | string[] | yes | URLs to fetch |
 | `includeSelector` | string | no | CSS selector to extract (e.g. `main`, `.article`, `#content`) |
 | `excludeSelectors` | string[] | no | CSS selectors to remove |
-| `outputFormat` | string | no | `markdown` (default), `html`, `text`, `screenshot` |
+| `outputFormat` | string | no | `markdown` (default), `html`, `text` |
 | `offset` | number | no | Character offset for pagination |
-| `limit` | number | no | Max characters per result |
-| `headers` | object | no | Custom headers (auth/cookie passthrough) |
+| `maxChars` | number | no | Max characters per result |
 
 ---
 
@@ -454,9 +453,9 @@ Discovers all URLs on a site via `sitemap.xml` or BFS link crawl.
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `url` | string | yes | Root URL of the site |
-| `maxUrls` | number | no | Maximum URLs to return |
-| `includePattern` | string | no | Regex to include only matching URLs |
-| `excludePattern` | string | no | Regex to exclude matching URLs |
+| `maxUrls` | number | no | Maximum URLs to return (default: 100) |
+| `followLinks` | boolean | no | Crawl HTML links in addition to sitemap.xml (default: true) |
+| `timeout` | number | no | Request timeout in ms per page (default: 30000) |
 
 ---
 
@@ -719,7 +718,7 @@ Certain URL path patterns are blocked regardless of domain (e.g. OAuth callbacks
 
 ### Allowlist mode
 
-Set `USE_ALLOWLIST_MODE=true` and `BLOCKLIST_DOMAINS=yourdomain.com,trusted.org` to restrict the server to only fetching from explicitly listed domains. Recommended for production deployments.
+Set `USE_ALLOWLIST_MODE=true` and `ALLOWLIST_DOMAINS=yourdomain.com,trusted.org` to restrict the server to only fetching from explicitly listed domains. Recommended for production deployments.
 
 ### Redirect policy
 

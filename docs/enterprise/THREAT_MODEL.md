@@ -81,7 +81,7 @@ browser-native exploitation of the Chromium process itself.
 
 **There are two SSRF mitigations, with different guarantees.**
 
-### 3.1 App-level guard (`isPrivateIp()` / `validateUrl()`)
+### 4.1 App-level guard (`isPrivateIp()` / `validateUrl()`)
 
 `src/utils/domainBlacklist.ts` checks the destination hostname against RFC1918,
 link-local, loopback, CGNAT (100.64.0.0/10), IPv4-mapped IPv6, and cloud-provider
@@ -109,7 +109,7 @@ The `ssrf_violations_total{stage="dns_guard"}` metric counts detections by this 
 A spike is evidence that a DNS rebinding attempt is in progress, not necessarily that
 it was blocked (see §3.2 for the kernel-level control).
 
-### 3.2 NetworkPolicy (`mcp-egress`)
+### 4.2 NetworkPolicy (`mcp-egress`)
 
 `deploy/k8s/base/networkpolicy.yaml` blocks egress to RFC1918 / link-local / loopback
 at the kernel level, applied by the CNI plugin. This cannot be bypassed from within the
@@ -130,7 +130,7 @@ kubectl exec -n mcp-system deployment/mcp-server -- \
 # Should timeout or be refused. If it returns data, NetworkPolicy is not enforced.
 ```
 
-### 3.3 SOCKS5 upstream proxy
+### 4.3 SOCKS5 upstream proxy
 
 When `SOCKS5_HOST` is set, all Chromium traffic is routed through the upstream proxy.
 With `socks5h://` the proxy resolves DNS — the app-level check is now lexical-only on
@@ -160,15 +160,14 @@ by the NetworkPolicy, but the NetworkPolicy ceiling above applies). This is the
 standard accepted risk for any headless browser deployment. The mitigations reduce the
 blast radius; they do not eliminate it.
 
-**`download_file.outputPath` filesystem write constraint:** The tool accepts an
-arbitrary absolute path and writes fetched content there. Under UID 1000 (`pwuser`),
-writable locations include `/tmp` and `/dev/shm` (bound `emptyDir` volumes) **and
-`/home/pwuser`** — `readOnlyRootFilesystem` is omitted in both `server.yaml` and
-`worker.yaml`, so the container rootfs is entirely writable by UID 1000. A caller
-passing `/etc/cron.d/x` gets `EACCES` (root-owned), but `/home/pwuser/.profile`
-or `/app/dist/index.js` (group-writable build artefacts) may not. This is an
-accidental partial control, not a designed one. A deployment that adds a persistent
-volume mounted at a path writable by UID 1000 expands this surface further.
+**`download_file.outputPath` filesystem write constraint:** The tool enforces
+`DOWNLOAD_DIR_ALLOWLIST` (default: `/tmp`) — paths outside the allowlist throw before
+any write. `readOnlyRootFilesystem: true` is set on both `server.yaml` and `worker.yaml`,
+so only the two `emptyDir` mounts (`/tmp`, `/dev/shm`) are writable by UID 1000 in the
+default configuration. The residual risk is that the default allowlist includes `/tmp`:
+expanding `DOWNLOAD_DIR_ALLOWLIST` to a persistent volume mounted at a UID-1000-writable
+path re-opens this surface. A caller passing a path that resolves to a PVC or host-path
+mount could write there if the allowlist is configured to permit it.
 
 ---
 
@@ -228,7 +227,7 @@ See `docs/enterprise/DATA_FLOW.md` for a full inventory of what leaves the clust
 | SSRF via SOCKS5 proxy | Policy check (lexical) | Proxy-resolved DNS, no pinning |
 | Auth bypass | Timing-safe bearer token; fail-closed HTTP startup | Shared secret; no per-user isolation |
 | Chromium RCE → container escape | `--no-sandbox` + `runAsNonRoot` + `capabilities: drop ALL` | Renderer RCE still gets container with NetworkPolicy-limited egress |
-| `download_file` path write | UID 1000 — `/tmp`, `/dev/shm`, `/home/pwuser` writable (rootfs not read-only) | No directory allowlist; no designed containment |
+| `download_file` path write | `DOWNLOAD_DIR_ALLOWLIST` (default `/tmp`) + `readOnlyRootFilesystem: true` | Expanding the allowlist to a persistent or host-path volume re-opens write surface |
 | Missing response security headers | `applyBaseHeaders()` sets `Cache-Control: no-store`, `X-Content-Type-Options: nosniff` | Headers omitted by SDK transport calls before `applyBaseHeaders()` runs |
 | API key exfiltration | K8s Secrets + no logging | K8s Secret access via compromised service account |
 | Query privacy | `LOG_REDACT_QUERIES=true` + no persistent query log | Queries reach configured search providers |

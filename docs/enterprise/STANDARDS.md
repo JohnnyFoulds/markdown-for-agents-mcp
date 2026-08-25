@@ -34,7 +34,7 @@ of our own.
 
 | Standard | Dependency | Notes |
 |---|---|---|
-| **RFC 9110 / 9112** HTTP/1.1 semantics | `undici` ^7 | All outbound requests via `src/http/client.ts` |
+| **RFC 9110 / 9112** HTTP/1.1 semantics | `undici` ^8 | All outbound requests via `src/http/client.ts` |
 | **RFC 9309** Robots Exclusion Protocol (parsing) | `robots-parser` ^3 | See Grade C for default and §2.3.1.4 deviation |
 | **MCP** Model Context Protocol + **JSON-RPC 2.0** | `@modelcontextprotocol/sdk` ^1.29 | All tool registration and dispatch |
 | **Prometheus** text exposition format | `prom-client` ^15 | Metrics endpoint at `/metrics` |

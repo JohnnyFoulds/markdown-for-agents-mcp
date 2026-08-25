@@ -156,7 +156,7 @@ and must be disclosed, not minimised.
 | Code quality | ✅ Production-ready | 1014+ tests, RED-first TDD, all phases shipped |
 | Observability | ✅ Complete | All metrics wired; HPA signals exist |
 | Security posture | ⚠ Partial | securityContext, NetworkPolicy, SSRF guards, non-root image — Chromium egress unguarded (see `STANDARDS.md §Remaining ceilings`) |
-| Governance documentation | ✅ Complete | Nine enterprise docs present |
+| Governance documentation | ✅ Complete | Fourteen enterprise docs present |
 | Measured SLOs | ❌ Not done | All values TBD — deployment never stood up |
 | Runbook exercised | ❌ Not done | No procedure tested against live system |
 | Named owner | ❌ Not done | Placeholders in OWNERSHIP.md |

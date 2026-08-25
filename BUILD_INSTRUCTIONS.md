@@ -215,7 +215,11 @@ markdown-for-agents-mcp/
 │   ├── obs/                  # Prometheus metrics
 │   └── utils/
 ├── scripts/
+│   ├── dast/
+│   │   └── detectors.mjs     # Pure probe-verdict logic (side-effect free, testable)
 │   ├── install-playwright.js
+│   ├── scan-dast.mjs         # Full-stack DAST probe runner
+│   ├── scan-sast.mjs         # SAST / semgrep wrapper
 │   └── scale-proof.mjs       # Docker scale integration proof
 ├── dist/                     # Compiled JavaScript (generated)
 ├── docker-compose.yml        # Local development stack

@@ -20,10 +20,10 @@ A TPRM function evaluating this system will ask for evidence across several stan
 | Vulnerability and patch management | `DEPENDENCY_MANAGEMENT.md`; `docs/security/SECURITY_SCANNING.md` |
 | Incident response | `RUNBOOK.md` §10 |
 | Business continuity / availability | `SLO.md`; `RUNBOOK.md` |
-| Access controls | `THREAT_MODEL.md` §3; `PRODUCTION_AUTHORISATION.md` §2 (AC series) |
-| Audit and logging | `POPIA_ASSESSMENT.md` §8; `DATA_FLOW.md` |
-| Data retention and deletion | `POPIA_ASSESSMENT.md` §4 (s14); `RUNBOOK.md` §7 |
-| Change management | `PRODUCTION_AUTHORISATION.md` §5 (IO-08); `RUNBOOK.md` §9 |
+| Access controls | `THREAT_MODEL.md` §1; `PRODUCTION_AUTHORISATION.md` §3 (PLT-03) |
+| Audit and logging | `POPIA_ASSESSMENT.md` §5; `DATA_FLOW.md` |
+| Data retention and deletion | `POPIA_ASSESSMENT.md` §4 (s14); `RUNBOOK.md` §10.1 |
+| Change management | `PRODUCTION_AUTHORISATION.md` §7 (Revision history); `RUNBOOK.md` §10.5 |
 | Ownership and accountability | `OWNERSHIP.md` |
 | Subprocessor / cross-border transfers | `POPIA_ASSESSMENT.md` §6 (s72); `DATA_FLOW.md` §4 |
 | SLA and performance | `SLO.md` |

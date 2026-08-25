@@ -22,7 +22,7 @@ If you discover a security vulnerability in this project, please report it respo
 
 ### SSRF — Chromium path caveat
 
-When Tier 3 (Playwright/Chromium) is used, Chrome resolves DNS internally. The application-level DNS guard is a **detect-and-discard** measure (inspecting `serverAddr()` on the response), not a full prevention. In this path, **network-level egress restriction is the primary SSRF control**: run Chromium in a pod/container with an egress NetworkPolicy or egress proxy that enforces your allow-list. The app check is defence in depth only. Document this constraint clearly in deployment runbooks.
+When the Lightpanda or Playwright (Chromium) tier is used, the browser resolves DNS internally — the application-level `validateUrl` / `dnsGuardLookup` guard is **not consulted**. There is no app-level Chromium pre-flight. In this path, **network-level egress restriction is the primary SSRF control**: run the browser tiers in a pod with an egress NetworkPolicy enforced by a conformant CNI (Calico or Cilium). See `docs/enterprise/THREAT_MODEL.md §4.1` for the full ceiling. This gap is present under `docker run`, local dev, and stdio deployments which have no equivalent of the k8s NetworkPolicy.
 
 ### SSRF — proxy path caveat
 

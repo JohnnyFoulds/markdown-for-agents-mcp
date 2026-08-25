@@ -149,8 +149,8 @@ The build test `src/authorisation.test.ts` asserts that the status line in §4 r
   to a browser tier — is now closed: the ladder re-throws policy-block errors immediately.
   The remaining risk is heuristic escalation (a tier-0-approved URL handed to Chromium
   that re-resolves DNS: TOCTOU). The NetworkPolicy is the authoritative control for that.
-  The risk is documented in `THREAT_MODEL.md §3.1` and `§5` and `STANDARDS.md §Remaining ceilings`.
-  *Basis: POPIA s19; `THREAT_MODEL.md §3.1`.*
+  The risk is documented in `THREAT_MODEL.md §4.1` and `§5` and `STANDARDS.md §Remaining ceilings`.
+  *Basis: POPIA s19; `THREAT_MODEL.md §4.1`.*
 
 - [ ] **IO-06** · Tier 1 · Accept that `POPIA_MODE=enforce` is a ConfigMap value, not a
   compile-time lock. Any operator with namespace edit rights can change it. Startup

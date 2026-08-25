@@ -37,6 +37,12 @@ job should do the same.
 - `docs/enterprise/SECURITY_FINDINGS_REGISTER.md` — test-backed false-positive
   register for predictable scanner findings (XSS echo in JSON, MCP GET/DELETE
   verb probes, metadata URL echoed in error bodies)
+- `scripts/dast/detectors.mjs` — pure probe-verdict logic extracted from
+  `scan-dast.mjs`; side-effect free, importable by tests
+- `src/findingsRegister.test.ts` — citation-integrity guard for
+  `SECURITY_FINDINGS_REGISTER.md`; asserts every §1 test citation resolves
+- `src/tools/crawlConsistency.test.ts` — regression guard asserting
+  `crawl_cancel` and `crawl_results` reject unknown job IDs
 
 ---
 

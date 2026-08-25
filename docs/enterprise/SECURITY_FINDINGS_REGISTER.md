@@ -43,9 +43,9 @@ record for each is the ATO residual-risk register (`docs/enterprise/PRODUCTION_A
 
 | Risk | Status | ATO reference |
 |---|---|---|
-| Shared bearer token — no per-user RBAC | Accepted | `PRODUCTION_AUTHORISATION.md §3.2` |
-| No data-subject rights tooling (POPIA Ch 3) | Accepted (ATO condition) | `PRODUCTION_AUTHORISATION.md §3.4` |
-| DuckDuckGo search provider has no DPA | Accepted (ATO condition) | `PRODUCTION_AUTHORISATION.md §3.3` |
+| Shared bearer token — no per-user RBAC | Accepted | `THREAT_MODEL.md §1` |
+| No data-subject rights tooling (POPIA Ch 3) | Accepted (ATO condition) | `PRODUCTION_AUTHORISATION.md §6.7` |
+| DuckDuckGo search provider has no DPA | Accepted (ATO condition) | `PRODUCTION_AUTHORISATION.md §6.6 (LC-03)` |
 | Playwright renderer executes arbitrary web content in container | Accepted — standard headless browser risk | `THREAT_MODEL.md §5` |
 
 ---

@@ -78,9 +78,10 @@ The HTTP request is:
 - With the Chromium render tier for JS-heavy pages
 
 `fetch_url` and `fetch_urls` accept custom `headers` (e.g. `Authorization`, `Cookie`)
-which are forwarded verbatim to the target URL. There is no config var to disable
-caller-supplied headers — this is a policy-only restriction. See §Shared page cache
-for how `Authorization`/`Cookie` headers affect caching.
+which are forwarded verbatim to the target URL. Set `FETCH_ALLOW_REQUEST_HEADERS=false`
+to strip all caller-supplied headers before forwarding — recommended for Tier 1
+deployments. See §Shared page cache for how `Authorization`/`Cookie` headers affect
+caching.
 
 ### 4. Query + page content → reranker (TEI mode)
 
