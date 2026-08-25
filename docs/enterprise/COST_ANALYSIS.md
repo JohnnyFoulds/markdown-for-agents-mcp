@@ -81,8 +81,8 @@ At 100 000 pages/month (20 000 queries/month, 5 pages/query):
 
 > ⚠ **LLM costs shown at first-party Claude Sonnet pricing ($3/$15 per MTok input/output).
 > Bedrock rates differ — verify at `aws.amazon.com/bedrock/pricing/`.**
->
-> See `docs/enterprise/assets/cost-chart3-pipeline-composition.png`.
+
+![Chart 3 — Total pipeline cost composition: retrieval is 4% of the LLM bill](assets/cost-chart3-pipeline-composition.png)
 
 The retrieval cost difference ($168/mo) is 11% of the LLM bill.
 
@@ -135,6 +135,8 @@ per-process 50 MiB/15-min LRU (see §8.3).
 > volumes. AGPL-3.0 creates licence obligations in commercial deployment. This repo
 > is MIT with 7 runtime dependencies.
 
+![Chart 4 — Vendor staircase vs self-host cost ratio: multiple crossovers, ratio < 1 means self-host wins](assets/cost-chart4-ratio-staircases.png)
+
 ### 4.3 Brave Search API
 
 Source: `https://brave.com/search/api/` — **$5 per 1 000 requests = $0.005/query**
@@ -181,8 +183,8 @@ POPIA residency means paying more for older silicon.
 > At autoscale maximum it reaches $12,249/mo with no spend cap (14.2× ceiling).
 > The `scaling.json` HPA bounds (server max=20, worker max=50) are not just capacity
 > parameters — they are an uncapped liability.
->
-> See `docs/enterprise/assets/cost-chart2-waterfall.png`.
+
+![Chart 2 — Right-sizing waterfall: shipped ECS $863 → right-sized $251 → Spot $113 → Firecrawl $83](assets/cost-chart2-waterfall.png)
 
 ### 6.1 Cost stack (ECS desired, af-south-1)
 
@@ -294,9 +296,10 @@ volume above zero is cheaper on Mode G, and engineering is the only cost to cove
 > ~30 min each. If Vodacom's change-management process requires manual approval per
 > dependency update at 4–8h each, the floor is closer to 0.03–0.05 FTE — still
 > substantially lower than the cloud scenario.
->
-> See `docs/enterprise/assets/cost-chart5-breakeven-fte.png` and
-> `docs/enterprise/assets/cost-chart1-ratio-map.png`.
+
+![Chart 5 — Break-even volume vs engineering FTE for all deployment modes](assets/cost-chart5-breakeven-fte.png)
+
+![Chart 1 — Self-host / Firecrawl cost ratio map: region below the black line favours self-hosting](assets/cost-chart1-ratio-map.png)
 
 ### 7.1 The rate-limit ceiling
 
