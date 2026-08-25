@@ -492,11 +492,14 @@ export const TOOLS: ToolDefinition[] = [
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     handler: async (a: any) => {
       const { getStores } = await import('../store/factory.js');
+      const jobId = String(a.jobId);
+      const exists = await getStores().queue.status(jobId);
+      if (!exists) throw new Error(`Job not found: ${jobId}`);
       const offset = (a.offset as number | undefined) ?? 0;
       const limit = (a.limit as number | undefined) ?? 50;
       const filter = (a.filter as 'all' | 'completed' | 'failed' | undefined) ?? 'all';
-      const pages = await getStores().queue.results(String(a.jobId), offset, limit, filter);
-      return { jobId: String(a.jobId), pages, total: pages.length, offset };
+      const pages = await getStores().queue.results(jobId, offset, limit, filter);
+      return { jobId, pages, total: pages.length, offset };
     },
     toText: (r: any) => {
       const pages = r.pages as any[];
@@ -518,8 +521,11 @@ export const TOOLS: ToolDefinition[] = [
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     handler: async (a: any) => {
       const { getStores } = await import('../store/factory.js');
-      await getStores().queue.cancel(String(a.jobId));
-      return { jobId: String(a.jobId), cancelled: true };
+      const jobId = String(a.jobId);
+      const exists = await getStores().queue.status(jobId);
+      if (!exists) throw new Error(`Job not found: ${jobId}`);
+      await getStores().queue.cancel(jobId);
+      return { jobId, cancelled: true };
     },
     toText: (r: any) => `Job ${r.jobId} cancelled.`,
   },
