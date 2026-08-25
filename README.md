@@ -574,6 +574,7 @@ The full reference is in `.env.example`. Key variables:
 | `STORE_REDIS_URL` | _(unset)_ | Redis URL when `STORE_BACKEND=redis` |
 | `RATE_LIMIT_PER_HOST_RPS` | `0` | Max requests/sec per host (0 = unlimited) |
 | `RESPECT_ROBOTS_TXT` | `false` | Honour robots.txt crawl rules |
+| `ROBOTS_ON_ERROR` | `allow` | Behaviour when `robots.txt` is unreachable (5xx/timeout). `deny` reaches RFC 9309 §2.3.1.4 SHOULD-disallow. |
 | `HTTP_PROXY_URL` | _(unset)_ | Outbound proxy for all tiers |
 | `PROXY_PINS` | _(unset)_ | JSON array of proxy URLs for round-robin rotation |
 | `SEARCH_FANOUT_RESULTS` | `20` | Max URLs returned from search fan-out |

@@ -35,6 +35,19 @@ already thread `MCP_AUTH_TOKEN` through — you only need to supply the value.
 - `src/utils/logger.ts` — `Logger.metrics[]` age-bounded by `CRAWL_RETENTION_MS` (raw URLs must not persist beyond the retention window)
 - `CRAWL_RETENTION_MS` (default `604800000`, 7 days) and `RETENTION_SWEEP_INTERVAL_MS` (default `3600000`, 1 hour) added to all six config locations
 
+### Added — Phase 7: Config parity — bidirectional .env.example ↔ configSchema
+
+- `src/config.parity.test.ts` — bidirectional parity test: every key in `.env.example` must be in `configSchema` (catches documented-but-ignored vars), and every key in `configSchema` must be in `.env.example` (catches undocumented vars). Fails at compile time before a bad commit can push.
+- `src/config.ts` — `configSchema` exported for test introspection; `ROBOTS_ON_ERROR` (`allow`|`deny`, default `allow`) and `BROWSER_DISABLE_DEV_SHM` (`false`) added
+- `src/http/robots.ts` — `fetchRobotsTxt` honours `ROBOTS_ON_ERROR`: 5xx/other returns a disallow-all synthetic `robots.txt` when set to `deny` (RFC 9309 §2.3.1.4 SHOULD-disallow), and `null` (allow) otherwise
+- `src/render/browserPool.ts` — `BROWSER_DISABLE_DEV_SHM` read from `getConfig()` instead of `process.env[]` directly (was bypassing the Zod schema — same failure mode as the Phase 2.1 auth fail-open bug)
+- `.env.example` — removed five dead keys that set env vars with no effect: `BROWSER_CHANNEL`, `OTEL_ENABLED`, `RENDER_ESCALATE_THRESHOLD`, `RENDER_MIN_TEXT_CHARS`, `RENDER_TIER_MEMO_DECAY_PROB`
+
+**RED output before this commit (`.env.example` → `configSchema` direction):**
+  ROBOTS_ON_ERROR is in .env.example but missing from configSchema — setting it has no effect
+  BROWSER_DISABLE_DEV_SHM is in .env.example but missing from configSchema — setting it has no effect
+  [+ 5 dead vars]
+
 ### Added — POPIA Phase 6: PII detection and enforcement (s10, s19, s105)
 
 - `src/privacy/detect.ts` — zero-dependency heuristic detector: SA ID (13 digits, valid `YYMMDD`, Luhn-valid; a s105(5) unique identifier), MSISDN (`+27XXXXXXXXX` / `0[6-8]XXXXXXXX`), email, PAN (13–19 digits, optional space/hyphen separators, Luhn-valid); PAN scan capped at 4 KB to bound wall-clock time on adversarial input

@@ -104,9 +104,8 @@ export class BrowserPool {
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        // --disable-dev-shm-usage: only when /dev/shm is not sized properly.
-        // Set BROWSER_DISABLE_DEV_SHM=true as an escape hatch for restricted runtimes.
-        ...(process.env['BROWSER_DISABLE_DEV_SHM'] === 'true' ? ['--disable-dev-shm-usage'] : []),
+        // --disable-dev-shm-usage: only when /dev/shm is not sized properly (BROWSER_DISABLE_DEV_SHM=true).
+        ...(getConfig().BROWSER_DISABLE_DEV_SHM ? ['--disable-dev-shm-usage'] : []),
         '--disable-gpu',
       ],
       ...(proxyUrl ? { proxy: { server: proxyUrl, bypass: proxyBypass } } : {}),

@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { initializeConfig } from '../config.js';
 
 vi.mock('playwright', () => ({
   chromium: { launch: vi.fn() },
@@ -43,7 +44,8 @@ function makeMockBrowser() {
   return { browser, context, page };
 }
 
-beforeEach(() => { vi.clearAllMocks(); });
+beforeEach(() => { vi.clearAllMocks(); initializeConfig({}); });
+afterEach(() => { initializeConfig({}); });
 
 // ── warmup ────────────────────────────────────────────────────────────────────
 

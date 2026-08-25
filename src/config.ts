@@ -5,7 +5,7 @@
 
 import { z } from 'zod';
 
-const configSchema = z.object({
+export const configSchema = z.object({
   // Fetch settings
   FETCH_TIMEOUT_MS: z.string().default('30000').transform(Number),
   MAX_CONCURRENT_FETCHES: z.string().default('5').transform(Number),
@@ -64,7 +64,16 @@ const configSchema = z.object({
   RATE_LIMIT_BURST: z.string().default('10').transform(Number),
   RATE_LIMIT_MAX_WAIT_MS: z.string().default('30000').transform(Number),
   RESPECT_ROBOTS_TXT: z.string().default('false').transform(val => val === 'true'),
+  // Behaviour when robots.txt is unreachable (4xx, 5xx, timeout).
+  // RFC 9309 §2.3.1.4: SHOULD assume complete disallow. Default 'allow' preserves
+  // current behaviour; set 'deny' to reach RFC-conforming behaviour.
+  ROBOTS_ON_ERROR: z.string().default('allow').refine(v => ['allow', 'deny'].includes(v), {
+    message: 'ROBOTS_ON_ERROR must be allow or deny',
+  }),
   HTTP_DEFAULT_CHARSET: z.string().default('utf-8'),
+  // Escape hatch for restricted runtimes where /dev/shm is not properly sized.
+  // Adds --disable-dev-shm-usage to the Chromium launch args.
+  BROWSER_DISABLE_DEV_SHM: z.string().default('false').transform(val => val === 'true'),
 
   // Render ladder
   BROWSER_POOL_SIZE: z.string().default('1').transform(Number),

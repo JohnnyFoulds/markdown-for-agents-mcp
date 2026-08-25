@@ -143,6 +143,7 @@ All variables are set in `base/configmap.yaml` and overridden in overlay patches
 | `RETENTION_SWEEP_INTERVAL_MS` | `3600000` | How often the retention sweep runs in ms (default 1 hour). |
 | `SEARCH_ENABLE_DUCKDUCKGO` | `true` | Include DuckDuckGo in the search fanout. US-hosted, no data-processing agreement — set `false` to remove (POPIA s72). |
 | `DOWNLOAD_DIR_ALLOWLIST` | `/tmp` | Comma-separated path prefixes allowed as `download_file` `outputPath`. Extend with caution — files are not retention-scoped (POPIA s19). |
+| `ROBOTS_ON_ERROR` | `allow` | Behaviour when `robots.txt` is unreachable (5xx/timeout). `deny` reaches RFC 9309 §2.3.1.4 SHOULD-disallow behaviour. |
 | `POPIA_MODE` | `enforce` | `enforce` (block on detection) \| `monitor` (audit-only) \| `off` (disabled — loud startup warning). |
 | `POPIA_SCAN_CONTENT` | `false` | Scan fetched page bodies for PII. Off by default — see POPIA plan §6 for the policy rationale. |
 | `POPIA_AUDIT_ENABLED` | `true` | Emit POPIA s22 audit events to stderr. |

@@ -11,6 +11,7 @@ const robotsParser = _require('robots-parser') as (url: string, txt: string) => 
 import { RobotsDeniedError } from '../utils/errors.js';
 import type { HttpClient } from './types.js';
 import { robotsDeniedTotal } from '../obs/metrics.js';
+import { getConfig } from '../config.js';
 
 const CACHE = new LRUCache<string>({ maxBytes: 4 * 1024 * 1024, ttl: 60 * 60 * 1000 });
 
@@ -39,8 +40,11 @@ export async function fetchRobotsTxt(origin: string, client: HttpClient): Promis
       CACHE.set(robotsUrl, txt, Buffer.byteLength(txt, 'utf8'));
       return txt;
     }
-    // 5xx / other → treat as allow (ROBOTS_ON_ERROR=allow default)
-    return null;
+    // 5xx / other → honour ROBOTS_ON_ERROR (RFC 9309 §2.3.1.4: SHOULD disallow when unreachable)
+    let onError = 'allow';
+    try { onError = getConfig().ROBOTS_ON_ERROR; } catch { /* config not yet initialised */ }
+    // deny: return a disallow-all synthetic robots.txt so the caller blocks the fetch
+    return onError === 'deny' ? 'User-agent: *\nDisallow: /\n' : null;
   } catch {
     return null;
   }
