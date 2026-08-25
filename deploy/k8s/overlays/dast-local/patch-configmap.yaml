@@ -3,4 +3,8 @@ kind: ConfigMap
 metadata:
   name: mcp-config
 data:
-  RENDER_MAX_TIER: "http"
+  # Run probes at the production-default RENDER_MAX_TIER (playwright) so that
+  # the browser render tiers are exercised by the DAST scan. Previously pinned
+  # to "http", which gave a clean bill of health to the one genuinely
+  # unguarded path (browser DNS internal resolution) while generating seven
+  # false-positive findings on the HTTP tier.
