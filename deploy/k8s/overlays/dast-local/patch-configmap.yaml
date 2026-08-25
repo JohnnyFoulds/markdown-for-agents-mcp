@@ -2,9 +2,9 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: mcp-config
-data:
-  # Run probes at the production-default RENDER_MAX_TIER (playwright) so that
-  # the browser render tiers are exercised by the DAST scan. Previously pinned
-  # to "http", which gave a clean bill of health to the one genuinely
-  # unguarded path (browser DNS internal resolution) while generating seven
-  # false-positive findings on the HTTP tier.
+# No data overrides — the scan inherits the production-default RENDER_MAX_TIER
+# (playwright) so the browser render tiers are exercised. Previously this patch
+# pinned RENDER_MAX_TIER: "http" which gave a clean bill of health to the browser
+# tiers while generating false-positive findings on the HTTP tier. Removed in
+# Phase 6 (DAST remediation). The file is kept so the kustomization patch target
+# remains valid; a metadata-only patch is a no-op for the data section.

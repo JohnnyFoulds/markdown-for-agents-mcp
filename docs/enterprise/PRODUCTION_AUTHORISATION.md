@@ -141,10 +141,16 @@ The build test `src/authorisation.test.ts` asserts that the status line in §4 r
 
 - [ ] **IO-05** · Tier 1 · Setting `RENDER_MAX_TIER=http` in the Tier 1 ConfigMap prevents
   any browser launch. If the operator permits a higher tier (`lightpanda` or `playwright`),
-  accept the residual risk: `page.goto` bypasses `validateUrl`, `dnsGuard`, and the rate
-  limiter, and in-browser subresource requests (scripts, XHR, fetch) are domain-unfiltered.
-  The risk is documented in `THREAT_MODEL.md §5` and `STANDARDS.md §Remaining ceilings`.
-  *Basis: POPIA s19; `THREAT_MODEL.md §5`.*
+  accept the residual risk: heuristic escalation (content-based) passes URLs to
+  `page.goto` which bypasses `validateUrl`, `dnsGuard`, and the rate limiter, and
+  in-browser subresource requests (scripts, XHR, fetch) are domain-unfiltered.
+  *Note (Phase 2, commit `b5125d1`):* error-triggered escalation — where a
+  `SsrfViolationError` or `DomainBlockedError` previously caused the ladder to advance
+  to a browser tier — is now closed: the ladder re-throws policy-block errors immediately.
+  The remaining risk is heuristic escalation (a tier-0-approved URL handed to Chromium
+  that re-resolves DNS: TOCTOU). The NetworkPolicy is the authoritative control for that.
+  The risk is documented in `THREAT_MODEL.md §3.1` and `§5` and `STANDARDS.md §Remaining ceilings`.
+  *Basis: POPIA s19; `THREAT_MODEL.md §3.1`.*
 
 - [ ] **IO-06** · Tier 1 · Accept that `POPIA_MODE=enforce` is a ConfigMap value, not a
   compile-time lock. Any operator with namespace edit rights can change it. Startup
@@ -299,9 +305,13 @@ plainly rather than claimed away.
    edit rights can change the deployment to Tier 2 settings. PLT-03 mitigates and
    does not prevent this.
 
-3. **Chromium egress is unguarded by configuration.** Accepted by IO-05. Subresource
-   requests, in-browser fetches, and TLS OCSP/CRL/CT checks bypass all app-level
-   URL filtering. A route interceptor is out of scope for the current revision.
+3. **Chromium egress via heuristic escalation is partially mitigated but not closed.**
+   Accepted by IO-05. Error-triggered escalation past security-block errors (`SsrfViolationError`,
+   `DomainBlockedError`, …) is now closed (Phase 2, commit `b5125d1`). The remaining
+   gap is heuristic escalation: a tier-0-approved URL may be handed to Chromium which
+   re-resolves DNS (TOCTOU). Subresource requests, in-browser fetches, and TLS
+   OCSP/CRL/CT checks still bypass all app-level URL filtering. The egress NetworkPolicy
+   is the authoritative control. A route interceptor is out of scope for the current revision.
 
 4. **The PII scan cap is 8 KB.** Tool arguments larger than 8 KB are truncated before
    scanning. In `enforce` mode, content past the cap egresses without PII checking.
@@ -350,3 +360,4 @@ Re-authorisation is required on any of the following:
 | Version | Date | Author | Summary |
 |---|---|---|---|
 | 1.0 | 2026-08-25 | Engineering | Initial issue |
+| 1.1 | 2026-08-25 | Engineering | DAST remediation (7 phases): provable detectors, fail-closed ladder (Phase 2 closes error-triggered SSRF bypass), unconditional metadata hostname denylist + IP-form gaps, crawl tool consistency, dead guardDns removed, DAST fidelity restored, enterprise findings register. IO-05 and §6.3 updated to reflect Phase 2 partial closure. No re-authorisation trigger met (render-tier changes not listed in §7). |

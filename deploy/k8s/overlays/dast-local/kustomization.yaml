@@ -52,7 +52,8 @@ patches:
     target:
       kind: PodDisruptionBudget
       name: mcp-server-pdb
-  # ConfigMap: disable Playwright (RENDER_MAX_TIER=http) for fast deterministic DAST
+  # ConfigMap: no-op patch — scan inherits production-default RENDER_MAX_TIER (playwright)
+  # so browser tiers are exercised. Previously pinned to "http"; removed in Phase 6.
   - path: patch-configmap.yaml
     target:
       kind: ConfigMap
