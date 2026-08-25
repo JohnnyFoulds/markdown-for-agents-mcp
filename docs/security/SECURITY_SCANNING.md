@@ -221,9 +221,11 @@ Reason: ...
 |---|---|---|
 | CRITICAL | Actively exploitable with high impact (SSRF to metadata, LFI) | Fix before next deploy |
 | HIGH | Serious vulnerability but requires specific conditions | Fix in current sprint |
-| MODERATE | Real issue with lower impact or harder exploitation | Fix in next sprint |
+| MODERATE | Real issue with lower impact or harder exploitation | **Blocks CI** (see note below); fix or accept within 14 calendar days |
 | LOW | Defence-in-depth improvement | Address in hardening pass |
 | INFO | Informational — no direct risk | Suppress or note |
+
+> **CI gate note.** `npm audit --audit-level=moderate` is the binding CI gate — it fails the `security` job for MODERATE and above. `scan-sca.mjs` runs in the same job but exits 1 only on critical/high. The "fix in next sprint" guidance above was incorrect; see `docs/enterprise/DEPENDENCY_MANAGEMENT.md §1.1` for the authoritative statement.
 
 **Common false positives:**
 

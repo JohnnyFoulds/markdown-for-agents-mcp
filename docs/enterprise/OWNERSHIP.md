@@ -54,20 +54,18 @@ provided by the owning team on a best-effort basis within normal working hours
 
 | Activity | Frequency | Owner |
 |---|---|---|
-| Dependency updates (`npm audit fix`) | Weekly in CI; immediately for CVSS ≥ 7.0 | [OWNER_NAME] |
+| Dependency updates (Dependabot + manual) | Dependabot weekly; immediately for CVSS ≥ 7.0 | [OWNER_NAME] |
 | Playwright / Chromium updates | Monthly, or on security advisories | [OWNER_NAME] |
 | SearXNG image updates | Monthly | [OWNER_NAME] |
 | Model updates (`Xenova/bge-reranker-base`) | Quarterly, or on significant quality improvement | [OWNER_NAME] |
 | k8s manifest review | Quarterly, or on Kubernetes minor version upgrade | [OWNER_NAME] |
 
-**Dependency-update policy:**
+**Dependency-update policy:** see [`docs/enterprise/DEPENDENCY_MANAGEMENT.md`](DEPENDENCY_MANAGEMENT.md) for the full SLA table, the exception process, and the Grade B dependency inventory.
 
-1. `npm audit` runs in CI on every merge to `main`. Any high/critical vulnerability
-   blocks the merge.
-2. All production dependency updates go through the standard PR process with
-   `npm test && npm run build` required to pass.
-3. Breaking updates (major version) require a brief impact assessment comment in
-   the PR before merge.
+Summary:
+1. `npm audit --audit-level=moderate` runs in CI on every push/PR to `main` and `development`. **MODERATE and above blocks the merge** (not high/critical only — previous text was incorrect).
+2. Dependabot raises PRs automatically on Monday each week. All production dependency updates go through the standard PR process with `npm test && npm run build` required to pass.
+3. Breaking updates (major version) require a brief impact assessment comment in the PR before merge, and a re-assessment of any Grade B conformance the dependency carries.
 
 ---
 
