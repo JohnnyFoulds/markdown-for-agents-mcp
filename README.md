@@ -588,6 +588,7 @@ The full reference is in `.env.example`. Key variables:
 | `RETENTION_SWEEP_INTERVAL_MS` | `3600000` | Retention sweep interval in ms (1 hour). |
 | `SEARCH_ENABLE_DUCKDUCKGO` | `true` | Include DuckDuckGo in the search fanout. US-hosted, no agreement — set `false` to remove (POPIA s72). |
 | `DOWNLOAD_DIR_ALLOWLIST` | `/tmp` | Comma-separated path prefixes allowed as `download_file` `outputPath` (POPIA s19). |
+| `POPIA_MODE` | `enforce` | `enforce` \| `monitor` (audit-only) \| `off` (disabled — loud warning). Enforcement logic in Phase 6. |
 
 All logs are written to `stderr` to keep `stdout` clean for the MCP protocol.
 

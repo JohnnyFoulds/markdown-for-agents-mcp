@@ -51,6 +51,14 @@ function looksExternal(urlStr: string): boolean {
 export function assertPrivacyPolicy(config: Config): string[] {
   const warnings: string[] = [];
 
+  if (config.POPIA_MODE === 'off') {
+    warnings.push(
+      'POPIA_MODE=off: all privacy controls are disabled. ' +
+      'This forfeits the s105(4) "took all reasonable steps" statutory defence. ' +
+      'Use monitor mode for debugging — do not set off in production.',
+    );
+  }
+
   if (!config.LOG_REDACT_QUERIES) {
     warnings.push(
       'LOG_REDACT_QUERIES=false: query text reaches log storage in plaintext. ' +

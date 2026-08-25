@@ -52,6 +52,17 @@ describe('assertPrivacyPolicy', () => {
     expect(assertPrivacyPolicy(getConfig())).toHaveLength(0);
   });
 
+  it('warns when POPIA_MODE=off', () => {
+    initializeConfig({ POPIA_MODE: 'off' });
+    expect(assertPrivacyPolicy(getConfig()).some(w => /POPIA_MODE/i.test(w))).toBe(true);
+  });
+
+  it('does not warn when POPIA_MODE=enforce (default)', () => {
+    initializeConfig({ POPIA_MODE: 'enforce' });
+    const warnings = assertPrivacyPolicy(getConfig());
+    expect(warnings.some(w => /POPIA_MODE/i.test(w))).toBe(false);
+  });
+
   it('warns when LOG_REDACT_QUERIES=false', () => {
     initializeConfig({ LOG_REDACT_QUERIES: 'false' });
     expect(assertPrivacyPolicy(getConfig()).some(w => /LOG_REDACT_QUERIES/i.test(w))).toBe(true);

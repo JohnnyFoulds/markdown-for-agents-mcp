@@ -7,6 +7,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { validateAndInitializeConfig } from "./config.js";
 import { assertHttpAuthPolicy, assertPrivacyPolicy } from "./server/auth.js";
+import { emitAudit } from "./privacy/audit.js";
 import { fetcher } from "./fetcher.js";
 import { Logger } from "./utils/logger.js";
 import { registerAll } from "./server/registry.js";
@@ -309,7 +310,7 @@ async function main() {
   if (role !== 'worker') {
     const serverFactory = () => {
       const s = new McpServer({ name: "markdown-for-agents-mcp", version });
-      registerAll(s, {}, TOOLS);
+      registerAll(s, { audit: emitAudit }, TOOLS);
       return s;
     };
 

@@ -35,6 +35,17 @@ already thread `MCP_AUTH_TOKEN` through — you only need to supply the value.
 - `src/utils/logger.ts` — `Logger.metrics[]` age-bounded by `CRAWL_RETENTION_MS` (raw URLs must not persist beyond the retention window)
 - `CRAWL_RETENTION_MS` (default `604800000`, 7 days) and `RETENTION_SWEEP_INTERVAL_MS` (default `3600000`, 1 hour) added to all six config locations
 
+### Added — POPIA Phase 4: Audit events (s22)
+- `src/privacy/audit.ts` — `emitAudit(event)` writes one JSON line directly to `process.stderr`, bypassing `LOG_LEVEL` and `LOG_FORMAT`; includes `audit:true`, `requestId`, `tool`, `timestamp`, `outcome`, `piiClasses` (names only, max 8), `action`, `popiaMode`
+- `src/obs/metrics.ts` — `audit_events_total{tool,outcome,pii_detected,popia_mode}` counter; survives log loss and is alertable
+- `src/server/registry.ts` — `AppDeps.audit?` injection point; emit on success and error paths
+- `src/crawl/engine.ts` — emit `job_started` and `job_finished` events in `runWorkerLoop`; covers the high-volume path that `crawl_start` leaves invisible
+- `src/index.ts` — pass `audit: emitAudit` to `registerAll`
+- `src/server/auth.ts` — `assertPrivacyPolicy` now warns when `POPIA_MODE=off`
+- `POPIA_MODE` (default `enforce`) added to all six config locations; enforcement logic lands in Phase 6
+
+**Known limitations (POPIA s22):** s22 requires notifying the Regulator *and* affected data subjects. With a single shared bearer token and no principal identity, this system cannot identify affected data subjects. The audit trail is at-most-once — durability depends on the cluster log pipeline. In stdio mode, stderr is the MCP client's log channel with no shipper.
+
 ### Added — POPIA Phase 3: Egress and disk surface controls (s19, s72)
 - `src/server/auth.ts` — `assertPrivacyPolicy(config)` warns at startup for `LOG_REDACT_QUERIES=false`, `SOCKS5_LISTEN_MODE=intercept`, external `RERANK_TEI_URL`/`SEARXNG_URL`, and `PROXY_PINS`/`SOCKS5_UPSTREAM_URL` set; `looksExternal()` heuristic treats single-label hostnames, RFC 1918, and `*.cluster.local` as in-cluster
 - `src/index.ts` — wire `assertPrivacyPolicy` after `initStores()`; warnings logged at WARN level with `[privacy]` prefix

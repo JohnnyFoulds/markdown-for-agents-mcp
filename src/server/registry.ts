@@ -7,10 +7,12 @@ import {
   toolCallsTotal,
   toolDurationSeconds,
 } from "../obs/metrics.js";
+import type { AuditEvent } from "../privacy/audit.js";
 
 export interface AppDeps {
   // Populated per phase: httpClient (Ph1), ladder (Ph2), searchFanout (Ph3),
   // reranker (Ph4), stores (Ph6). Empty object is the default for Phase 0.
+  audit?: (event: AuditEvent) => void;
   [key: string]: unknown;
 }
 
@@ -84,12 +86,28 @@ export function registerAll(
         try {
           const result = await def.handler(args as never, ctx);
           toolCallsTotal.inc({ tool: def.name, outcome: "success" });
+          deps.audit?.({
+            requestId,
+            tool: def.name,
+            timestamp: Date.now(),
+            outcome: 'success',
+            piiClasses: [],
+            action: 'logged',
+          });
           return {
             content: [{ type: "text" as const, text: def.toText(result) }],
             structuredContent: result,
           };
         } catch (error) {
           toolCallsTotal.inc({ tool: def.name, outcome: "error" });
+          deps.audit?.({
+            requestId,
+            tool: def.name,
+            timestamp: Date.now(),
+            outcome: 'error',
+            piiClasses: [],
+            action: 'logged',
+          });
           const msg = error instanceof Error ? error.message : "Unknown error";
           return {
             content: [{ type: "text" as const, text: `# Error\n\n${msg}\n` }],

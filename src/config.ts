@@ -34,6 +34,12 @@ const configSchema = z.object({
   // POPIA s72 egress gate — set false to remove DuckDuckGo from the search fanout
   SEARCH_ENABLE_DUCKDUCKGO: z.string().default('true').transform(val => val === 'true'),
 
+  // POPIA mode: enforce = block on detection; monitor = audit only; off = disabled (loud warning)
+  // Phase 4 uses this for the audit_events_total metric label; enforcement logic lands in Phase 6
+  POPIA_MODE: z.string().default('enforce').refine(v => ['enforce', 'monitor', 'off'].includes(v), {
+    message: 'POPIA_MODE must be enforce, monitor, or off',
+  }),
+
   // File Download
   DOWNLOAD_TIMEOUT_MS: z.string().default('60000').transform(Number),
   MAX_DOWNLOAD_BYTES: z.string().default('52428800').transform(Number), // 50 MB

@@ -184,6 +184,16 @@ export const cacheNotStoredTotal = new Counter({
   registers: [registry],
 });
 
+// Audit trail (POPIA Phase 4 — s22)
+export const auditEventsTotal = new Counter({
+  name: 'audit_events_total',
+  help: 'Audit events emitted to the container log stream (POPIA s22). ' +
+    'pii_detected=true means at least one PII class was observed; ' +
+    'popia_mode reflects POPIA_MODE at emission time.',
+  labelNames: ['tool', 'outcome', 'pii_detected', 'popia_mode'] as const,
+  registers: [registry],
+});
+
 // Retention sweep (POPIA Phase 2 — s14)
 export const retentionPurgedTotal = new Counter({
   name: 'retention_purged_total',

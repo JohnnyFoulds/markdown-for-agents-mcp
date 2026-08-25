@@ -4,6 +4,7 @@ import { extract } from '../extract/pipeline.js';
 import { validateUrl } from '../utils/domainBlacklist.js';
 import { Logger } from '../utils/logger.js';
 import { crawlQueueDepth, crawlPagesTotal } from '../obs/metrics.js';
+import { emitAudit } from '../privacy/audit.js';
 import type { JobSpec, QueueItem, LeasedItem, PageRecord } from '../store/types.js';
 
 export interface CrawlPageResult {
@@ -236,6 +237,14 @@ export async function runWorkerLoop(opts: {
     if (!spec) { await sleep(pollMs, signal); continue; }
 
     Logger.info(`[worker:${workerId}] processing job ${claim.jobId}`);
+    emitAudit({
+      requestId: claim.jobId,
+      tool: 'crawl_worker',
+      timestamp: Date.now(),
+      outcome: 'success',
+      piiClasses: [],
+      action: 'job_started',
+    });
 
     // Drain the job
     while (!signal.aborted) {
@@ -278,6 +287,14 @@ export async function runWorkerLoop(opts: {
     }
 
     Logger.info(`[worker:${workerId}] finished job ${claim.jobId}`);
+    emitAudit({
+      requestId: claim.jobId,
+      tool: 'crawl_worker',
+      timestamp: Date.now(),
+      outcome: 'success',
+      piiClasses: [],
+      action: 'job_finished',
+    });
   }
 
   Logger.info(`[worker:${workerId}] stopped`);

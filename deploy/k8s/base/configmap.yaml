@@ -40,6 +40,8 @@ data:
   # POPIA Phase 3 — egress surface controls
   # DuckDuckGo is US-hosted with no data-processing agreement; set false to remove from fanout
   SEARCH_ENABLE_DUCKDUCKGO: "true"
+  # enforce = block on detection; monitor = audit-only; off = all controls disabled (loud warning)
+  POPIA_MODE: "enforce"
   # Restrict download_file outputPath to these prefixes (POPIA s19 disk surface)
   DOWNLOAD_DIR_ALLOWLIST: "/tmp"
 
