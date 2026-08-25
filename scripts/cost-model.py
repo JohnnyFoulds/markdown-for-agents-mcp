@@ -662,6 +662,7 @@ def build_charts(out, assets_dir):
     import numpy as np
 
     VOLUMES = np.logspace(3, 7, 200)  # 1k → 10M
+    ocp_floor = ASSUMPTION_OCP_FTE_ONGOING["value"]  # 0.015 FTE — Mode G engineering floor
 
     plt.rcParams.update({
         "figure.facecolor": "white",
@@ -683,15 +684,15 @@ def build_charts(out, assets_dir):
 
     fte_values = np.linspace(0, 0.5, 30)
     infra_modes = [
-        ("Shipped ECS\n(af-south-1)", out["mode_F_desired_af_south_1"]["total"], "#d62728"),
-        ("Right-sized\n(af-south-1)", out["mode_F_rightsized_af_south_1"]["total"], "#1f77b4"),
-        ("DO Droplet\n$48/mo", out["mode_B_digitalocean"]["total"], "#2ca02c"),
+        ("Shipped ECS\n(af-south-1)", out["mode_F_desired_af_south_1"]["total"], "#d62728", ASSUMPTION_FTE_FLOOR["value"]),
+        ("Right-sized\n(af-south-1)", out["mode_F_rightsized_af_south_1"]["total"], "#1f77b4", ASSUMPTION_FTE_FLOOR["value"]),
+        ("Mode G\n(OpenShift, $0 infra)", 0, "#2ca02c", ocp_floor),
     ]
 
-    for ax, (label, infra, color) in zip(axes, infra_modes):
+    for ax, (label, infra, color, floor) in zip(axes, infra_modes):
         ratios = np.zeros((len(fte_values), len(VOLUMES)))
         for i, fte in enumerate(fte_values):
-            fte_eff = max(fte, ASSUMPTION_FTE_FLOOR["value"])
+            fte_eff = max(fte, floor)
             eng_mo = engineering_monthly(fte_eff)
             for j, vol in enumerate(VOLUMES):
                 buy = firecrawl_cost(vol, "annual")
@@ -710,8 +711,8 @@ def build_charts(out, assets_dir):
         ax.clabel(cs, fmt="equal cost", fontsize=8)
 
         # Mark FTE floor
-        ax.axhline(ASSUMPTION_FTE_FLOOR["value"], color="navy", linestyle=":", linewidth=1.5,
-                   label=f"FTE floor={ASSUMPTION_FTE_FLOOR['value']}")
+        ax.axhline(floor, color="navy", linestyle=":", linewidth=1.5,
+                   label=f"FTE floor={floor}")
 
         ax.set_xscale("log")
         ax.set_xlabel("Monthly pages/queries (log scale)")
@@ -760,10 +761,16 @@ def build_charts(out, assets_dir):
                 f"${val:.0f}", ha="center", va="bottom", fontsize=9, fontweight="bold")
 
     ax.set_ylabel("Monthly cost (USD)")
-    ax.set_title("Chart 2 — Right-sizing Waterfall: Shipped ECS → Firecrawl\n"
-                 "af-south-1 (POPIA residency)", fontsize=11, fontweight="bold")
+    ax.set_title("Chart 2 — Right-sizing Waterfall: Shipped ECS → Firecrawl → Mode G\n"
+                 "af-south-1 (POPIA residency) — Mode G: existing OpenShift + proxy + free providers",
+                 fontsize=11, fontweight="bold")
     ax.axhline(83,  color="#2ca02c", linestyle="--", linewidth=1, alpha=0.7, label="Firecrawl Standard $83")
     ax.axhline(599, color="#1a7a1a", linestyle="--", linewidth=1, alpha=0.7, label="Firecrawl Scale $599")
+    ocp_eng = out["mode_G_openshift_eng"]
+    ax.axhline(ocp_eng["ongoing_mo"], color="#9467bd", linestyle="--", linewidth=2,
+               label=f"Mode G ongoing engineering ${ocp_eng['ongoing_mo']:.0f}/mo (year 4+)")
+    ax.axhline(ocp_eng["total_mo"], color="#9467bd", linestyle="-.", linewidth=1.5,
+               label=f"Mode G incl. setup amort. ${ocp_eng['total_mo']:.0f}/mo")
     ax.legend(fontsize=9)
     plt.xticks(rotation=15, ha="right")
     plt.tight_layout()
@@ -781,12 +788,19 @@ def build_charts(out, assets_dir):
     queries_mo = ref_vol / 5
     llm_cost_mo = out["llm_vs_retrieval_context"]["llm_cost_per_query_usd"] * queries_mo
 
-    categories = ["LLM\ninference", "Retrieval\ncost", "Infra\n(overhead)", "Engineering\n(0.1 FTE)"]
+    ocp_ongoing_mo = out["mode_G_openshift_eng"]["ongoing_mo"]
+    categories = ["LLM\ninference", "Retrieval\ncost", "Infra\n(overhead)", "Engineering"]
     self_vals  = [
         llm_cost_mo,
         0,  # self-host retrieval: included in infra
         out["mode_F_rightsized_af_south_1"]["total"],
         engineering_monthly(0.10),
+    ]
+    modeg_vals = [
+        llm_cost_mo,
+        0,             # free providers ($0/query)
+        0,             # existing infra ($0 marginal)
+        ocp_ongoing_mo,  # 0.015 FTE ongoing floor
     ]
     firecrawl_vals = [
         llm_cost_mo,
@@ -796,11 +810,12 @@ def build_charts(out, assets_dir):
     ]
 
     x = np.arange(len(categories))
-    w = 0.35
-    b1 = ax.bar(x - w/2, self_vals,     w, label="Self-host (right-sized, af-south-1)", color="#1f77b4", alpha=0.85)
-    b2 = ax.bar(x + w/2, firecrawl_vals, w, label="Firecrawl Standard (100k pages)",    color="#2ca02c", alpha=0.85)
+    w = 0.25
+    b1 = ax.bar(x - w, self_vals,      w, label="Self-host (right-sized, 0.1 FTE)", color="#1f77b4", alpha=0.85)
+    b2 = ax.bar(x,     modeg_vals,     w, label="Mode G (OpenShift, 0.015 FTE floor)", color="#9467bd", alpha=0.85)
+    b3 = ax.bar(x + w, firecrawl_vals, w, label="Firecrawl Standard (100k pages)",    color="#2ca02c", alpha=0.85)
 
-    for bar in list(b1) + list(b2):
+    for bar in list(b1) + list(b2) + list(b3):
         if bar.get_height() > 50:
             ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 20,
                     f"${bar.get_height():.0f}", ha="center", va="bottom", fontsize=9)
@@ -809,7 +824,7 @@ def build_charts(out, assets_dir):
     ax.set_xticklabels(categories)
     ax.set_ylabel("Monthly cost (USD)")
     ax.set_title(f"Chart 3 — Total Pipeline Cost Composition at {ref_vol:,} pages/month\n"
-                 "Retrieval is 1-4% of total; LLM token efficiency is the dominant lever",
+                 "Mode G (OpenShift) shown at 0.015 FTE floor; LLM dominates all scenarios",
                  fontsize=11, fontweight="bold")
     ax.legend(fontsize=9)
     ax.text(0.5, 0.98,
@@ -834,16 +849,24 @@ def build_charts(out, assets_dir):
     fc_vals    = [firecrawl_cost(v, "annual")  for v in VOLUMES]
     fc_mo_vals = [firecrawl_cost(v, "monthly") for v in VOLUMES]
 
-    ratio_shipped = [(shipped_infra + eng_floor_mo) / max(fc, 1) for fc in fc_vals]
-    ratio_rs      = [(rs_infra + eng_floor_mo) / max(fc, 1) for fc in fc_vals]
-    ratio_rs_25   = [(rs_infra + engineering_monthly(0.25)) / max(fc, 1) for fc in fc_vals]
+    ocp_eng_total_mo   = out["mode_G_openshift_eng"]["total_mo"]    # $527 setup+ongoing
+    ocp_eng_ongoing_mo = out["mode_G_openshift_eng"]["ongoing_mo"]  # $100 ongoing only
+    ratio_shipped   = [(shipped_infra + eng_floor_mo) / max(fc, 1) for fc in fc_vals]
+    ratio_rs        = [(rs_infra + eng_floor_mo) / max(fc, 1) for fc in fc_vals]
+    ratio_rs_25     = [(rs_infra + engineering_monthly(0.25)) / max(fc, 1) for fc in fc_vals]
+    ratio_modeg     = [ocp_eng_total_mo / max(fc, 1) for fc in fc_vals]
+    ratio_modeg_ong = [ocp_eng_ongoing_mo / max(fc, 1) for fc in fc_vals]
 
     ax.semilogx(VOLUMES, ratio_shipped, color="#d62728", linewidth=2,
-                label=f"Shipped ECS + FTE-floor (infra ${shipped_infra:.0f}/mo)")
+                label=f"Shipped ECS + cloud floor (infra ${shipped_infra:.0f}/mo)")
     ax.semilogx(VOLUMES, ratio_rs,      color="#1f77b4", linewidth=2,
-                label=f"Right-sized + FTE-floor (infra ${rs_infra:.0f}/mo)")
+                label=f"Right-sized + cloud floor (infra ${rs_infra:.0f}/mo)")
     ax.semilogx(VOLUMES, ratio_rs_25,   color="#1f77b4", linewidth=2, linestyle="--",
                 label=f"Right-sized + 0.25 FTE")
+    ax.semilogx(VOLUMES, ratio_modeg,     color="#9467bd", linewidth=2.5, linestyle="-",
+                label=f"Mode G incl. setup amort. ${ocp_eng_total_mo:.0f}/mo")
+    ax.semilogx(VOLUMES, ratio_modeg_ong, color="#9467bd", linewidth=2, linestyle="--",
+                label=f"Mode G ongoing only ${ocp_eng_ongoing_mo:.0f}/mo (year 4+)")
     ax.axhline(1.0, color="black", linewidth=1.5, linestyle="-", label="Equal cost (ratio = 1.0)")
     ax.axhline(1.0, color="black", linewidth=0.5)
 
@@ -874,16 +897,16 @@ def build_charts(out, assets_dir):
 
     fte_range = np.linspace(0, 0.5, 100)
     infra_configs = [
-        ("Shipped ECS (af-south-1)", out["mode_F_desired_af_south_1"]["total"], "#d62728"),
-        ("Right-sized (af-south-1)", out["mode_F_rightsized_af_south_1"]["total"], "#1f77b4"),
-        ("Right-sized + Spot",       out["mode_F_rightsized_spot_af_south_1"]["total"], "#17becf"),
-        ("DO Droplet $48",           out["mode_B_digitalocean"]["total"], "#2ca02c"),
+        ("Shipped ECS (af-south-1)", out["mode_F_desired_af_south_1"]["total"], "#d62728", ASSUMPTION_FTE_FLOOR["value"]),
+        ("Right-sized (af-south-1)", out["mode_F_rightsized_af_south_1"]["total"], "#1f77b4", ASSUMPTION_FTE_FLOOR["value"]),
+        ("Right-sized + Spot",       out["mode_F_rightsized_spot_af_south_1"]["total"], "#17becf", ASSUMPTION_FTE_FLOOR["value"]),
+        ("Mode G (OpenShift, $0 infra)", 0, "#9467bd", ocp_floor),
     ]
 
-    for label, infra, color in infra_configs:
+    for label, infra, color, floor in infra_configs:
         bevs = []
         for fte in fte_range:
-            fte_eff = max(fte, ASSUMPTION_FTE_FLOOR["value"])
+            fte_eff = max(fte, floor)
             eng_mo = engineering_monthly(fte_eff)
             total_self = infra + eng_mo
             # Find first volume where Firecrawl cost >= self-host total
@@ -896,9 +919,13 @@ def build_charts(out, assets_dir):
         ax.semilogy(fte_range, bevs, color=color, linewidth=2, label=label)
 
     ax.axvline(ASSUMPTION_FTE_FLOOR["value"], color="navy", linestyle=":", linewidth=1.5,
-               label=f"FTE floor (0.06 — CVE/maint minimum)")
-    ax.fill_betweenx([1000, 10_000_001], 0, ASSUMPTION_FTE_FLOOR["value"],
-                     alpha=0.08, color="navy", label="Inadmissible (below FTE floor)")
+               label=f"Cloud FTE floor ({ASSUMPTION_FTE_FLOOR['value']})")
+    ax.axvline(ocp_floor, color="#9467bd", linestyle="--", linewidth=1.5,
+               label=f"Mode G FTE floor ({ocp_floor})")
+    ax.fill_betweenx([1000, 10_000_001], 0, ocp_floor,
+                     alpha=0.06, color="#9467bd", label="Below Mode G floor")
+    ax.fill_betweenx([1000, 10_000_001], ocp_floor, ASSUMPTION_FTE_FLOOR["value"],
+                     alpha=0.06, color="navy", label="Below cloud floor")
 
     ax.set_xlabel("Ongoing engineering FTE")
     ax.set_ylabel("Break-even volume (pages/month, log scale)")

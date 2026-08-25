@@ -96,19 +96,25 @@ Already running OpenShift + in-house proxy?
 
 At 100 000 pages/month (20 000 queries/month, 5 pages/query):
 
-| Component | Self-host (right-sized) | Firecrawl Standard |
-|---|---|---|
-| LLM inference (Claude Sonnet, first-party) | ~$1 500/mo | ~$1 500/mo |
-| Retrieval / infra | $251/mo | $83/mo |
-| Engineering (0.1 FTE) | $667/mo | $0 |
-| **Total** | **~$2 418/mo** | **~$1 583/mo** |
+| Component | Self-host (right-sized, 0.1 FTE) | Mode G (OpenShift, 0.015 FTE ‡) | Firecrawl Standard |
+|---|---|---|---|
+| LLM inference (Claude Sonnet, first-party) | ~$1,500/mo | ~$1,500/mo | ~$1,500/mo |
+| Retrieval / infra | $251/mo | **$0** | $83/mo |
+| Engineering | $667/mo | **$100/mo** | $0 |
+| **Total** | **~$2,418/mo** | **~$1,600/mo** | **~$1,583/mo** |
+
+‡ Ongoing floor only (0.015 FTE ≈ 15 h/yr). During the 3-year setup amortisation, add
+$427/mo → engineering = $527/mo, total ≈ $2,027/mo.
 
 > ⚠ **LLM costs shown at first-party Claude Sonnet pricing ($3/$15 per MTok input/output).
 > Bedrock rates differ — verify at `aws.amazon.com/bedrock/pricing/`.**
 
-![Chart 3 — Total pipeline cost composition: retrieval is 4% of the LLM bill](assets/cost-chart3-pipeline-composition.png)
+![Chart 3 — Total pipeline cost composition across three deployment scenarios](assets/cost-chart3-pipeline-composition.png)
 
-The retrieval cost difference ($168/mo) is 11% of the LLM bill.
+The retrieval cost difference between right-sized and Firecrawl ($168/mo) is 11% of the
+LLM bill. **Mode G eliminates retrieval cost entirely yet total pipeline cost remains almost
+identical to Firecrawl Standard** (~$1,600 vs ~$1,583) — because LLM dominates both. The
+decisive variable is extraction quality and token verbosity, not the retrieval infrastructure.
 
 **Consequence:** A ±20% difference in extracted-token verbosity between self-hosted
 markdown extraction and Tavily's `raw_content` is worth approximately $300/mo —
@@ -159,7 +165,7 @@ per-process 50 MiB/15-min LRU (see §8.3).
 > volumes. AGPL-3.0 creates licence obligations in commercial deployment. This repo
 > is MIT with 7 runtime dependencies.
 
-![Chart 4 — Vendor staircase vs self-host cost ratio: multiple crossovers, ratio < 1 means self-host wins](assets/cost-chart4-ratio-staircases.png)
+![Chart 4 — Vendor staircase vs self-host cost ratio: Mode G crosses below 1.0 at ~1M pages; cloud modes cross at higher volumes](assets/cost-chart4-ratio-staircases.png)
 
 ### 4.3 Brave Search API
 
@@ -208,7 +214,7 @@ POPIA residency means paying more for older silicon.
 > The `scaling.json` HPA bounds (server max=20, worker max=50) are not just capacity
 > parameters — they are an uncapped liability.
 
-![Chart 2 — Right-sizing waterfall: shipped ECS $863 → right-sized $251 → Spot $113 → Firecrawl $83](assets/cost-chart2-waterfall.png)
+![Chart 2 — Right-sizing waterfall: shipped ECS $863 → right-sized $251 → Spot $113 → Firecrawl $83 → Mode G $100/mo ongoing](assets/cost-chart2-waterfall.png)
 
 ### 6.1 Cost stack (ECS desired, af-south-1)
 
@@ -321,9 +327,9 @@ volume above zero is cheaper on Mode G, and engineering is the only cost to cove
 > dependency update at 4–8h each, the floor is closer to 0.03–0.05 FTE — still
 > substantially lower than the cloud scenario.
 
-![Chart 5 — Break-even volume vs engineering FTE for all deployment modes](assets/cost-chart5-breakeven-fte.png)
+![Chart 5 — Break-even volume vs engineering FTE: Mode G (OpenShift) breaks even at lower volume and lower FTE than all cloud modes](assets/cost-chart5-breakeven-fte.png)
 
-![Chart 1 — Self-host / Firecrawl cost ratio map: region below the black line favours self-hosting](assets/cost-chart1-ratio-map.png)
+![Chart 1 — Self-host / Firecrawl cost ratio map: Mode G panel (right) breaks even at ~1M pages; cloud panels require higher volumes](assets/cost-chart1-ratio-map.png)
 
 ### 7.1 The rate-limit ceiling
 
@@ -357,6 +363,11 @@ other $226/mo is idle reservation. Vendors charge nothing for idle periods.
 At 40% duty cycle (schedulable batch), the self-host model improves substantially —
 this is the topology's genuine advantage case.
 
+**Mode G exception:** On existing OpenShift, the underlying nodes are sunk infrastructure —
+paid for regardless of whether this service uses them. Idle periods for *this service* do not
+translate to wasted compute spend in the same way. The duty-cycle asymmetry applies to dedicated
+cloud infra; it is substantially reduced for Mode G.
+
 ### 8.3 Cache asymmetry
 
 `urlCache` in `src/fetcher.ts` is a **per-process 50 MiB / 15-minute LRU**. In a
@@ -385,6 +396,11 @@ The flag is a real cost control. Note: it is not set in
 `deploy/k8s/base/configmap.yaml` — defaults to `true` in `src/config.ts:89`, but
 can be overridden, and setting it to `false` also OOMKills the server pods due to
 higher Chromium memory consumption.
+
+**Mode G exception:** There is no NAT Gateway. Traffic routes through the enterprise proxy;
+bandwidth charges are part of the existing proxy agreement, not a marginal cost of this
+deployment. `RENDER_BLOCK_RESOURCES` still controls Chromium resource loading and matters
+for memory consumption, but the NAT cost line is eliminated entirely.
 
 ### 8.6 Compliance cost on the buy side
 
@@ -496,27 +512,8 @@ gate this repo is built to pass, and would carry the same ATO burden.
 
 ## 11. Explicit recommendation
 
-**Build: the governed MCP interface and internal-host render path.**
-**Buy: Firecrawl for public-web bulk extraction at high volume.**
-
-Specifically:
-
-1. **Keep developing the MCP interface, governance layer, and POPIA controls** — this
-   is the part with no market substitute for an SA regulated buyer. The POPIA
-   assessment, per-engine ToS analysis, audit path, data-residency controls, and
-   ATO documentation are a delivered asset.
-
-2. **Retain self-hosted Chromium render for internal/residency-bound URLs** — the
-   cost is low, the residency guarantee is absolute, IP-reputation risk is nil.
-
-3. **Route public-web bulk extraction to Firecrawl** — accept the vendor risk; route
-   via this repo's MCP interface so the governance and audit layer applies regardless
-   of whether render happens locally or remotely.
-
-4. **Right-size the shipped manifests before production deployment** — the ECS topology
-   as shipped at $863/mo is 3.4× the cost of a viable right-sized topology ($251) and
-   is 10× more expensive than Firecrawl Standard for comparable volume. This is a
-   two-day effort.
+**The recommendation depends on your deployment context. For OpenShift buyers, §11.1 is
+the primary recommendation. The cloud-native case follows in §11.2.**
 
 ### 11.1 Mode G: for enterprises already on OpenShift
 
@@ -556,7 +553,31 @@ marginally cheaper in direct cost but loses on residency, governance, and licenc
 For **internal/residency-bound URLs**: no vendor alternative exists at any price.
 Mode G is the only option.
 
-### Conditions under which the recommendation flips
+### 11.2 Cloud-native deployment (no existing OpenShift)
+
+**Build: the governed MCP interface and internal-host render path.**
+**Buy: Firecrawl for public-web bulk extraction at high volume.**
+
+Specifically:
+
+1. **Keep developing the MCP interface, governance layer, and POPIA controls** — this
+   is the part with no market substitute for an SA regulated buyer. The POPIA assessment,
+   per-engine ToS analysis, audit path, data-residency controls, and ATO documentation
+   are a delivered asset.
+
+2. **Retain self-hosted Chromium render for internal/residency-bound URLs** — the cost
+   is low, the residency guarantee is absolute, IP-reputation risk is nil.
+
+3. **Route public-web bulk extraction to Firecrawl** — accept the vendor risk; route
+   via this repo's MCP interface so the governance and audit layer applies regardless of
+   whether render happens locally or remotely.
+
+4. **Right-size the shipped manifests before production deployment** — the ECS topology
+   as shipped at $863/mo is 3.4× the cost of a viable right-sized topology ($251) and
+   is 10× more expensive than Firecrawl Standard for comparable volume. This is a
+   two-day effort.
+
+### 11.3 Conditions under which either recommendation flips
 
 **"Buy Firecrawl entirely" if:**
 - Deployer is NOT on existing OpenShift (cloud-only, paying for infra from scratch)
@@ -677,9 +698,11 @@ available (see `src/search/providers/serper.ts`). The $8–12 estimate may be th
    reads NOT AUTHORISED. Legal/DPO/security-architect time in an SA enterprise is
    3–6 months calendar. The buy option ships in an afternoon behind an existing
    egress proxy. Time-to-value is the strongest buy argument; it is not a chart.
-5. **Cost is not the deciding factor.** If POPIA s72 makes both vendors unusable,
-   the crossover analysis is informative but not determinative. The real question
-   becomes self-host vs Firecrawl self-host vs no capability at all.
+5. **For cloud deployments below the break-even threshold, cost is not the deciding
+   factor.** POPIA s72 and licence are determinative for regulated SA buyers regardless
+   of price. For Mode G (existing OpenShift), the cost case is positive — self-hosting is
+   cheaper than Firecrawl Standard for any meaningful volume once setup is amortised. The
+   non-cost arguments in §10 reinforce an already-favourable position, not substitute for it.
 6. **RERANK_BACKEND=local fails at runtime.** Both ECS task definitions set
    `RERANK_BACKEND=local`, but `@huggingface/transformers` and `onnxruntime-node`
    are absent from `package.json` and `package-lock.json`. The shipped HPA custom
