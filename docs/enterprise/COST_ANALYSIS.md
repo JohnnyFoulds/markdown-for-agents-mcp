@@ -10,7 +10,8 @@
 ## 1. Headline recommendation
 
 **The answer depends on your infrastructure. For an enterprise already on OpenShift:
-deploy this, pay essentially nothing, and stop buying Tavily.**
+the cost case is positive — self-hosting is cheaper than any Firecrawl tier above Standard
+at meaningful volumes, and free providers replace Tavily at $0/query.**
 
 The cost story has two very different chapters depending on whether you are starting
 from scratch in the cloud, or deploying onto infrastructure you already own.
@@ -20,20 +21,25 @@ from scratch in the cloud, or deploying onto infrastructure you already own.
 **This solution is genuinely cheap and viable — not just justifiable on governance
 grounds.** When every cloud cost line item is already paid for:
 
-- **Marginal infrastructure cost: $0.** Compute, proxy/NAT, load balancer, cluster
-  control plane, metrics, and logging are all existing assets.
-- **Ongoing engineering: ~$100/mo** ($1,200/yr = R22,200/yr) — roughly 15 hours per
-  year of a senior engineer's time reviewing automated Dependabot PRs and Playwright
-  updates.
-- **Search workloads: free providers beat Tavily at the first query.** SearXNG `clean`
-  profile costs $0/query vs Tavily Growth at $0.005/credit. Any search volume above
-  zero is cheaper on Mode G.
-- **Extract/crawl: break-even against Firecrawl at ~34 000 pages/day** (~1M pages/mo)
-  at the engineering floor. Below that, Firecrawl Standard ($83/mo) is marginally
-  cheaper in direct cost but loses on residency, licence, and governance.
+- **Marginal infrastructure cost: $0** *(marginal cost on an already-paid cluster —
+  OpenShift licensing, operations, and capacity headroom are sunk costs not included
+  here; adding this workload consumes cluster capacity).*
+- **Engineering cost depends on your change-management process:**
+  - Best case — fully automated CI/CD, no manual CAB step per dependency update:
+    **$527/mo** during the 3-year setup amortisation; **$100/mo** ongoing (year 4+)
+  - More defensible in a regulated enterprise with change advisory processes:
+    **0.03–0.05 FTE** → $713–$847/mo during amortisation; $200–$333/mo ongoing
+  - See §6.3 for the full engineering table and what each assumption requires
+- **Search workloads: free providers replace Tavily at $0/query.** SearXNG `clean`
+  profile costs $0/query vs Tavily Growth at $0.005/credit. **Important: lower recall
+  on ambiguous queries than Tavily** (§6.3 caveat 1) — benchmark quality before
+  replacing a production Tavily integration.
+- **Extract/crawl: break-even against Firecrawl at ~34,000 pages/day** (~1M pages/mo)
+  at the 0.015 FTE floor; at a more conservative **0.05 FTE: ~47,000 pages/day**.
+  Both thresholds are well below cloud modes at equivalent engineering investment.
 
 The four non-cost arguments below *reinforce* an already-positive cost case; they are
-not a substitute for it.
+not a substitute for it. Read §6.3 and §7 before quoting the $100/mo figure externally.
 
 ### For enterprises starting from scratch in the cloud
 
@@ -57,7 +63,10 @@ at the maintenance floor. The genuine case rests on:
 
 ```
 Already running OpenShift + in-house proxy?
-├── YES → Deploy Mode G (§6.3). Cost case is positive. ~10 weeks setup, ~$100/mo ongoing.
+├── YES → Deploy Mode G (§6.3). Cost case is positive.
+│         Engineering setup: ~10 weeks. Legal/ATO calendar: add 3–6 months in a
+│         regulated enterprise (DPO sign-off, CAB approvals, POPIA s72 conclusion).
+│         Ongoing: $100/mo best case (0.015 FTE); $200–$333/mo regulated enterprise floor.
 │         Set SEARCH_ENABLE_DUCKDUCKGO=false. Use SEARXNG_ENGINE_PROFILE=clean.
 │         Configure Chromium --proxy-server. Add SCC for worker pods.
 │
@@ -271,11 +280,27 @@ maintenance reduces to periodic PR reviews:
 | Initial setup (Routes, SCC, proxy, KEDA) | 0.15–0.25 FTE | 10 weeks once | ~$4,274 amortised over 3 yr → $427/mo |
 | Ongoing (Playwright updates, Dependabot reviews) | **0.015 FTE** | Continuous | **$100/mo** ($1,200/yr = R22,200/yr) |
 
-The 0.015 FTE floor corresponds to approximately **10–15 hours per year** of a
-senior engineer's time: reviewing Playwright release notes, approving automated
-Dependabot PRs once CI is green, and handling occasional incidents.
+The 0.015 FTE floor corresponds to approximately **10–15 hours per year** and requires:
+- Automated CI/CD where Dependabot PRs are auto-approved when tests are green — no
+  manual change-advisory-board step per dependency update
+- Playwright/Chromium updates taking ~30 min each with no manual security review
+- No per-dependency approval from a central change management function
 
-**Total ongoing after setup amortisation ends (year 4+): $100/mo = R1,850/mo.**
+**In a regulated SA enterprise (MNO, FSP) with change advisory board processes,
+0.03–0.05 FTE is more defensible** (~3h per update × 8 updates/year = ~24h/year ≈ 0.03
+FTE; add incident response and security questionnaires to reach 0.05). Both figures are
+substantially below the 0.06 cloud floor because there is no infrastructure to manage.
+
+| FTE | Context | Monthly cost (ongoing) | Monthly cost (during 3-yr amortisation) |
+|---|---|---|---|
+| 0.015 | Best case: fully automated CI/CD, no CAB | $100 | $527 |
+| 0.03 | Regulated enterprise with streamlined CAB | $200 | $713 |
+| 0.05 | Conservative regulated enterprise | $333 | $847 |
+| 0.10 | Active development or high incident rate | $667 | $1,094 |
+
+**Total ongoing after setup amortisation ends (year 4+): $100–$333/mo depending on
+change-management process.** The $100/mo figure requires automated CI/CD and should not
+be quoted without that caveat.
 
 > ⚠ **Three caveats apply regardless of cost:**
 >
@@ -310,22 +335,30 @@ monthly volume above which self-host total cost is lower.
 | Shipped ECS | 0.25 FTE | ~5.1M/mo | ~170 000 |
 | Right-sized Fargate | 0.06 (cloud floor) | ~1.9M/mo | ~65 000 |
 | Right-sized Fargate | 0.25 FTE | ~4.1M/mo | ~135 000 |
-| **OpenShift (Mode G)** | **0.015 FTE (floor)** | **~1.0M/mo** | **~34 000** |
-| OpenShift (Mode G) | 0.10 FTE | ~2.0M/mo | ~66 000 |
-| OpenShift (Mode G) | 0.25 FTE | ~3.6M/mo | ~121 000 |
+| **OpenShift (Mode G)** | **0.015 FTE (best case)** | **~1.0M/mo** | **~34,000** |
+| OpenShift (Mode G) | 0.03 FTE (regulated enterprise minimum) | ~1.2M/mo | ~40,000 |
+| OpenShift (Mode G) | 0.05 FTE (conservative regulated floor) | ~1.4M/mo | ~47,000 |
+| OpenShift (Mode G) | 0.10 FTE | ~2.0M/mo | ~66,000 |
+| OpenShift (Mode G) | 0.25 FTE | ~3.6M/mo | ~121,000 |
 
-**Mode G changes the economics materially.** The break-even floor drops from
-65 000 pages/day (right-sized Fargate) to 34 000 pages/day (OpenShift). More
-importantly, for **search-only workloads** the break-even is **the first query**:
-Mode G uses free providers ($0/query) vs Tavily Growth ($0.005/credit); any search
-volume above zero is cheaper on Mode G, and engineering is the only cost to cover.
+**Mode G changes the economics materially** even at the conservative floor. The
+break-even floor drops from ~65,000 pages/day (right-sized Fargate, cloud floor) to
+~47,000 pages/day at 0.05 FTE — a defensible regulated-enterprise estimate. At the
+0.015 FTE best case the floor is ~34,000 pages/day.
 
-> ⚠ **Cloud scenarios (ECS, K8s):** The 0.06 FTE cloud floor includes infrastructure
-> management overhead. **OpenShift scenario:** The 0.015 FTE floor assumes mature CI/CD
-> where Dependabot PRs are auto-approved on green tests and Playwright updates take
-> ~30 min each. If Vodacom's change-management process requires manual approval per
-> dependency update at 4–8h each, the floor is closer to 0.03–0.05 FTE — still
-> substantially lower than the cloud scenario.
+For **search-only workloads** the break-even is **the first query**: free providers
+cost $0/query vs Tavily Growth at $0.005/credit. Engineering is the only cost, and
+at any reasonable FTE it is covered by low search volumes.
+
+> ⚠ The **0.015 FTE floor** requires fully automated CI/CD with no manual
+> change-advisory-board step (see §6.3). In a regulated enterprise, **0.03–0.05 FTE
+> is more defensible** — the break-even moves to 40,000–47,000 pages/day, still well
+> below all cloud modes at equivalent engineering investment.
+>
+> The **break-even figures above use the 12-week generic setup assumption** in
+> `engineering_monthly()`. Mode G's OCP-specific setup is 10 weeks ($427/mo amortised
+> vs $513/mo), placing the true break-even at the Growth-to-Scale staircase boundary
+> (~500k pages/mo). The table uses the conservative figure.
 
 ![Chart 5 — Break-even volume vs engineering FTE: Mode G (OpenShift) breaks even at lower volume and lower FTE than all cloud modes](assets/cost-chart5-breakeven-fte.png)
 
@@ -484,8 +517,16 @@ process may conclude with a refusal — **making the vendor non-viable at any pr
 The cross-border analysis in `docs/enterprise/POPIA_ASSESSMENT.md` and
 `docs/enterprise/DATA_FLOW.md` applies equally to Tavily and Firecrawl.
 
-This factor completely dominates price for regulated buyers. For unregulated buyers
-(internal tooling, no sensitive data), it is negotiable.
+**This conclusion is conditional on what the s72 assessment actually finds.** If it
+concludes "no cross-border transfer permissible," the cost comparison is moot — build.
+If it concludes "yes with DPA and operator agreement," the cost comparison becomes the
+deciding factor — and for a cloud-only deployment at <1M pages/month, the buy option
+wins on direct cost (§7). The POPIA assessment (`POPIA_ASSESSMENT.md`) exists but
+`PRODUCTION_AUTHORISATION.md` is currently NOT AUTHORISED. A legal conclusion is the
+missing input; this document cannot substitute for it.
+
+For unregulated buyers (internal tooling, no sensitive data), the s72 constraint is
+negotiable and the cost comparison dominates.
 
 ### 10.2 Archetype C: internal hosts
 
@@ -505,8 +546,15 @@ would spend 3–6 months on the governance pack alone. **This is not a claim abo
 the software quality — it is a statement about what the buyer would need to produce
 independently.**
 
-Firecrawl self-hosted is unauthenticated by default. It would fail the same governance
-gate this repo is built to pass, and would carry the same ATO burden.
+**Current state of these documents:** Several contain placeholders or are unsigned.
+`OWNERSHIP.md` has `[OWNER_NAME]`, `[OWNER_EMAIL]`, `[OWNER_HANDLE]`.
+`PRODUCTION_AUTHORISATION.md` status: NOT AUTHORISED. All SLO values in `SLO.md`
+are TBD. These are frameworks in progress, not a turnkey delivered pack. The ATO
+calendar time from framework to sign-off is 3–6 months in most regulated SA
+enterprises — not a one-day task.
+
+Firecrawl self-hosted is unauthenticated by default. It would face the same governance
+requirement, and the buyer would build the pack themselves from scratch.
 
 ---
 
@@ -532,23 +580,28 @@ The decision tree simplifies to:
 ```
 Already on OpenShift + have in-house proxy?
 ├── YES → Deploy Mode G.
-│         Set SEARCH_ENABLE_DUCKDUCKGO=false.
-│         Set SEARXNG_ENGINE_PROFILE=clean.
+│         Engineering setup: ~10 weeks.
+│         Legal/ATO calendar: add 3–6 months (DPO sign-off, CAB, POPIA s72 conclusion).
+│         Set SEARCH_ENABLE_DUCKDUCKGO=false. Set SEARXNG_ENGINE_PROFILE=clean.
 │         Configure --proxy-server for Chromium in browserPool.ts.
 │         Add OpenShift Route + SCC for worker pods.
 │         Wire KEDA for HPA (OpenShift Custom Metrics Autoscaler Operator).
-│         Total setup: ~10 weeks. Ongoing: ~15h/yr.
+│         Ongoing: $100–$333/mo depending on change-management process (see §6.3).
 └── NO  → Use right-sized Fargate ($251/mo) or evaluate buy vs build on §7 numbers.
 ```
 
-For **search-only workloads**: Mode G beats Tavily at the first query. The search
-providers are free; the infra is paid for. Engineering is the only cost, and at
-R22,200/yr it is well below any Tavily tier above Researcher.
+For **search-only workloads**: Mode G replaces Tavily at $0/query vs $0.005/credit.
+**Caveat: the `clean` profile has lower recall on ambiguous queries than Tavily** (§6.3
+caveat 1, SLO.md Ceiling #2). If Tavily is currently in production and agent quality
+depends on it, benchmark recall before migration — don't assume cost parity implies
+quality parity. The migration effort (integration, regression testing, on-call handover)
+is also not in the model and should be added to the setup estimate.
 
 For **extract/crawl workloads on public web**: Mode G beats Firecrawl Standard ($83/mo)
-once engineering exceeds ~1M pages/month at the 0.015 FTE floor — which at 10% duty
-cycle corresponds to roughly 34 000 pages/day. Below that, Firecrawl Standard is
-marginally cheaper in direct cost but loses on residency, governance, and licence.
+once engineering exceeds ~1M pages/month at the 0.015 FTE floor (34,000 pages/day), or
+~1.4M pages/month at the 0.05 FTE conservative floor (47,000 pages/day). Below that,
+Firecrawl Standard is marginally cheaper in direct cost but loses on residency,
+governance, and licence.
 
 For **internal/residency-bound URLs**: no vendor alternative exists at any price.
 Mode G is the only option.
@@ -675,6 +728,18 @@ position (see Phase 4 of this analysis).
 `https://brave.com/search/api/`). This matches `README.md:610` ($5/1k). The
 discrepancy has been corrected.
 
+### 14.4 Mode G break-even: 12-week vs 10-week setup inconsistency
+
+The `breakeven_volume()` function in `scripts/cost-model.py` uses `ASSUMPTION_SETUP_WEEKS`
+(12 weeks, $513/mo amortised) for all topologies including Mode G. The Mode G section (§6.3)
+and `mode_G_engineering()` use `ASSUMPTION_OCP_SETUP_WEEKS` (10 weeks, $427/mo amortised),
+giving a lower total of $527/mo at the engineering floor rather than $613/mo.
+
+The break-even table in §7 therefore overstates the Mode G floor slightly (~1.0M pages/mo
+vs the ~500k pages at which $527/mo becomes cost-competitive with Firecrawl Scale at
+$599/mo). The table uses the more conservative 12-week figure. Both represent the
+amortisation period; the year-4+ ongoing ($100/mo) is not affected.
+
 ### 14.3 `TAVILY_PARITY_PLAN.md` (Brave + Serper cost estimate)
 
 **Former claim:** "Brave + Serper fan-out ≈ $8–12/1k searches"
@@ -703,7 +768,14 @@ available (see `src/search/providers/serper.ts`). The $8–12 estimate may be th
    of price. For Mode G (existing OpenShift), the cost case is positive — self-hosting is
    cheaper than Firecrawl Standard for any meaningful volume once setup is amortised. The
    non-cost arguments in §10 reinforce an already-favourable position, not substitute for it.
-6. **RERANK_BACKEND=local fails at runtime.** Both ECS task definitions set
+6. **Mode G break-even is at a staircase boundary, not a smooth crossover.** At the
+   engineering floor, Mode G becomes cost-competitive when the buyer crosses Firecrawl's
+   Growth-to-Scale pricing tier boundary. A negotiated Firecrawl enterprise contract
+   below list price, or any change to the assumed FTE, can move this threshold materially.
+   The $100/mo ongoing figure (year 4+) is at the floor; the decision should use the
+   amortisation-period total ($527–$847/mo depending on FTE) for any 3-year horizon
+   comparison.
+7. **RERANK_BACKEND=local fails at runtime.** Both ECS task definitions set
    `RERANK_BACKEND=local`, but `@huggingface/transformers` and `onnxruntime-node`
    are absent from `package.json` and `package-lock.json`. The shipped HPA custom
    metrics (`mcp_inflight_requests`, `crawl_queue_depth`) cannot drive autoscaling
