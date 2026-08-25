@@ -9,43 +9,67 @@
 
 ## 1. Headline recommendation
 
-**Continue, but reposition — and right-size before deploying to production.**
+**The answer depends on your infrastructure. For an enterprise already on OpenShift:
+deploy this, pay essentially nothing, and stop buying Tavily.**
 
-The economic case for self-hosting this tool is *not* cost. At the shipped ECS
-topology the cost case is decisively negative. At a right-sized single-task
-deployment it becomes marginal. The genuine case is:
+The cost story has two very different chapters depending on whether you are starting
+from scratch in the cloud, or deploying onto infrastructure you already own.
+
+### For enterprises already running OpenShift with an in-house proxy (Mode G)
+
+**This solution is genuinely cheap and viable — not just justifiable on governance
+grounds.** When every cloud cost line item is already paid for:
+
+- **Marginal infrastructure cost: $0.** Compute, proxy/NAT, load balancer, cluster
+  control plane, metrics, and logging are all existing assets.
+- **Ongoing engineering: ~$100/mo** ($1,200/yr = R22,200/yr) — roughly 15 hours per
+  year of a senior engineer's time reviewing automated Dependabot PRs and Playwright
+  updates.
+- **Search workloads: free providers beat Tavily at the first query.** SearXNG `clean`
+  profile costs $0/query vs Tavily Growth at $0.005/credit. Any search volume above
+  zero is cheaper on Mode G.
+- **Extract/crawl: break-even against Firecrawl at ~34 000 pages/day** (~1M pages/mo)
+  at the engineering floor. Below that, Firecrawl Standard ($83/mo) is marginally
+  cheaper in direct cost but loses on residency, licence, and governance.
+
+The four non-cost arguments below *reinforce* an already-positive cost case; they are
+not a substitute for it.
+
+### For enterprises starting from scratch in the cloud
+
+**Cost alone does not justify self-hosting below ~1–4M pages/month.** The shipped ECS
+topology at $863/mo is 10× more expensive than Firecrawl Standard for the same volume.
+Even right-sized to $251/mo, break-even against Firecrawl requires ~65 000 pages/day
+at the maintenance floor. The genuine case rests on:
 
 1. **POPIA s72 data residency** — both Tavily and Firecrawl are US-hosted SaaS; for a
-   regulated South African buyer (FSP, MNO) that makes them non-options at any price for
-   sensitive workloads, without a completed cross-border transfer assessment.
-2. **MIT licence** — Firecrawl's self-hosted stack is AGPL-3.0, which carries licence
-   obligations in a commercial product deployment. This repo is MIT with 7 runtime
-   dependencies.
-3. **Footprint** — 3-service deployment (server + worker + store) vs Firecrawl's 6–7
-   (API + workers + Playwright + Redis + RabbitMQ + PostgreSQL + optional FoundationDB),
-   which is unauthenticated by default.
+   regulated SA buyer (FSP, MNO) that makes them non-options at any price for sensitive
+   workloads without a completed cross-border transfer assessment.
+2. **MIT licence** — Firecrawl's self-hosted stack is AGPL-3.0. This repo is MIT with
+   7 runtime dependencies.
+3. **Footprint** — 3-service deployment vs Firecrawl's 6–7 services, unauthenticated
+   by default.
 4. **Governance pack** — 14 enterprise documents (POPIA assessment, threat model, ToS
-   analysis, SLO, runbook, DFD, ATO, etc.) that regulated buyers need for sign-off.
-   No commercial vendor ships this for an SA buyer; it is a delivered asset, not a
-   competitive claim.
+   analysis, SLO, runbook, DFD, ATO, etc.) that no commercial vendor ships for an SA
+   regulated buyer.
 
-Cost **is not a positive differentiator** for any realistic SA enterprise workload
-below approximately 4 million pages per month with 0.25 FTE assigned. The decision
-tree is:
+### Decision tree
 
 ```
-Workload requires POPIA s72 residency OR internal hosts?
-├── YES → Self-host (or buy nothing). Cost is not the question; buy is not an option.
-└── NO  → Is monthly volume > 4M pages AND do you have 0.25+ FTE to maintain?
-          ├── YES → Evaluate self-hosting on the right-sized topology
-          └── NO  → Buy Firecrawl Standard/Scale. Lower cost, lower risk.
+Already running OpenShift + in-house proxy?
+├── YES → Deploy Mode G (§6.3). Cost case is positive. ~10 weeks setup, ~$100/mo ongoing.
+│         Set SEARCH_ENABLE_DUCKDUCKGO=false. Use SEARXNG_ENGINE_PROFILE=clean.
+│         Configure Chromium --proxy-server. Add SCC for worker pods.
+│
+└── NO (cloud / new infra)
+    ├── Workload requires POPIA s72 residency OR fetches internal/private URLs?
+    │   ├── YES → Self-host. Buy is not an option at any price. Right-size to $251/mo.
+    │   └── NO  → Is monthly volume > 1M pages AND engineering >= 0.015 FTE?
+    │             ├── YES → Self-host on right-sized topology. Cost becomes competitive.
+    │             └── NO  → Buy Firecrawl Standard/Scale. Lower cost, lower operational risk.
+    │
+    └── Consider hybrid: Firecrawl for public-web bulk, self-host for residency-bound URLs.
 ```
-
-**The hybrid approach is the most defensible default:** Firecrawl for public-web bulk
-(where they absorb bot-defence and volume), self-hosted render retained for
-internal/residency-bound URLs (where the compute bill is low and IP-reputation risk is
-zero). This approach eliminates the high-volume throughput uncertainty that makes the
-confidence interval wide, and preserves the governance layer — the durable asset.
 
 ---
 
