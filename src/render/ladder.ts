@@ -1,5 +1,6 @@
 import { getConfig } from '../config.js';
 import { Logger } from '../utils/logger.js';
+import { isPolicyBlockError } from '../utils/errors.js';
 import { needsEscalation } from './heuristic.js';
 import { HttpTier } from './tiers/httpTier.js';
 import { LightpandaTier } from './tiers/lightpandaTier.js';
@@ -97,6 +98,14 @@ export class RenderLadder {
         const elapsed = (Date.now() - tierStart) / 1000;
         fetchDurationSeconds.observe({ tier }, elapsed);
         fetchRequestsTotal.inc({ tier, outcome: 'error' });
+
+        // Policy-block errors (SSRF, domain blocked, robots, …) must never
+        // escalate to a higher tier. The guard fired correctly — escalating
+        // would convert a block into a bypass via an unguarded browser path.
+        if (isPolicyBlockError(err)) {
+          throw err;
+        }
+
         const nextTierIdx = currentTierIdx + 1;
         if (nextTierIdx <= maxTierIdx) {
           const nextTier = this.tiers[nextTierIdx]!.tier;

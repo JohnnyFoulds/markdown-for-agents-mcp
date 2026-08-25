@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { SsrfViolationError, DomainBlockedError } from '../utils/errors.js';
 
 vi.mock('../obs/metrics.js', () => ({
   fetchRequestsTotal:   { inc: vi.fn() },
@@ -278,5 +279,64 @@ describe('RenderLadder — metrics', () => {
     const ladder = new RenderLadder([fakeTier('http', STATIC_HTML)]);
     await ladder.render(BASE_REQ);
     expect(vi.mocked(fetchEscalationsTotal.inc)).not.toHaveBeenCalled();
+  });
+});
+
+// ── Phase 2: fail closed on policy-block errors ───────────────────────────────
+//
+// A security-block error (SsrfViolationError, DomainBlockedError, …) must NOT
+// cause the ladder to escalate to a weaker tier. Escalating a security decision
+// converts a guard that fired correctly into a bypass — the exact mechanism that
+// makes the render ladder an SSRF escalation path.
+//
+// RED before fix: ladder.ts catch block escalates on ANY error, including
+// SsrfViolationError. The tests below assert that after the fix, browser tiers
+// are never invoked when tier-0 throws a policy-block error.
+
+describe('RenderLadder — fail closed on policy-block errors (Phase 2)', () => {
+  it('does NOT escalate when http tier throws SsrfViolationError — error propagates', async () => {
+    const ssrfErr = new SsrfViolationError('metadata.google.internal', '169.254.169.254');
+    const http = fakeTier('http', '', { throws: ssrfErr });
+    const lp   = fakeTier('lightpanda', STATIC_HTML);
+    const pw   = fakeTier('playwright', STATIC_HTML);
+    const ladder = new RenderLadder([http, lp, pw]);
+
+    // Must reject with the original SsrfViolationError — not silently succeed via playwright
+    await expect(ladder.render(BASE_REQ)).rejects.toThrow(SsrfViolationError);
+    // The browser tiers must never have been invoked
+    expect(lp.render).not.toHaveBeenCalled();
+    expect(pw.render).not.toHaveBeenCalled();
+  });
+
+  it('does NOT escalate when http tier throws DomainBlockedError', async () => {
+    const blockedErr = new DomainBlockedError('internal.corp');
+    const http = fakeTier('http', '', { throws: blockedErr });
+    const pw   = fakeTier('playwright', STATIC_HTML);
+    const ladder = new RenderLadder([http, pw]);
+
+    await expect(ladder.render(BASE_REQ)).rejects.toThrow(DomainBlockedError);
+    expect(pw.render).not.toHaveBeenCalled();
+  });
+
+  it('DOES still escalate on a generic transient error (conn reset)', async () => {
+    // Regression guard: non-security errors must still escalate as before
+    const http = fakeTier('http', '', { throws: new Error('ECONNRESET') });
+    const pw   = fakeTier('playwright', STATIC_HTML);
+    const ladder = new RenderLadder([http, pw]);
+
+    const result = await ladder.render(BASE_REQ);
+    expect(result.tier).toBe('playwright');
+  });
+
+  it('SsrfViolationError at lightpanda tier also does not escalate to playwright', async () => {
+    // The guard can fire at any tier; escalation must not happen regardless of which tier blocks
+    const http = fakeTier('http', SPA_HTML);  // succeeds but triggers heuristic escalation
+    const lp   = fakeTier('lightpanda', '', { throws: new SsrfViolationError('evil.test', '10.0.0.1') });
+    const pw   = fakeTier('playwright', STATIC_HTML);
+    const ladder = new RenderLadder([http, lp, pw]);
+
+    // http → heuristic escalation to lightpanda → SsrfViolationError → must NOT reach playwright
+    await expect(ladder.render(BASE_REQ)).rejects.toThrow(SsrfViolationError);
+    expect(pw.render).not.toHaveBeenCalled();
   });
 });

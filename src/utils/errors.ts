@@ -80,3 +80,24 @@ export class AllProvidersFailedError extends Error {
     this.causes = causes;
   }
 }
+
+/**
+ * Returns true when `err` is a security-policy block — a decision made
+ * by a guard that must not be retried or escalated to a weaker tier.
+ *
+ * Escalating past a policy-block converts a correctly-firing guard into a
+ * bypass: tier-0 blocks the request, then tier-1 (Chromium/Lightpanda)
+ * resolves DNS internally and fetches it unchecked. Using this predicate
+ * in both `shouldRetry` (retry.ts) and the render ladder (ladder.ts)
+ * ensures the two call sites stay in sync without duplicating the class list.
+ */
+export function isPolicyBlockError(err: unknown): boolean {
+  return (
+    err instanceof SsrfViolationError ||
+    err instanceof DomainBlockedError ||
+    err instanceof RedirectBlockedError ||
+    err instanceof RedirectLoopError ||
+    err instanceof RobotsDeniedError ||
+    err instanceof RateLimitTimeoutError
+  );
+}
