@@ -874,10 +874,12 @@ with `src/server/**` and `src/tools/definitions.ts` explicitly included.
    different product.
 3. **Latency.** Realistic advanced-search p50 ~3–6 s, p95 ~10–15 s. TEI closes the rerank
    gap but is a sidecar.
-4. **Cost is not obviously lower.** Brave + Serper fan-out ≈ $8–12/1k searches *plus* your
-   own render CPU — the same ballpark as Tavily credits. **The case is data locality,
-   control, and self-hosting, not price.** Price only wins with SearXNG/DDG primary, which
-   is not enterprise-viable.
+4. **Cost is not obviously lower.** Brave is $5/1k queries ($0.005/search, verified
+   2026-08-24); Serper pricing is not publicly listed. Brave alone equals Tavily Growth
+   ($0.005/credit) exactly. Fan-out with both providers doubles per-query spend. **The case
+   is data locality, control, and self-hosting, not price.** Price only wins with
+   SearXNG/DDG primary, which is not enterprise-viable (DPA unresolved).
+   See `docs/enterprise/COST_ANALYSIS.md` for the full model.
 5. **Lightpanda is pre-1.0 with partial Web API support.** Tier 2's real hit rate is
    unknown until measured (see verification gate 4).
 6. **Lightpanda AGPL-3.0 is unresolved risk.** Get legal sign-off before any

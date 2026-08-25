@@ -1,0 +1,470 @@
+{
+  "tavily_tiers": [
+    {
+      "name": "Researcher",
+      "credits": 1000,
+      "price_usd_mo": 0,
+      "source": "https://tavily.com/#pricing",
+      "retrieved": "2026-08-24"
+    },
+    {
+      "name": "Project",
+      "credits": 4000,
+      "price_usd_mo": 30,
+      "source": "https://tavily.com/#pricing",
+      "retrieved": "2026-08-24"
+    },
+    {
+      "name": "Bootstrap",
+      "credits": 15000,
+      "price_usd_mo": 100,
+      "source": "https://tavily.com/#pricing",
+      "retrieved": "2026-08-24"
+    },
+    {
+      "name": "Startup",
+      "credits": 38000,
+      "price_usd_mo": 220,
+      "source": "https://tavily.com/#pricing",
+      "retrieved": "2026-08-24"
+    },
+    {
+      "name": "Growth",
+      "credits": 100000,
+      "price_usd_mo": 500,
+      "source": "https://tavily.com/#pricing",
+      "retrieved": "2026-08-24"
+    }
+  ],
+  "firecrawl_tiers": [
+    {
+      "name": "Hobby",
+      "pages": 5000,
+      "price_usd_mo": 16,
+      "billing": "annual",
+      "source": "https://www.firecrawl.dev/pricing",
+      "retrieved": "2026-08-24"
+    },
+    {
+      "name": "Standard",
+      "pages": 100000,
+      "price_usd_mo": 83,
+      "billing": "annual",
+      "source": "https://www.firecrawl.dev/pricing",
+      "retrieved": "2026-08-24"
+    },
+    {
+      "name": "Growth",
+      "pages": 500000,
+      "price_usd_mo": 333,
+      "billing": "annual",
+      "source": "https://www.firecrawl.dev/pricing",
+      "retrieved": "2026-08-24"
+    },
+    {
+      "name": "Scale",
+      "pages": 1000000,
+      "price_usd_mo": 599,
+      "billing": "annual",
+      "source": "https://www.firecrawl.dev/pricing",
+      "retrieved": "2026-08-24"
+    }
+  ],
+  "brave_price_usd_per_query": {
+    "value": 0.005,
+    "unit": "USD/query",
+    "source": "https://brave.com/search/api/",
+    "retrieved": "2026-08-24",
+    "confidence": "published",
+    "notes": "$5 per 1 000 requests; README.md:610 is authoritative"
+  },
+  "firecrawl_standard_unit_rate_usd_per_page": {
+    "value": 0.00083,
+    "unit": "USD/page",
+    "source": "https://www.firecrawl.dev/pricing",
+    "retrieved": "2026-08-24",
+    "confidence": "published",
+    "notes": "$83/100k = $0.00083/page (annual billing)"
+  },
+  "tavily_growth_unit_rate_usd_per_credit": {
+    "value": 0.005,
+    "unit": "USD/credit",
+    "source": "https://tavily.com/#pricing",
+    "retrieved": "2026-08-24",
+    "confidence": "published",
+    "notes": "$500/100k credits = $0.005/credit"
+  },
+  "fargate_vcpu_hr_af_south_1": {
+    "value": 0.0546,
+    "unit": "USD/vCPU-hr",
+    "source": "https://aws.amazon.com/fargate/pricing/",
+    "retrieved": "2026-08-24",
+    "confidence": "published",
+    "notes": "af-south-1 is +35% vs us-east-1"
+  },
+  "fargate_gb_hr_af_south_1": {
+    "value": 0.006,
+    "unit": "USD/GiB-hr",
+    "source": "https://aws.amazon.com/fargate/pricing/",
+    "retrieved": "2026-08-24",
+    "confidence": "published",
+    "notes": ""
+  },
+  "fargate_spot_discount": {
+    "value": 0.7,
+    "unit": "fraction saving",
+    "source": "https://aws.amazon.com/fargate/pricing/",
+    "retrieved": "2026-08-24",
+    "confidence": "estimated",
+    "notes": "Spot ~70% cheaper; interruption risk; af-south-1 thin pools"
+  },
+  "eks_control_plane_hr": {
+    "value": 0.1,
+    "unit": "USD/hr",
+    "source": "https://aws.amazon.com/eks/pricing/",
+    "retrieved": "2026-08-24",
+    "confidence": "published",
+    "notes": "$73/mo per cluster"
+  },
+  "nat_gw_hr": {
+    "value": 0.045,
+    "unit": "USD/hr",
+    "source": "https://aws.amazon.com/vpc/pricing/",
+    "retrieved": "2026-08-24",
+    "confidence": "published",
+    "notes": "Per NAT Gateway"
+  },
+  "nat_gw_gb": {
+    "value": 0.045,
+    "unit": "USD/GiB",
+    "source": "https://aws.amazon.com/vpc/pricing/",
+    "retrieved": "2026-08-24",
+    "confidence": "published",
+    "notes": "Per GiB processed; af-south-1 same rate"
+  },
+  "elasticache_single_node_af_south_1": {
+    "value": 50,
+    "unit": "USD/mo",
+    "source": "https://aws.amazon.com/elasticache/pricing/",
+    "retrieved": "2026-08-24",
+    "confidence": "published",
+    "notes": "Approximate; t3.small not available, t4g.small used"
+  },
+  "assumption_render_latency_s": {
+    "value": 4.0,
+    "unit": "s/page",
+    "source": "SLO.md \u2014 TBD",
+    "retrieved": "2026-08-24",
+    "confidence": "assumed",
+    "notes": "All SLO.md measured values are TBD. Range: 2\u20138 s. MOST DECISION-SENSITIVE PARAMETER."
+  },
+  "assumption_success_rate": {
+    "value": 0.75,
+    "unit": "fraction",
+    "source": "SLO.md \u2014 TBD",
+    "retrieved": "2026-08-24",
+    "confidence": "assumed",
+    "notes": "25% failure rate on public web (bot-blocking, timeouts). Vendor charges $0 for failures; self-host pays full compute."
+  },
+  "assumption_duty_cycle": {
+    "value": 0.1,
+    "unit": "fraction",
+    "source": "assumed",
+    "retrieved": "2026-08-24",
+    "confidence": "assumed",
+    "notes": "10% duty cycle = ~2.4h active/day for a business-hours workload. Self-host pays 24x7 regardless."
+  },
+  "assumption_fte_floor": {
+    "value": 0.06,
+    "unit": "FTE",
+    "source": "assumed",
+    "retrieved": "2026-08-24",
+    "confidence": "estimated",
+    "notes": "Hard floor: ~10-15 Chromium CVEs/yr \u00d7 4-8h each + Playwright monthly cadence + Dependabot. Does not include on-call rota."
+  },
+  "assumption_zar_usd": {
+    "value": 18.5,
+    "unit": "ZAR/USD",
+    "source": "assumed",
+    "retrieved": "2026-08-24",
+    "confidence": "assumed",
+    "notes": "Approximate 2026 rate. ZAR/USD volatility ~15-20%/yr. Depreciation makes SaaS more expensive; appreciation less."
+  },
+  "assumption_engineering_rate_usd": {
+    "value": 80000,
+    "unit": "USD/FTE/yr fully-loaded",
+    "source": "assumed",
+    "retrieved": "2026-08-24",
+    "confidence": "assumed",
+    "notes": "SA senior engineer fully-loaded ~R1.5M/yr \u2248 $80k at 18.5"
+  },
+  "assumption_cache_hit_rate": {
+    "value": 0.05,
+    "unit": "fraction",
+    "source": "src/fetcher.ts:50-58",
+    "retrieved": "2026-08-24",
+    "confidence": "estimated",
+    "notes": "Per-process 50 MiB/15-min LRU (src/fetcher.ts). Divided by N replicas in multi-node: effective \u22485%. Vendor global cache measured in days. Cache favours buy."
+  },
+  "assumption_llm_tokens_per_page": {
+    "value": 4000,
+    "unit": "tokens/page",
+    "source": "assumed",
+    "retrieved": "2026-08-24",
+    "confidence": "assumed",
+    "notes": "Downstream LLM context per extracted page. Retrieval is 1-4% of total pipeline cost. Token efficiency is the dominant lever."
+  },
+  "mode_A": {
+    "compute": 0,
+    "overhead": 0,
+    "total": 0,
+    "note": "No server; honest floor"
+  },
+  "mode_B_af_south_1": {
+    "compute": 74,
+    "overhead": 2.5,
+    "total": 76.5,
+    "note": "Single VM, no HA, mandatory Redis-optional (SQLite works)"
+  },
+  "mode_B_digitalocean": {
+    "compute": 48,
+    "overhead": 0,
+    "total": 48,
+    "note": "Single VM, no HA, mandatory Redis-optional (SQLite works)"
+  },
+  "mode_C_af_south_1": {
+    "compute": 74,
+    "overhead": 0,
+    "total": 74,
+    "note": "Cheapest possible; role=both; SQLite store; no Redis"
+  },
+  "mode_E_af_south_1": {
+    "compute": 555,
+    "eks": 73.0,
+    "nat": 35.1,
+    "alb": 16.43,
+    "logs": 2.5,
+    "total": 682.02,
+    "note": "3\u00d7m6i.xlarge, EKS, 1 NAT GW, ALB, CloudWatch"
+  },
+  "mode_F_desired_af_south_1": {
+    "compute": 690.71,
+    "nat": 103.05,
+    "alb": 16.43,
+    "redis": 50,
+    "logs": 2.5,
+    "total": 862.68,
+    "server_replicas": 3,
+    "worker_replicas": 2,
+    "note": "ECS Fargate desired, af-south-1"
+  },
+  "mode_F_hpa_max_af_south_1": {
+    "compute": 11809.1,
+    "nat": 323.55,
+    "alb": 16.43,
+    "redis": 50,
+    "logs": 50.0,
+    "total": 12249.08,
+    "server_replicas": 20,
+    "worker_replicas": 50,
+    "note": "ECS Fargate HPA-max, af-south-1"
+  },
+  "mode_F_rightsized_af_south_1": {
+    "compute": 196.48,
+    "nat": 35.1,
+    "alb": 16.43,
+    "redis": 0,
+    "logs": 2.5,
+    "total": 250.51,
+    "note": "Right-sized single task (on-demand), af-south-1, role=both, SQLite"
+  },
+  "mode_F_rightsized_spot_af_south_1": {
+    "compute": 58.94,
+    "nat": 35.1,
+    "alb": 16.43,
+    "redis": 0,
+    "logs": 2.5,
+    "total": 112.97,
+    "note": "Right-sized single task (Spot), af-south-1, role=both, SQLite"
+  },
+  "hpa_cost_multiplier": 14.2,
+  "vendor_cost_by_volume": {
+    "1000": {
+      "tavily_extract_heavy": 0,
+      "tavily_crawl_heavy": 0,
+      "firecrawl_annual": 16.0,
+      "firecrawl_monthly": 19.2
+    },
+    "10000": {
+      "tavily_extract_heavy": 24.0,
+      "tavily_crawl_heavy": 25.2,
+      "firecrawl_annual": 83.0,
+      "firecrawl_monthly": 99.6
+    },
+    "50000": {
+      "tavily_extract_heavy": 100,
+      "tavily_crawl_heavy": 126.0,
+      "firecrawl_annual": 83.0,
+      "firecrawl_monthly": 99.6
+    },
+    "100000": {
+      "tavily_extract_heavy": 220,
+      "tavily_crawl_heavy": 220,
+      "firecrawl_annual": 83.0,
+      "firecrawl_monthly": 99.6
+    },
+    "250000": {
+      "tavily_extract_heavy": 500,
+      "tavily_crawl_heavy": 500,
+      "firecrawl_annual": 333.0,
+      "firecrawl_monthly": 399.6
+    },
+    "500000": {
+      "tavily_extract_heavy": 750.0,
+      "tavily_crawl_heavy": 787.5,
+      "firecrawl_annual": 333.0,
+      "firecrawl_monthly": 399.6
+    },
+    "1000000": {
+      "tavily_extract_heavy": 1500.0,
+      "tavily_crawl_heavy": 1575.0,
+      "firecrawl_annual": 599.0,
+      "firecrawl_monthly": 718.8
+    },
+    "2000000": {
+      "tavily_extract_heavy": 3000.0,
+      "tavily_crawl_heavy": 3150.0,
+      "firecrawl_annual": 1198.0,
+      "firecrawl_monthly": 1437.6
+    },
+    "5000000": {
+      "tavily_extract_heavy": 7500.0,
+      "tavily_crawl_heavy": 7875.0,
+      "firecrawl_annual": 2995.0,
+      "firecrawl_monthly": 3594.0
+    },
+    "10000000": {
+      "tavily_extract_heavy": 15000.0,
+      "tavily_crawl_heavy": 15750.0,
+      "firecrawl_annual": 5990.0,
+      "firecrawl_monthly": 7188.0
+    }
+  },
+  "breakeven": {
+    "shipped_ecs": {
+      "fte_0.00": {
+        "pages_per_month": 2965000,
+        "pages_per_day": 98833,
+        "infra_mo": 862.68,
+        "eng_mo": 912.82,
+        "total_mo": 1775.5
+      },
+      "fte_0.06": {
+        "pages_per_month": 2965000,
+        "pages_per_day": 98833,
+        "infra_mo": 862.68,
+        "eng_mo": 912.82,
+        "total_mo": 1775.5
+      },
+      "fte_0.10": {
+        "pages_per_month": 3410000,
+        "pages_per_day": 113667,
+        "infra_mo": 862.68,
+        "eng_mo": 1179.49,
+        "total_mo": 2042.17
+      },
+      "fte_0.25": {
+        "pages_per_month": 5079000,
+        "pages_per_day": 169300,
+        "infra_mo": 862.68,
+        "eng_mo": 2179.49,
+        "total_mo": 3042.17
+      },
+      "fte_0.50": {
+        "pages_per_month": 7862000,
+        "pages_per_day": 262067,
+        "infra_mo": 862.68,
+        "eng_mo": 3846.15,
+        "total_mo": 4708.83
+      }
+    },
+    "rightsized": {
+      "fte_0.00": {
+        "pages_per_month": 1943000,
+        "pages_per_day": 64767,
+        "infra_mo": 250.51,
+        "eng_mo": 912.82,
+        "total_mo": 1163.33
+      },
+      "fte_0.06": {
+        "pages_per_month": 1943000,
+        "pages_per_day": 64767,
+        "infra_mo": 250.51,
+        "eng_mo": 912.82,
+        "total_mo": 1163.33
+      },
+      "fte_0.10": {
+        "pages_per_month": 2388000,
+        "pages_per_day": 79600,
+        "infra_mo": 250.51,
+        "eng_mo": 1179.49,
+        "total_mo": 1430.0
+      },
+      "fte_0.25": {
+        "pages_per_month": 4057000,
+        "pages_per_day": 135233,
+        "infra_mo": 250.51,
+        "eng_mo": 2179.49,
+        "total_mo": 2430.0
+      },
+      "fte_0.50": {
+        "pages_per_month": 6840000,
+        "pages_per_day": 228000,
+        "infra_mo": 250.51,
+        "eng_mo": 3846.15,
+        "total_mo": 4096.66
+      }
+    }
+  },
+  "llm_vs_retrieval_context": {
+    "llm_cost_per_query_usd": 0.075,
+    "retrieval_cost_per_query_firecrawl_usd": 0.002995,
+    "retrieval_as_pct_of_llm": 4.0,
+    "note": "Retrieval is 1-4% of pipeline. Token efficiency dominates.",
+    "caveat": "Bedrock Claude pricing differs from first-party; verify at aws.amazon.com/bedrock/pricing/"
+  },
+  "load_bearing_assumptions": [
+    {
+      "key": "render_latency_s",
+      "value": 4.0,
+      "confidence": "assumed",
+      "impact": "HIGH \u2014 sets throughput ceiling",
+      "resolution": "Run scripts/load-test.mjs with concurrency ramp to saturation"
+    },
+    {
+      "key": "success_rate",
+      "value": 0.75,
+      "confidence": "assumed",
+      "impact": "HIGH \u2014 affects unit cost and failure-billing asymmetry"
+    },
+    {
+      "key": "duty_cycle",
+      "value": 0.1,
+      "confidence": "assumed",
+      "impact": "VERY HIGH \u2014 self-host pays 24\u00d77; bursty traffic amplifies"
+    },
+    {
+      "key": "llm_tokens_per_page",
+      "value": 4000,
+      "confidence": "assumed",
+      "impact": "CRITICAL \u2014 retrieval is 1-4% of pipeline; \u00b120% here is larger than all infra combined"
+    },
+    {
+      "key": "zar_usd",
+      "value": 18.5,
+      "confidence": "assumed",
+      "impact": "MEDIUM \u2014 ZAR depreciation makes SaaS more expensive"
+    }
+  ],
+  "generated_note": "Generated by scripts/cost-model.py. All constants have source/retrieved fields. confidence=assumed rows are load-bearing; see load_bearing_assumptions."
+}

@@ -27,9 +27,21 @@ configured explicitly; it is not a default property of the software.
 See `docs/enterprise/DATA_FLOW.md` and `docs/enterprise/PRODUCTION_AUTHORISATION.md`
 for the deployment-tier definitions.
 
-**Zero per-query cost.** At 10 000 searches per day, Tavily costs roughly R650 000
-per year at ~$0.01/search. This tool's marginal cost is compute — which the platform
-team already pays for.
+**No per-query licence fee.** There is no per-query vendor charge for this tool,
+but there *is* a real per-query marginal cost: compute on the infrastructure you
+operate, NAT egress, and any paid provider fees (`BRAVE_API_KEY` at $0.005/query =
+Tavily Growth rate; both providers fan-out in parallel, so enabling both doubles
+per-query spend). The fixed infrastructure floor at the shipped ECS topology in
+af-south-1 is approximately **$863/month before any traffic**. At a right-sized
+single-task deployment the floor drops to ~$251/month.
+
+For comparison: Tavily's Growth tier is **$0.005/credit** (basic search = 1 credit),
+not $0.01 as previously stated. At 10 000 searches/day (3.65M/yr) the buyer qualifies
+for custom Enterprise pricing, likely below $0.005. The correct Growth-tier annual
+comparison is ~R170k, not R650k.
+
+See `docs/enterprise/COST_ANALYSIS.md` for the full cost-of-ownership analysis and
+explicit build/buy recommendation.
 
 **Compliance posture.** The governance pack is complete: POPIA assessment, data flow
 inventory, threat model with honest ceilings, terms-of-service analysis per engine
@@ -37,8 +49,12 @@ profile, runbook, and SLO template. Most open-source tools ship none of this. A
 security or legal reviewer can read everything they need without digging through code.
 
 **Auditable and self-hosted.** The security team can read every line. There is no
-black-box SaaS to trust, no vendor dependency for availability, and no risk of a
-provider changing pricing or ToS mid-contract.
+black-box SaaS to trust, no vendor dependency for availability, and vendor pricing
+or ToS changes do not affect a self-hosted deployment once it is in production.
+Note: the default configuration routes search queries to DuckDuckGo, whose ToS
+exposure is documented in `docs/enterprise/TERMS_OF_SERVICE.md`. Deployers should
+review that document and set `SEARCH_ENABLE_DUCKDUCKGO=false` if unresolved.
+See `docs/enterprise/COST_ANALYSIS.md` for the full cost and vendor-risk comparison.
 
 ---
 

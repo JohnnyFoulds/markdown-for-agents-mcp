@@ -89,7 +89,7 @@ The fetching-capability matrix above does not include paid search APIs because t
 | `advanced` p95 latency | 10–20 s ⚠️ | 10–20 s ⚠️ | ~2 s | ~2 s | N/A | N/A |
 | Index freshness | Live (no lag) | Live (no lag) | Hours–days | Hours–days | Hours–days | Hours–days |
 | Recall on ambiguous queries | Lower ⚠️ | Moderate | High | High | High | High |
-| Cost | Free | Free | ~$0.01/search | ~$0.01/search | ~$0.003/search | ~$0.001/search |
+| Cost | Infra floor | Infra floor | ~$0.005/search (Growth) | ~$0.005/search | ~$0.005/search | ~$0.001/search |
 | API key required | ❌ | ❌ | ✅ required | ✅ required | ✅ required | ✅ required |
 | Self-hosted | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | MCP native | ✅ | ✅ | Via wrapper | Via wrapper | Via wrapper | Via wrapper |
