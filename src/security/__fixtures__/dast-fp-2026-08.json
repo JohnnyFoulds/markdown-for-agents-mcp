@@ -1,0 +1,96 @@
+{
+  "_comment": "Verbatim response bodies from the 2026-08-24 dast:k8s run that triggered false CRITICAL/HIGH findings. Each entry also carries the probe spec so tests can exercise the full pipeline (echo-stripping + detection). Source: security-reports/dast-probes.json (gitignored).",
+
+  "ssrf_fetch_urls_gcp": {
+    "finding_id": "SSRF_FETCH_URLS_URLS_GCP_METADATA",
+    "spec": {
+      "toolName": "fetch_urls",
+      "paramName": "urls",
+      "payloadClass": "ssrf",
+      "label": "fetch_urls.urls/GCP_METADATA",
+      "args": { "urls": ["http://metadata.google.internal/computeMetadata/v1/"] }
+    },
+    "response": {
+      "status": 200,
+      "headers": { "content-type": "application/json" },
+      "body": "{\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"## URL: http://metadata.google.internal/computeMetadata/v1/\\n\\n**Error:** getaddrinfo ENOTFOUND metadata.google.internal\\n\\n---\"}],\"structuredContent\":{\"results\":[{\"url\":\"http://metadata.google.internal/computeMetadata/v1/\",\"title\":\"\",\"markdown\":\"\",\"fetchError\":\"getaddrinfo ENOTFOUND metadata.google.internal\"}]}},\"jsonrpc\":\"2.0\",\"id\":1}"
+    },
+    "expected_outcome": "inconclusive",
+    "expected_reason": "dns_unresolvable",
+    "false_positive_explanation": "The ENOTFOUND error means DNS resolution failed off-cloud. The body contains 'computeMetadata' only because the probe URL was echoed in the error message. No internal content was retrieved."
+  },
+
+  "ssrf_crawl_start_gcp": {
+    "finding_id": "SSRF_CRAWL_START_URL_GCP_METADATA",
+    "spec": {
+      "toolName": "crawl_start",
+      "paramName": "url",
+      "payloadClass": "ssrf",
+      "label": "crawl_start.url/GCP_METADATA",
+      "args": { "url": "http://metadata.google.internal/computeMetadata/v1/" }
+    },
+    "response": {
+      "status": 200,
+      "headers": { "content-type": "application/json" },
+      "body": "{\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Crawl started. Job ID: 0ae5f4e8-ec93-4bd3-85be-ab11b772028e\\nStatus: running\"}],\"structuredContent\":{\"jobId\":\"0ae5f4e8-ec93-4bd3-85be-ab11b772028e\",\"status\":\"running\",\"rootUrl\":\"http://metadata.google.internal/computeMetadata/v1/\"}},\"jsonrpc\":\"2.0\",\"id\":1}"
+    },
+    "expected_outcome": "exploited",
+    "expected_id_prefix": "SSRF_URL_ACCEPTED",
+    "expected_severity": "HIGH",
+    "false_positive_explanation": "The OLD CRITICAL finding was wrong because 'computeMetadata' in the body came from echoing the probe URL. The NEW HIGH finding is correct: crawl_start accepted a metadata URL for a job without synchronous guard rejection — the URL will be queued for the worker to fetch."
+  },
+
+  "xss_crawl_status": {
+    "finding_id": "XSS_REFLECTED_CRAWL_STATUS_JOBID_XSS",
+    "spec": {
+      "toolName": "crawl_status",
+      "paramName": "jobId",
+      "payloadClass": "injection",
+      "label": "crawl_status.jobId/XSS",
+      "args": { "jobId": "<script>alert(document.domain)</script>" }
+    },
+    "response": {
+      "status": 200,
+      "headers": { "content-type": "application/json" },
+      "body": "{\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"# Error\\n\\nJob not found: <script>alert(document.domain)</script>\\n\"}],\"isError\":true},\"jsonrpc\":\"2.0\",\"id\":1}"
+    },
+    "expected_outcome": "info",
+    "false_positive_explanation": "The response is application/json with isError:true. There is no HTML sink. JSON does not execute <script> tags in a browser. Echoing input in an error message is correct and intended behaviour."
+  },
+
+  "xss_crawl_results": {
+    "finding_id": "XSS_REFLECTED_CRAWL_RESULTS_JOBID_XSS",
+    "spec": {
+      "toolName": "crawl_results",
+      "paramName": "jobId",
+      "payloadClass": "injection",
+      "label": "crawl_results.jobId/XSS",
+      "args": { "jobId": "<script>alert(document.domain)</script>" }
+    },
+    "response": {
+      "status": 200,
+      "headers": { "content-type": "application/json" },
+      "body": "{\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"# Results for job <script>alert(document.domain)</script> (offset 0)\"}],\"structuredContent\":{\"jobId\":\"<script>alert(document.domain)</script>\",\"pages\":[],\"total\":0,\"offset\":0}},\"jsonrpc\":\"2.0\",\"id\":1}"
+    },
+    "expected_outcome": "info",
+    "false_positive_explanation": "Same as crawl_status: application/json, no HTML sink."
+  },
+
+  "xss_crawl_cancel": {
+    "finding_id": "XSS_REFLECTED_CRAWL_CANCEL_JOBID_XSS",
+    "spec": {
+      "toolName": "crawl_cancel",
+      "paramName": "jobId",
+      "payloadClass": "injection",
+      "label": "crawl_cancel.jobId/XSS",
+      "args": { "jobId": "<script>alert(document.domain)</script>" }
+    },
+    "response": {
+      "status": 200,
+      "headers": { "content-type": "application/json" },
+      "body": "{\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Job <script>alert(document.domain)</script> cancelled.\"}],\"structuredContent\":{\"jobId\":\"<script>alert(document.domain)</script>\",\"cancelled\":true}},\"jsonrpc\":\"2.0\",\"id\":1}"
+    },
+    "expected_outcome": "info",
+    "false_positive_explanation": "Same as crawl_status: application/json, no HTML sink."
+  }
+}
