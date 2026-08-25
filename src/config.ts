@@ -81,6 +81,10 @@ const configSchema = z.object({
   SEARCH_DEFAULT_COUNTRY: z.string().default('za'),
   SEARCH_DEFAULT_LANGUAGE: z.string().default('en'),
   LOG_REDACT_QUERIES: z.string().default('true').transform(val => val === 'true'),
+  // Optional HMAC salt for redactQuery — shared across replicas for cross-replica correlation.
+  // Unset (default): per-process random salt (uncorrelatable; privacy-safe default).
+  // Set: deterministic hashes — a deliberate trade of privacy for debuggability.
+  LOG_REDACT_SALT: z.string().optional(),
   SEARXNG_ENGINE_PROFILE: z.string().default('clean').refine(v => ['clean', 'full'].includes(v), {
     message: 'SEARXNG_ENGINE_PROFILE must be clean or full',
   }),

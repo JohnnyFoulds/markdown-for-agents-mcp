@@ -2,20 +2,47 @@
  * Logger utility for fetch performance metrics
  */
 
-import { createHash } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { getConfig } from '../config.js';
+import { redactUrl } from '../privacy/redact.js';
+
+// Per-process HMAC-SHA-256 salt for redactQuery.
+// Undefined until first call — lazy-initialised from LOG_REDACT_SALT or randomBytes.
+// Uncorrelatable across restarts and replicas by default (privacy-safe).
+// Set LOG_REDACT_SALT to share the salt explicitly: cross-replica debug, trading
+// privacy for linkability.
+let _querySalt: string | undefined;
+
+/** Test-only export — resets the salt so a fresh random one is generated next call. */
+export function _resetQuerySaltForTest(): void {
+  _querySalt = undefined;
+}
+
+function getQuerySalt(): string {
+  if (!_querySalt) {
+    let explicit = '';
+    try { explicit = getConfig().LOG_REDACT_SALT ?? ''; } catch { /* not initialised */ }
+    _querySalt = explicit || randomBytes(32).toString('hex');
+  }
+  return _querySalt;
+}
 
 /**
  * Returns a privacy-safe representation of a query string.
- * When LOG_REDACT_QUERIES=true (default), returns the first 8 hex chars of
- * its SHA-256 hash so queries are identifiable for debugging without storing
- * the original text. When false, returns the query unchanged.
+ * When LOG_REDACT_QUERIES=true (default), returns 16 hex chars of an
+ * HMAC-SHA-256 hash keyed by a per-process random salt.  Hashes are
+ * stable within a process for debugging correlation, but uncorrelatable
+ * across restarts/replicas unless LOG_REDACT_SALT is set explicitly.
+ *
+ * 16 chars (64-bit) rather than the previous 8 (32-bit) — at 65 k values
+ * the 32-bit space expected ~one collision per process; 64-bit is collision-safe
+ * across the full retention window.
  */
 export function redactQuery(query: string): string {
   let redact = true;
-  try { redact = getConfig().LOG_REDACT_QUERIES; } catch { /* config not initialised — default true */ }
+  try { redact = getConfig().LOG_REDACT_QUERIES; } catch { /* default true */ }
   if (!redact) return query;
-  return `[redacted:${createHash('sha256').update(query).digest('hex').slice(0, 8)}]`;
+  return `[redacted:${createHmac('sha256', getQuerySalt()).update(query).digest('hex').slice(0, 16)}]`;
 }
 
 /**
@@ -61,6 +88,16 @@ function formatTextEntry(level: LogLevel, message: string, _data?: object, reque
   return `${prefix} ${message}`;
 }
 
+const SENSITIVE_JSON_KEYS = new Set(['authorization', 'cookie', 'set-cookie']);
+
+function scrubSensitiveKeys(data: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(data)) {
+    out[k] = SENSITIVE_JSON_KEYS.has(k.toLowerCase()) ? '[redacted]' : v;
+  }
+  return out;
+}
+
 function formatJsonEntry(level: LogLevel, message: string, data?: object, requestId?: string): string {
   const entry: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
@@ -73,7 +110,7 @@ function formatJsonEntry(level: LogLevel, message: string, data?: object, reques
   }
 
   if (data) {
-    entry.data = data;
+    entry.data = scrubSensitiveKeys(data as Record<string, unknown>);
   }
 
   return JSON.stringify(entry);
@@ -180,7 +217,7 @@ export class Logger {
     ? `success (${metrics.duration}ms)`
     : `failed: ${metrics.error}`;
 
-  this.log(level, `[Fetch] ${metrics.url} - ${status}`, undefined, requestId);
+  this.log(level, `[Fetch] ${redactUrl(metrics.url)} - ${status}`, undefined, requestId);
 }
 
   static logCacheHit(hostname: string, size: number, requestId?: string): void {

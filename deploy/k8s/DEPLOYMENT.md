@@ -144,6 +144,7 @@ All variables are set in `base/configmap.yaml` and overridden in overlay patches
 | `SEARCH_ENABLE_DUCKDUCKGO` | `true` | Include DuckDuckGo in the search fanout. US-hosted, no data-processing agreement — set `false` to remove (POPIA s72). |
 | `DOWNLOAD_DIR_ALLOWLIST` | `/tmp` | Comma-separated path prefixes allowed as `download_file` `outputPath`. Extend with caution — files are not retention-scoped (POPIA s19). |
 | `POPIA_MODE` | `enforce` | `enforce` (block on detection) \| `monitor` (audit-only) \| `off` (disabled — loud startup warning). Phase 4 uses this as a metric label; enforcement logic lands in Phase 6. |
+| `LOG_REDACT_SALT` | — | HMAC salt for `redactQuery`. Unset = per-process random (privacy-safe). Set via a Kubernetes Secret for cross-replica query-hash correlation. |
 
 ### Rate limiting
 

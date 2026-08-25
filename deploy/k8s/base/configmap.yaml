@@ -20,6 +20,7 @@ data:
   SEARCH_DEFAULT_COUNTRY: "za"
   SEARCH_DEFAULT_LANGUAGE: "en"
   LOG_REDACT_QUERIES: "true"
+  # LOG_REDACT_SALT: ""  # Unset = per-process random (privacy-safe). Set in a Secret for cross-replica correlation.
   SEARXNG_ENGINE_PROFILE: "clean"
   SEARCH_CACHE_TTL_MS: "3600000"
 

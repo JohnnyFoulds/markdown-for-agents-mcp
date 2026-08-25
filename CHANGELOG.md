@@ -35,6 +35,14 @@ already thread `MCP_AUTH_TOKEN` through — you only need to supply the value.
 - `src/utils/logger.ts` — `Logger.metrics[]` age-bounded by `CRAWL_RETENTION_MS` (raw URLs must not persist beyond the retention window)
 - `CRAWL_RETENTION_MS` (default `604800000`, 7 days) and `RETENTION_SWEEP_INTERVAL_MS` (default `3600000`, 1 hour) added to all six config locations
 
+### Added — POPIA Phase 5: Redaction — per-process salt, URL/header scrubbing
+
+- `src/privacy/redact.ts` — new primitives: `redactUrl()` (removes embedded credentials, replaces query-param values with `[redacted]`, keeps keys); `redactHeaders()` (scrubs `authorization`, `cookie`, `set-cookie`, `proxy-authorization`, `x-api-key`, `x-auth-token`, `x-csrf-token`)
+- `src/utils/logger.ts` — `redactQuery()` upgraded from unsalted SHA-256 (32-bit) to HMAC-SHA-256 with a **per-process random salt** (16 hex chars); hashes are uncorrelatable across restarts/replicas by default; `LOG_REDACT_SALT` enables deliberate cross-replica correlation; `_resetQuerySaltForTest()` export for test isolation; `scrubSensitiveKeys()` applied in `formatJsonEntry` to strip `authorization`/`cookie`/`set-cookie` values from structured log data; `logFetch` now uses `redactUrl()` instead of the raw URL
+- `src/fetcher.ts` — two `Logger.warn` call sites use `redactUrl()` for truncation and cache-miss warnings
+- `security/semgrep/project-invariants.yaml` — rule `sensitive-var-in-console-log` strengthened from a single bare-identifier `console.log($ARG)` pattern to six sub-patterns covering `console.error`, property accesses (`$OBJ.$PROP`), and single-interpolation template literals; fixture updated accordingly
+- `LOG_REDACT_SALT` (optional, unset = per-process random) added to all six config locations
+
 ### Added — POPIA Phase 4: Audit events (s22)
 - `src/privacy/audit.ts` — `emitAudit(event)` writes one JSON line directly to `process.stderr`, bypassing `LOG_LEVEL` and `LOG_FORMAT`; includes `audit:true`, `requestId`, `tool`, `timestamp`, `outcome`, `piiClasses` (names only, max 8), `action`, `popiaMode`
 - `src/obs/metrics.ts` — `audit_events_total{tool,outcome,pii_detected,popia_mode}` counter; survives log loss and is alertable

@@ -4,6 +4,7 @@
  */
 
 import { Logger } from "./utils/logger.js";
+import { redactUrl } from "./privacy/redact.js";
 import { LRUCache } from "./utils/cache.js";
 import { validateUrl } from "./utils/domainBlacklist.js";
 import {
@@ -142,7 +143,7 @@ export class Fetcher {
       if (html.length > config.MAX_CONTENT_LENGTH) {
         const truncatedSize = html.length;
         html = html.slice(0, config.MAX_CONTENT_LENGTH);
-        Logger.warn(`[Truncated] ${url}: ${truncatedSize} -> ${config.MAX_CONTENT_LENGTH} chars`);
+        Logger.warn(`[Truncated] ${redactUrl(url)}: ${truncatedSize} -> ${config.MAX_CONTENT_LENGTH} chars`);
       }
 
       // RFC 9111 shared-cache policy: check storability before writing to cache.
@@ -162,7 +163,7 @@ export class Fetcher {
           const stats = urlCache.getStats();
           Logger.updateCacheStats(stats.size, stats.totalBytes, stats.maxBytes);
         } catch {
-          Logger.warn(`[Cache] Failed to cache ${url}`);
+          Logger.warn(`[Cache] Failed to cache ${redactUrl(url)}`);
         }
       }
 

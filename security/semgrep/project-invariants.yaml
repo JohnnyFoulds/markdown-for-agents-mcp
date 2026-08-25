@@ -63,23 +63,66 @@ rules:
         - "**/src/services/"
 
   # ── 4. Sensitive variable names logged directly ────────────────────────────
-  # Variables named query, token, key, or secret must go through redactQuery()
-  # (src/utils/logger.ts) before logging. POPIA: query text may contain personal
-  # information; tokens and keys are credentials.
-  # This rule catches the direct-log case: console.log(query).
+  # Variables named query, token, key, secret, or url must go through redactQuery()
+  # / redactUrl() / redactHeaders() (src/privacy/redact.ts) before logging.
+  # POPIA: query text and URLs may contain personal information; tokens and keys
+  # are credentials.
+  #
+  # Phase 5 strengthened from the original rule which only caught console.log()
+  # with a bare identifier.  Now also catches:
+  #   - console.error() with a bare sensitive identifier
+  #   - Property accesses: console.log(opts.query), console.error(req.url)
+  #   - Single-interpolation template literals: console.log(`${opts.query}`)
   - id: sensitive-var-in-console-log
     message: >
-      Variable named query/token/key/secret logged directly to console. This may
-      expose personal information (POPIA) or credentials. Call redactQuery(value)
-      from src/utils/logger.ts first, or route through a Logger call that respects
-      LOG_REDACT_QUERIES.
+      Sensitive value (query/token/key/secret/url) logged directly to console.
+      This may expose personal information (POPIA) or credentials.
+      Use redactQuery()/redactUrl()/redactHeaders() from src/privacy/redact.ts
+      (or src/utils/logger.ts for redactQuery), or route through a Logger call
+      that respects LOG_REDACT_QUERIES.
     severity: WARNING
     languages: [typescript, javascript]
-    patterns:
-      - pattern: console.log($ARG)
-      - metavariable-regex:
-          metavariable: $ARG
-          regex: "^(query|token|key|secret|password|apiKey|api_key)$"
+    pattern-either:
+      # Bare identifier — console.log(query)
+      - patterns:
+          - pattern: console.log($ARG)
+          - metavariable-regex:
+              metavariable: $ARG
+              regex: "^(query|token|key|secret|password|apiKey|api_key|url)$"
+      # Bare identifier — console.error(query)
+      - patterns:
+          - pattern: console.error($ARG)
+          - metavariable-regex:
+              metavariable: $ARG
+              regex: "^(query|token|key|secret|password|apiKey|api_key|url)$"
+      # Property access — console.log(opts.query), console.error(req.url)
+      - patterns:
+          - pattern: console.log($OBJ.$PROP)
+          - metavariable-regex:
+              metavariable: $PROP
+              regex: "^(query|token|key|secret|password|apiKey|api_key|url)$"
+      - patterns:
+          - pattern: console.error($OBJ.$PROP)
+          - metavariable-regex:
+              metavariable: $PROP
+              regex: "^(query|token|key|secret|password|apiKey|api_key|url)$"
+      # Single-interpolation template literal — console.error(`${opts.query}`)
+      - patterns:
+          - pattern: console.log(`${$EXPR}`)
+          - metavariable-pattern:
+              metavariable: $EXPR
+              pattern: $OBJ.$PROP
+          - metavariable-regex:
+              metavariable: $PROP
+              regex: "^(query|token|key|secret|password|apiKey|api_key|url)$"
+      - patterns:
+          - pattern: console.error(`${$EXPR}`)
+          - metavariable-pattern:
+              metavariable: $EXPR
+              pattern: $OBJ.$PROP
+          - metavariable-regex:
+              metavariable: $PROP
+              regex: "^(query|token|key|secret|password|apiKey|api_key|url)$"
 
   # ── 5. Security headers must not be set via res.writeHead() ───────────────
   # Cache-Control and X-Content-Type-Options must be set via applyBaseHeaders()
