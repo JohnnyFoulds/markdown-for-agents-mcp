@@ -4,10 +4,20 @@
  * Phase 1: container securityContext, Ingress NetworkPolicy, Dockerfile USER.
  * Phase 2.2: STORE_SQLITE_PATH must be set to an absolute /tmp path in both
  *   the k8s configmap and docker-compose.yml, or UID 1000 cannot write the db.
+ * Phase 8 / readOnlyRootFilesystem: /tmp and /dev/shm are already emptyDir
+ *   volumes, so the root filesystem has no legitimate write target.
+ *   Setting readOnlyRootFilesystem: true eliminates /home/pwuser as a writable
+ *   path and is the last missing securityContext field.
  *
  * Phase 2.2 RED reason (before fix):
  *   configmap.yaml has no STORE_SQLITE_PATH at all; app defaults to 'crawl.db'
  *   relative to WORKDIR /app — UID 1000 cannot write there → CrashLoopBackOff.
+ *
+ * readOnlyRootFilesystem RED reason (before fix):
+ *   securityContext in both server.yaml and worker.yaml has a comment saying
+ *   "readOnlyRootFilesystem omitted: Chromium writes to /tmp at runtime" —
+ *   but /tmp IS already an emptyDir mount, so the comment is wrong and the
+ *   field is simply absent.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -42,6 +52,10 @@ describe('k8s manifests — container securityContext', () => {
 
       it('drops ALL capabilities', () => {
         expect(content).toMatch(/drop:\s*\n\s*-\s*ALL/);
+      });
+
+      it('has readOnlyRootFilesystem: true', () => {
+        expect(content).toMatch(/readOnlyRootFilesystem:\s*true/);
       });
     });
   }

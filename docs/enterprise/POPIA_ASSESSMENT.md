@@ -172,8 +172,6 @@ and `LOG_FORMAT`. Fields: `requestId`, `tool`, `timestamp`, `outcome`, `piiClass
 
 ### Remaining security gaps
 
-- **`readOnlyRootFilesystem` omitted:** `server.yaml` and `worker.yaml` do not set
-  `readOnlyRootFilesystem: true`, so `/home/pwuser` is writable.
 - **Chromium egress unguarded:** `page.goto` in the Playwright tier bypasses
   `validateUrl`, `dnsGuard`, and the rate limiter.
 - **SSRF NetworkPolicy inert without CNI:** See `THREAT_MODEL.md §3`.

@@ -32,8 +32,9 @@ spec:
                 - ALL
             seccompProfile:
               type: RuntimeDefault
-            # readOnlyRootFilesystem omitted: Chromium writes to /tmp at runtime.
-            # Mitigated by runAsNonRoot + caps drop + NetworkPolicy egress controls.
+            # /tmp and /dev/shm are emptyDir mounts, so the root fs has no
+            # legitimate write target. Eliminates /home/pwuser as a writable path.
+            readOnlyRootFilesystem: true
           ports:
             - name: http
               containerPort: 3000

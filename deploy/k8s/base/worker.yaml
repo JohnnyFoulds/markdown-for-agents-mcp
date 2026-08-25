@@ -28,9 +28,9 @@ spec:
                 - ALL
             seccompProfile:
               type: RuntimeDefault
-            # readOnlyRootFilesystem omitted: Chromium writes to /tmp at runtime.
-            # Mitigated by runAsNonRoot + caps drop + NetworkPolicy egress controls.
-            # See server.yaml for the same comment on the server securityContext.
+            # /tmp and /dev/shm are emptyDir mounts, so the root fs has no
+            # legitimate write target. Eliminates /home/pwuser as a writable path.
+            readOnlyRootFilesystem: true
           envFrom:
             - configMapRef:
                 name: mcp-config
