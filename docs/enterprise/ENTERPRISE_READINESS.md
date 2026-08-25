@@ -18,11 +18,14 @@ It depends on which team is asking and what they are comparing it to.
 A platform or AI engineering team that already runs Kubernetes and owns their own
 LLM pipeline would find this compelling on four dimensions:
 
-**Data sovereignty.** Every query stays inside the cluster. With the `clean` engine
-profile and no paid API keys, the only outbound traffic is SearXNG's upstream search
-requests and standard HTTP GETs to result URLs. No query text reaches a US SaaS
-data processor. For a telco handling customer data under POPIA, this is a substantive
-compliance argument, not a marketing claim. See `docs/enterprise/DATA_FLOW.md`.
+**Data sovereignty (configuration-dependent).** With the `clean` engine profile,
+`SEARCH_ENABLE_DUCKDUCKGO=false`, no paid API keys set, and no external proxy, the only
+outbound traffic is SearXNG's upstream search requests and standard HTTP GETs to result
+URLs — queries stay within the operator's network. In the default configuration,
+DuckDuckGo receives every query over HTTPS to a US host. The boundary holds only when
+configured explicitly; it is not a default property of the software.
+See `docs/enterprise/DATA_FLOW.md` and `docs/enterprise/PRODUCTION_AUTHORISATION.md`
+for the deployment-tier definitions.
 
 **Zero per-query cost.** At 10 000 searches per day, Tavily costs roughly R650 000
 per year at ~$0.01/search. This tool's marginal cost is compute — which the platform
@@ -75,12 +78,16 @@ software licence is free. See `docs/enterprise/OWNERSHIP.md`.
 
 ## Gaps to close before sign-off
 
+See `docs/enterprise/PRODUCTION_AUTHORISATION.md` for the authoritative conditions register,
+grouped by signatory and tied to each POPIA obligation. The summary below tracks the
+operational items this document can measure independently:
+
 | Gap | Evidence | Owner |
 |---|---|---|
 | SLO numbers are TBD | All rows in `SLO.md` summary table are unmeasured | Platform team |
 | Runbook untested | No procedure in `RUNBOOK.md` has been executed against a live deployment | Platform team |
 | OWNERSHIP.md has placeholders | `[OWNER_NAME]`, `[OWNER_EMAIL]`, `[OWNER_HANDLE]` not filled | Engineering lead |
-| POPIA §9 checklist unsigned | Five-item legal checklist in `POPIA_ASSESSMENT.md §9` not signed off | Legal / DPO |
+| POPIA production authorisation unsigned | Conditions register in `PRODUCTION_AUTHORISATION.md §3` not fully signed | Legal / DPO / Engineering |
 | HPA custom-metric scaling unverified | `prometheus-adapter` must be installed and `mcp_inflight_requests` must drive real scale events under load | Platform team |
 | `test:smoke` and `test:k8s` not run against live deployment | Eight end-to-end verification gates in `TAVILY_PARITY_PLAN.md §Verification` are all open | Platform team |
 
@@ -111,9 +118,10 @@ answer a 2am page — a team alias is not sufficient. This is a five-minute edit
 a real person's name.
 
 **3. Legal sign-off on POPIA.**
-The five-item checklist in `docs/enterprise/POPIA_ASSESSMENT.md §9` is the minimum
-legal review required before query data from Vodacom users flows through this system.
-The assessment is written; it needs a signature, not more analysis.
+The conditions register in `docs/enterprise/PRODUCTION_AUTHORISATION.md §3` is the
+minimum legal review required before query data from Vodacom users flows through this
+system. The assessment (`POPIA_ASSESSMENT.md`) is written; the authorisation document
+routes each obligation to a named signatory. It needs signatures, not more analysis.
 
 **4. Run a relevance demo on Vodacom-domain queries.**
 Show `advanced` returning the correct result for three to five real queries —
@@ -145,13 +153,13 @@ and must be disclosed, not minimised.
 
 | Dimension | Status | Notes |
 |---|---|---|
-| Code quality | ✅ Production-ready | 662 tests, RED-first TDD, all phases shipped |
+| Code quality | ✅ Production-ready | 1014+ tests, RED-first TDD, all phases shipped |
 | Observability | ✅ Complete | All metrics wired; HPA signals exist |
-| Security posture | ✅ Complete | securityContext, NetworkPolicy, SSRF guards, non-root image |
-| Governance documentation | ✅ Complete | All six enterprise docs present |
+| Security posture | ⚠ Partial | securityContext, NetworkPolicy, SSRF guards, non-root image — Chromium egress unguarded (see `STANDARDS.md §Remaining ceilings`) |
+| Governance documentation | ✅ Complete | Nine enterprise docs present |
 | Measured SLOs | ❌ Not done | All values TBD — deployment never stood up |
 | Runbook exercised | ❌ Not done | No procedure tested against live system |
 | Named owner | ❌ Not done | Placeholders in OWNERSHIP.md |
-| Legal sign-off (POPIA) | ❌ Not done | Checklist written, not signed |
+| Legal sign-off (POPIA) | ❌ Not done | Conditions register written (`PRODUCTION_AUTHORISATION.md §3`), not signed |
 | HPA verified under load | ❌ Not done | Requires live cluster + prometheus-adapter |
 | Relevance demonstrated | ❌ Not done | No domain-specific query results on record |

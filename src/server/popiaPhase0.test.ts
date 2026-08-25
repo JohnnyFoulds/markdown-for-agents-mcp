@@ -159,3 +159,98 @@ describe('THREAT_MODEL.md — filesystem containment claim must be corrected (Ph
     expect(tm).not.toMatch(/only.*writable locations are.*\/tmp.*and.*\/dev\/shm/i);
   });
 });
+
+// ── DATA_FLOW.md stale claims — Phase A (post Phase 0–8 work) ─────────────────
+//
+// Phase A RED reason (before fix):
+//   DATA_FLOW.md was last updated at Phase 0 and was never updated for Phases 1–8.
+//   It still carries seven stale assertions that contradict shipped code:
+//   1. DuckDuckGo row trigger "Always active (no config gate)"
+//      — FALSE since Phase 3: SEARCH_ENABLE_DUCKDUCKGO gate shipped
+//   2. Retention rows: "No EXPIRE set. Unbounded until manual deletion"
+//      — FALSE since Phase 2: CRAWL_RETENTION_MS sweep, two-keyspace purge, secure_delete
+//   3. "No automated pruning exists… accumulate indefinitely. This is a live POPIA s14 limitation"
+//      — FALSE since Phase 2
+//   4. Known gaps 1–4 (incl. "These dead fields will be removed")
+//      — ALL FALSE: resolved in Phases 0–3
+//   5. §Shared page cache "From POPIA Phase 1 onward…" / "Before Phase 1…" straddle
+//      — Forward-promise tense for shipped work
+//   6. §Log content: "unsalted SHA-256 truncated to 8 hex chars"
+//      — FALSE since Phase 5: HMAC-SHA-256, per-process random salt, 16 hex chars
+//   7. §Data residency "DuckDuckGo (always)" in the egress list
+//      — FALSE since Phase 3: gate exists, condition is configurable
+//   8. HuggingFace model pull "at process start"
+//      — FALSE: allowRemoteModels:false means no pull; model must be pre-baked
+//
+// ENTERPRISE_READINESS.md Phase A RED reason:
+//   1. Unconditional data-sovereignty claim: "No query text reaches a US SaaS data processor"
+//      — TRUE only with all external providers off; FALSE in the default configuration
+//   2. "Five-item legal checklist" — POPIA_ASSESSMENT.md §9 has 8 open items (not 5)
+//   3. "662 tests" — actually 1014+ after Phases 1–8
+//   4. "all six enterprise docs" — there are 9 docs under docs/enterprise/
+//   5. "Security posture ✅ Complete" — Chromium egress is unguarded (cited ceiling in STANDARDS.md)
+
+describe('DATA_FLOW.md — stale claims from Phases 1–8 must be corrected (Phase A)', () => {
+  const df = readDoc('DATA_FLOW.md');
+
+  it('does NOT claim retention records accumulate indefinitely', () => {
+    // FALSE since Phase 2: CRAWL_RETENTION_MS sweep ships automatic purges.
+    expect(df).not.toMatch(/accumulate indefinitely/i);
+  });
+
+  it('does NOT say the DuckDuckGo gate is "not yet implemented"', () => {
+    // FALSE since Phase 3: SEARCH_ENABLE_DUCKDUCKGO gate shipped.
+    expect(df).not.toMatch(/not yet implemented/i);
+  });
+
+  it('does NOT use forward-promise tense ("planned for Phase")', () => {
+    // RFC 9111 conformance, retention sweep, and the DuckDuckGo gate are all shipped.
+    // A document that says "planned for Phase 1" describes resolved work as future.
+    expect(df).not.toMatch(/planned for Phase/i);
+  });
+
+  it('does NOT contain the dead-field forward promise ("will be removed")', () => {
+    // JobSpec.query and relevanceThreshold were removed in Phase 0.
+    expect(df).not.toMatch(/will be removed/i);
+  });
+
+  it('does NOT describe DuckDuckGo trigger as "Always active (no config gate)"', () => {
+    // FALSE since Phase 3: SEARCH_ENABLE_DUCKDUCKGO defaults to true but is configurable.
+    expect(df).not.toMatch(/Always active \(no config gate\)/i);
+  });
+
+  it('does NOT describe the log hash as "unsalted SHA-256"', () => {
+    // FALSE since Phase 5: redactQuery() uses HMAC-SHA-256 with a per-process random
+    // salt (16 hex chars). The old description describes the pre-Phase-5 behaviour.
+    expect(df).not.toMatch(/unsalted SHA-256/i);
+  });
+
+  it('does NOT describe HuggingFace model as pulled at process start', () => {
+    // FALSE: rerankWorker.ts passes allowRemoteModels:false to both from_pretrained
+    // calls. There is no network pull — the model must already be present on disk.
+    // RERANK_BACKEND=local also fails to start on the shipped image because
+    // @huggingface/transformers is not in package.json.
+    expect(df).not.toMatch(/pulled? from HuggingFace at (process )?start/i);
+  });
+
+  it('does NOT list "DuckDuckGo (always)" unconditionally in the egress summary', () => {
+    // The gate exists since Phase 3; the claim must reflect the conditional trigger.
+    expect(df).not.toMatch(/DuckDuckGo \(always\)/i);
+  });
+});
+
+describe('ENTERPRISE_READINESS.md — overclaims must be corrected (Phase A)', () => {
+  const er = readDoc('ENTERPRISE_READINESS.md');
+
+  it('does NOT make an unconditional data-sovereignty claim', () => {
+    // FALSE in the default configuration: Brave (if key set), Serper (if key set),
+    // and DuckDuckGo (SEARCH_ENABLE_DUCKDUCKGO=true by default) all egress query
+    // text to US hosts. The claim is only true in a specific restricted configuration.
+    expect(er).not.toMatch(/No query text reaches a US SaaS/i);
+  });
+
+  it('does NOT miscount the POPIA legal checklist as "Five-item"', () => {
+    // POPIA_ASSESSMENT.md §9 has 8 open items (not 5) after Phases 0–8.
+    expect(er).not.toMatch(/Five-item legal checklist/i);
+  });
+});
