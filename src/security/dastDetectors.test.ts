@@ -398,3 +398,52 @@ describe('redactEcho', () => {
     expect(result).not.toContain('metadata.google.internal');
   });
 });
+
+// ── MCP Streamable HTTP spec — GET and DELETE method false positives ──────────
+//
+// Any security scanner that flags "GET /mcp → 200" or "DELETE /mcp → 200" as a
+// vulnerability is misreading the MCP Streamable HTTP specification:
+//
+//   GET /mcp + Accept: text/event-stream → 200  (SSE stream-open, §4.2.2)
+//   DELETE /mcp → 200                           (session teardown, §4.2.4)
+//
+// The SDK advertises `Allow: GET, POST, DELETE`. Neither is a REST verb-tampering
+// issue; both are required by the protocol.
+//
+// Source: https://spec.modelcontextprotocol.io/specification/2025-03-26/basic/transports/#streamable-http-transport
+
+describe('MCP HTTP method spec — GET and DELETE are spec-correct (not verb-tampering)', () => {
+  it('GET /mcp with SSE Accept — evaluateProbe does not produce exploited for a text/event-stream response', () => {
+    // The DAST scan handles GET /mcp at the scan-script level (scan-dast.mjs §2.4),
+    // not via evaluateProbe. For completeness: even if passed through evaluateProbe,
+    // a text/event-stream body triggers no exploitation token → outcome is 'blocked'
+    // (the safe fallthrough), not 'exploited'. GET /mcp is outside the injection/SSRF
+    // threat model covered by the probe evaluator.
+    // @ts-ignore — synthetic probe to verify no false-positive path
+    const result = evaluateProbe(
+      { toolName: '__method_check__', paramName: 'method', payloadClass: 'http-method', label: 'GET /mcp', args: {} },
+      { status: 200, headers: { 'content-type': 'text/event-stream' }, body: 'event: endpoint\ndata: /mcp\n\n' },
+    );
+    expect(result.outcome).not.toBe('exploited');
+  });
+
+  it('DELETE /mcp → 200 — evaluateProbe does not produce exploited for an empty JSON response', () => {
+    // DELETE /mcp is the spec-mandated session teardown. Like GET above, it is handled
+    // at the scan-script level. Passed through evaluateProbe: empty JSON body triggers
+    // no exploitation token → outcome is safe (not 'exploited').
+    // @ts-ignore
+    const result = evaluateProbe(
+      { toolName: '__method_check__', paramName: 'method', payloadClass: 'http-method', label: 'DELETE /mcp', args: {} },
+      { status: 200, headers: { 'content-type': 'application/json' }, body: '{}' },
+    );
+    expect(result.outcome).not.toBe('exploited');
+  });
+
+  it('SSRF_TARGETS does not include /mcp — the MCP endpoint is not an SSRF target', () => {
+    // /mcp is the server's own endpoint, not an SSRF target.
+    // All SSRF targets are external URLs injected as parameters, not the endpoint itself.
+    for (const target of SSRF_TARGETS) {
+      expect(target.url).not.toMatch(/\/mcp$/);
+    }
+  });
+});

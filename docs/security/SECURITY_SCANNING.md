@@ -233,6 +233,9 @@ Reason: ...
 - ZAP headers warnings on `/healthz` and `/readyz` which intentionally lack auth — accept risk and document
 - gitleaks on committed test fixtures — verify dummy, add to `.gitleaksignore`
 
+For customer or vendor security assessments (TPRM, pentests), a curated list of predictable false positives with test-backed explanations is maintained separately:
+→ **[docs/enterprise/SECURITY_FINDINGS_REGISTER.md](../enterprise/SECURITY_FINDINGS_REGISTER.md)** — §1 false positives, §2 accepted risks, §3 real gaps with compensating controls.
+
 ---
 
 ## CI integration

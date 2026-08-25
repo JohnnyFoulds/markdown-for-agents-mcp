@@ -318,6 +318,7 @@ describe('README.md — enterprise docs discoverability', () => {
     'TERMS_OF_SERVICE.md',
     'DEPENDENCY_MANAGEMENT.md',
     'FSP_DEPLOYMENT.md',
+    'SECURITY_FINDINGS_REGISTER.md',
   ];
 
   for (const doc of enterpriseDocs) {

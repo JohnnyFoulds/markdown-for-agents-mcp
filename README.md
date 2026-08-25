@@ -749,6 +749,7 @@ production deployment. All claims name the test or metric that demonstrates them
 | [TERMS_OF_SERVICE.md](docs/enterprise/TERMS_OF_SERVICE.md) | Per-engine-profile statement of whether automated access is permitted under each search engine's ToS. |
 | [DEPENDENCY_MANAGEMENT.md](docs/enterprise/DEPENDENCY_MANAGEMENT.md) | Dependency and vulnerability management policy — patch SLA, exception process, Grade B dependency inventory. |
 | [FSP_DEPLOYMENT.md](docs/enterprise/FSP_DEPLOYMENT.md) | Regulated FSP addendum — TPRM evidence map, FSCA overlay, model-risk positioning, per-caller attribution, POPIA s18 template. |
+| [SECURITY_FINDINGS_REGISTER.md](docs/enterprise/SECURITY_FINDINGS_REGISTER.md) | Test-backed false-positive register for vendor DAST / pentest findings — §1 false positives with test citations, §2 accepted risks, §3 real gaps with compensating controls. |
 | [SECURITY_SCANNING.md](docs/security/SECURITY_SCANNING.md) | Four-layer security scanning suite (SCA, SAST, secrets, DAST) — tool configuration, thresholds, and CI integration. |
 
 ---
