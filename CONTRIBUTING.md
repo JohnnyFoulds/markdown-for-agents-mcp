@@ -112,6 +112,17 @@ docs: update .env.example with reranker config
 
 Do **not** add AI co-authorship lines to commits.
 
+## Confidentiality
+
+This repository is **public**. Never introduce a customer, client, or internal-platform
+name into any file. Use generic vocabulary already established in
+`docs/enterprise/OWNERSHIP.md` and `docs/enterprise/FSP_DEPLOYMENT.md` — terms like
+"the deploying organisation", "the agent platform", and "the reference deployment".
+
+A confidentiality pre-push hook is distributed with this project (not committed — it
+lives in `.git/hooks/pre-push` of each local clone). It blocks pushes that add brand
+markers in file content, paths, or commit messages.
+
 ## Testing
 
 - Test each layer independently; mock at the DI seam (injected deps, not module internals)

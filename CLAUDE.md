@@ -132,6 +132,13 @@ docker compose up
 - Conventional Commits with a body bullet per logical change
 - All new tools must have `outputSchema` and `toText` — enforced by `registry.test.ts` invariant
 
+## Confidentiality
+
+This repository is **public**. Never introduce a customer, client, or internal-platform
+name into any file. Use the generic vocabulary already established in
+`docs/enterprise/OWNERSHIP.md` and `docs/enterprise/FSP_DEPLOYMENT.md` — terms like
+"the deploying organisation", "the agent platform", and "the reference deployment".
+
 ## Testing
 
 ```bash

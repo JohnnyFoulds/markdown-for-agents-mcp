@@ -1,0 +1,82 @@
+name: Brand Guard
+
+# Secondary confidentiality control — the pre-push hook in each developer's
+# public clone is the PRIMARY control (it runs before bytes leave the machine).
+# This workflow is the backstop: it catches pushes from clones where the hook
+# was not installed (fresh clone, codespace, --no-verify).
+#
+# Pattern list: stored in the BRAND_PATTERNS repo secret.
+# Fail-closed: if BRAND_PATTERNS is unset or empty, the job fails.
+#
+# Fork PRs: skipped explicitly — secrets are not exposed to fork workflows,
+# so an empty pattern list would silently pass. Outside contributors cannot
+# introduce material they have never seen; they are covered by ci.yml.
+# DO NOT use pull_request_target to get secret access on fork PRs — that is
+# a known privilege-escalation footgun.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [development, main]
+
+permissions:
+  contents: read
+
+jobs:
+  brandguard:
+    name: Confidentiality check
+    runs-on: ubuntu-latest
+
+    # Skip on fork PRs — secrets are not exposed; ci.yml covers those.
+    if: >
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # full history; diff is against the base ref
+
+      - name: Fail closed if BRAND_PATTERNS secret is unset
+        env:
+          BRAND_PATTERNS: ${{ secrets.BRAND_PATTERNS }}
+        run: |
+          if [ -z "$BRAND_PATTERNS" ]; then
+            echo "::error::BRAND_PATTERNS secret is not set. Configure it in Settings → Secrets."
+            echo "The guard must not silently pass with an empty pattern list."
+            exit 1
+          fi
+
+      - name: Check file contents for brand markers
+        env:
+          BRAND_PATTERNS: ${{ secrets.BRAND_PATTERNS }}
+        run: |
+          set -eu
+          echo "$BRAND_PATTERNS" > /tmp/brand-patterns.txt
+          PATTERN=$(grep -v '^[[:space:]]*#' /tmp/brand-patterns.txt | \
+                    grep -v '^[[:space:]]*$' | paste -sd'|' -)
+          [ -n "$PATTERN" ] || { echo "::error::BRAND_PATTERNS resolved to empty"; exit 1; }
+
+          echo "Scanning tracked files for brand markers..."
+          if git grep -lnIiE "$PATTERN" -- . ':!docs/internal'; then
+            echo "::error::Brand markers found in file contents. See matches above."
+            exit 1
+          fi
+          echo "Contents check: PASS"
+
+      - name: Check tracked paths for brand markers
+        env:
+          BRAND_PATTERNS: ${{ secrets.BRAND_PATTERNS }}
+        run: |
+          set -eu
+          PATTERN=$(echo "$BRAND_PATTERNS" | grep -v '^[[:space:]]*#' | \
+                    grep -v '^[[:space:]]*$' | paste -sd'|' -)
+          echo "Scanning tracked paths..."
+          MATCHES=$(git ls-files | grep -iE "$PATTERN" || true)
+          if [ -n "$MATCHES" ]; then
+            echo "::error::Brand markers found in tracked paths:"
+            echo "$MATCHES"
+            exit 1
+          fi
+          echo "Paths check: PASS"
