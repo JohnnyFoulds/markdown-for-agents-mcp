@@ -75,7 +75,7 @@ The escalation heuristic scores signals (empty body, SPA hydration markers, `<no
 - **SSRF Protection** — RFC1918, loopback, IPv6 ULA/link-local blocked; DNS-rebinding guard pins resolved addresses
 - **Proxy Support** — HTTP/SOCKS5 proxy, round-robin `PROXY_PINS` rotation; stealth mode via `playwright-extra`
 - **HTTP Server Mode** — stateless Streamable HTTP transport; N replicas behind any load balancer; bearer token auth
-- **SOCKS5 Gateway** — optional ingress listener for AI Studio or SOCKS5-aware clients; upstream credential injection for Chromium
+- **SOCKS5 Gateway** — optional ingress listener for SOCKS5-aware agent platforms or clients; upstream credential injection for Chromium
 - **Prometheus Metrics** — `/healthz`, `/readyz`, `/metrics` endpoints; named metric constants for HPA and alerting
 - **Zero Configuration** — `npx markdown-for-agents-mcp` with no env vars works out of the box; Chromium installed automatically
 

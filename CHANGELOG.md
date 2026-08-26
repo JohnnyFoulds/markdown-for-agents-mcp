@@ -172,7 +172,7 @@ already thread `MCP_AUTH_TOKEN` through — you only need to supply the value.
 - `src/index.ts` — wire `getReranker().warmup()` in HTTP mode (non-blocking); `/readyz` gates on `rerankerGuard.isReady()` so k8s holds traffic until the 280 MB model finishes loading; stdio mode skips warmup
 
 ### Added — Phase 2: Config, locale, compliance
-- `SEARCH_DEFAULT_COUNTRY` (default `za`) and `SEARCH_DEFAULT_LANGUAGE` (default `en`) — ZA locale default for Vodacom user population
+- `SEARCH_DEFAULT_COUNTRY` (default `za`) and `SEARCH_DEFAULT_LANGUAGE` (default `en`) — ZA locale default for South African deployments
 - `LOG_REDACT_QUERIES` (default `true`) — hash query text in logs for POPIA compliance
 - All three vars added to `src/config.ts`, `.env.example`, `deploy/k8s/base/configmap.yaml`, and `deploy/k8s/DEPLOYMENT.md`
 

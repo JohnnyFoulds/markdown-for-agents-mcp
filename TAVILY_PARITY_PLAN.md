@@ -76,7 +76,7 @@ single highest-leverage change in this plan.
 | **7** | ✅ | Containerisation, k8s, ECS Fargate, OTel/Prometheus, stateless HTTP, draining | 6–10 d |
 | **8** | ✅ | Stealth Layer 1 + proxy rotation (Tier 3 only) | 5–8 d |
 | **9** | ✅ | Docs truth-up, `.env.example` fix, auth/cookie passthrough | 2–3 d |
-| **10** | ✅ | SOCKS5 gateway: optional ingress listener + upstream chaining (AI Studio) | 4–6 d |
+| **10** | ✅ | SOCKS5 gateway: optional ingress listener + upstream chaining | 4–6 d |
 
 **All 11 phases complete** (2026-08-24). Original estimate ≈58–90 dev-days. Hard dependency edges: `0→1→2`, `1→3`, `3→4`, `0→5`, `1→6`,
 `6→7`, `2→8`, `1→10`.
@@ -666,8 +666,8 @@ independent scaling coexist:
 
 ### AWS ECS Fargate deployment (`deploy/ecs/`)
 
-**Check `aib-genai-standards` for the house IaC choice (Terraform vs CDK)** rather than
-picking here — this is a personal repo but the deployment target is AI Studio.
+**Check your organisation's internal engineering standards for the house IaC choice (Terraform vs CDK)** rather than
+picking here.
 
 Two ECS Services of one task-definition family / one image, mirroring the two k8s
 Deployments. `MCP_HTTP_MODE=stateless` lets the ALB round-robin with no stickiness —
@@ -710,7 +710,7 @@ src/http/socks.ts           # upstream SOCKS5 egress, wired into resolveProxy()
 ```
 
 ```
-AI Studio ──socks5──> [ mcp server: listener ] ──┬── direct ──> internet
+Agent platform ──socks5──> [ mcp server: listener ] ──┬── direct ──> internet
                                                  └── socks5 ──> upstream proxy ──> internet
 ```
 
@@ -733,15 +733,15 @@ authenticated — otherwise Phase 2 silently loses its top tier behind the corpo
 **Ingress (`SOCKS5_LISTEN_ENABLED`)** — two modes:
 
 - **`tunnel` (default, recommended).** A policy-enforcing SOCKS5 relay. It sees only
-  `CONNECT host:port`, never content, so it is genuinely transparent — a drop-in for AI
-  Studio tooling with zero code change on the client side. Adds a single audited egress
+  `CONNECT host:port`, never content, so it is genuinely transparent — a drop-in for
+  agent platform tooling with zero code change on the client side. Adds a single audited egress
   choke point: `isDomainBlocked`, the DNS/SSRF guard, per-host rate limits, and
   `socks_connections_total{outcome}` metrics. No CA, no TLS termination, no plaintext
   logging.
 - **`intercept` (opt-in, not recommended).** Terminate TLS with a private CA, run the
-  ladder, return markdown. This is a MITM appliance: it requires your CA in AI Studio's
+  ladder, return markdown. This is a MITM appliance: it requires your CA in the agent platform's
   trust store, breaks certificate pinning, and puts plaintext third-party content through
-  your logs. **Recommendation: do not use it.** If AI Studio wants markdown, the honest
+  your logs. **Recommendation: do not use it.** If the agent platform wants markdown, the honest
   interface is the MCP tools or a plain HTTP `extract` endpoint. Ship it behind an explicit
   flag, require the operator to supply the CA (never auto-generate one), and log a startup
   warning whenever it is on.

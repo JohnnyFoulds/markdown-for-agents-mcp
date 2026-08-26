@@ -104,7 +104,7 @@ The fetching-capability matrix above does not include paid search APIs because t
 - **`advanced` latency is structural.** Every `advanced` search renders live pages via Chromium and runs cross-encoder scoring. Tavily and Exa serve from a pre-crawled corpus — they are ~10× faster on this dimension. This gap is not closable without building an index, which is a different product. See `docs/enterprise/SLO.md` Ceiling #1.
 - **`clean` profile has lower recall.** Mojeek + Marginalia + Brave free have narrower coverage than Google/Bing. The cross-encoder recovers much of the ranking quality but cannot retrieve pages the engines never indexed. See `docs/enterprise/SLO.md` Ceiling #2.
 - **`full` profile breaches ToS.** Adding Google/Bing/DDG improves recall to match paid services for most queries, but automated access violates those engines' terms. Do not enable without legal sign-off. See `docs/enterprise/TERMS_OF_SERVICE.md`.
-- **Reranker relevance ceiling.** `bge-reranker-base` is trained on MS MARCO; Tavily's and Exa's scorers are trained on proprietary click data. Gap narrows on unambiguous queries, widens on domain-specific ones. Closing it requires fine-tuning on Vodacom's own query traffic. See `docs/enterprise/SLO.md` Ceiling #6.
+- **Reranker relevance ceiling.** `bge-reranker-base` is trained on MS MARCO; Tavily's and Exa's scorers are trained on proprietary click data. Gap narrows on unambiguous queries, widens on domain-specific ones. Closing it requires fine-tuning on the deploying organisation's own query traffic. See `docs/enterprise/SLO.md` Ceiling #6.
 
 ### When to use each
 
@@ -125,7 +125,7 @@ Phases 0–6 (`TAVILY_PARITY_PLAN.md`) close most of the gaps above for the use 
 |---|---|---|
 | `fast` recall | Lower than Tavily | Improved (paid tier preemption, SearXNG multi-engine) |
 | `advanced` latency | 10–20 s vs Tavily's ~2 s | Unchanged ⚠️ — structural, requires a warm index |
-| Reranker relevance | Generic MS MARCO baseline | Unchanged until fine-tuned on Vodacom traffic |
+| Reranker relevance | Generic MS MARCO baseline | Unchanged until fine-tuned on domain-specific traffic |
 | Data residency | ✅ already | ✅ maintained |
 | Cost at 1k–10k/day | Free | Free (paid tier optional) |
 
@@ -537,7 +537,7 @@ The plan is structured to deliver two independent milestones: **Tavily-comparabl
 | **7** | Containerisation, k8s, ECS Fargate, OTel/Prometheus, stateless HTTP, graceful drain | Moat 4 reversed | 6–10 d |
 | **8** | Stealth Layer 1 (Gap 4 Layer 1) + proxy rotation (Gap 4 Layer 2) | Gap 4 demoted from P1 | 5–8 d |
 | **9** | Docs truth-up, `.env.example`, auth/cookie passthrough (Gap 8) | Gap 8 + doc debt | 2–3 d |
-| **10** | SOCKS5 gateway: optional ingress listener + upstream chaining (AI Studio) | New — enterprise/AI-Studio integration | 4–6 d |
+| **10** | SOCKS5 gateway: optional ingress listener + upstream chaining | New — enterprise integration | 4–6 d |
 
 **Dropped:** Priority 13 (LLM-assisted schema extraction, Gap 2 Phase 2) — conflicts with
 the locked no-LLM-dependency decision. CSS/XPath-based extraction (Gap 2 Phase 1) remains
