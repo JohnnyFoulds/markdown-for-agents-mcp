@@ -1,20 +1,49 @@
 #!/usr/bin/env python3
 """
-Generates: docs/marketing/vodacom-ai-studio-web-intelligence.pptx
+Generates a presentation deck from a branding profile.
 
-Run: python3 scripts/generate_presentation.py
+Usage:
+    python3 scripts/generate_presentation.py               # generic profile
+    python3 scripts/generate_presentation.py \\
+        --profile <path-to-profile.py>                     # custom profile
+
 Requires: pip install python-pptx
 """
 
+import argparse
+import importlib.util
 from pathlib import Path
+
+
+def _load_profile(path):
+    """Load BRAND dict from a profile file, or fall back to profile_generic."""
+    if path:
+        spec = importlib.util.spec_from_file_location("profile", path)
+    else:
+        here = Path(__file__).parent
+        spec = importlib.util.spec_from_file_location(
+            "profile_generic",
+            here / "presentation" / "profile_generic.py",
+        )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.BRAND
+
+
+_ap = argparse.ArgumentParser(description="Generate a presentation deck.")
+_ap.add_argument("--profile", default=None,
+                 help="Path to a profile .py exporting BRAND dict "
+                      "(default: scripts/presentation/profile_generic.py).")
+BRAND = _load_profile(_ap.parse_args().profile)
+
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 
-# ── Vodacom brand palette ─────────────────────────────────────────────────────
-RED       = RGBColor(0xE6, 0x00, 0x00)
-DARK_RED  = RGBColor(0x9E, 0x00, 0x00)
+# ── Brand palette — sourced from profile ─────────────────────
+PRIMARY       = RGBColor(*BRAND["primary"])
+PRIMARY_DARK  = RGBColor(*BRAND["primary_dark"])
 WHITE     = RGBColor(0xFF, 0xFF, 0xFF)
 DARK      = RGBColor(0x1A, 0x1A, 0x1A)
 MID       = RGBColor(0x55, 0x55, 0x55)
@@ -24,7 +53,21 @@ AMBER     = RGBColor(0xFF, 0x8C, 0x00)
 BLUE      = RGBColor(0x00, 0x4E, 0x9A)
 BORDER    = RGBColor(0xCC, 0xCC, 0xCC)
 STRIPE    = RGBColor(0xF8, 0xF8, 0xF8)
-RED_LIGHT = RGBColor(0xFF, 0xF0, 0xF0)
+PRIMARY_TINT  = RGBColor(*BRAND["primary_tint"])
+
+
+_NOTE_SUBS = BRAND.get("note_subs", [])
+
+
+def _b(s):
+    """Apply brand substitutions to speaker-notes strings at runtime.
+    Substitution pairs come from BRAND["note_subs"] in the active profile.
+    For the generic profile, this is a no-op.
+    For the internal profile, restores organisation-specific copy in notes.
+    """
+    for generic, branded in _NOTE_SUBS:
+        s = s.replace(generic, branded)
+    return s
 
 # ── Canvas: 16:9 widescreen (13.33" × 7.5") ──────────────────────────────────
 W = Inches(13.33)
@@ -75,11 +118,11 @@ def T(sl, text, x, y, w, h, *,
 def header(sl, title):
     """Draw standard red header bar + title. Returns content_top y-position."""
     R(sl, Inches(0), Inches(0), W, H, LIGHT)
-    R(sl, Inches(0), Inches(0), W, Inches(1.1), RED)
+    R(sl, Inches(0), Inches(0), W, Inches(1.1), PRIMARY)
     T(sl, title,
       Inches(0.45), Inches(0.17), Inches(12.5), Inches(0.9),
       size=25, color=WHITE, bold=True)
-    R(sl, Inches(0), Inches(1.1), W, Inches(0.05), DARK_RED)
+    R(sl, Inches(0), Inches(1.1), W, Inches(0.05), PRIMARY_DARK)
     return Inches(1.25)
 
 
@@ -87,21 +130,21 @@ def header(sl, title):
 # SLIDE 1 — TITLE
 # ═══════════════════════════════════════════════════════════════════════════════
 sl = new_slide()
-R(sl, Inches(0), Inches(0), W, H, RED)
-R(sl, Inches(0), H - Inches(2.15), W, Inches(2.15), DARK_RED)
+R(sl, Inches(0), Inches(0), W, H, PRIMARY)
+R(sl, Inches(0), H - Inches(2.15), W, Inches(2.15), PRIMARY_DARK)
 
-T(sl, "VODACOM  ·  AI STUDIO",
+T(sl, BRAND["org_upper"],
   Inches(0.55), Inches(0.30), Inches(6), Inches(0.5),
   size=13, color=WHITE, bold=True, font="Calibri Light")
 R(sl, Inches(0.55), Inches(0.82), Inches(11.8), Inches(0.022), WHITE)
 
-T(sl, "Web Intelligence\nfor AI Studio",
+T(sl, f"Web Intelligence\nfor {BRAND['platform']}",
   Inches(0.55), Inches(1.05), Inches(9), Inches(3.1),
   size=50, color=WHITE, bold=True, font="Calibri Light")
 
 T(sl, "Self-hosted · POPIA-compliant · MCP-native\n"
        "Web search & content extraction for enterprise AI agents — "
-       "on infrastructure Vodacom already owns.",
+       f"on infrastructure {BRAND['org']} already owns.",
   Inches(0.55), Inches(4.2), Inches(9.6), Inches(1.05),
   size=17, color=RGBColor(0xFF, 0xCC, 0xCC), font="Calibri Light")
 
@@ -116,7 +159,7 @@ for i, (val, lbl) in enumerate([
     T(sl, lbl, bx, H - Inches(1.2), Inches(4.0), Inches(0.38),
       size=11, color=RGBColor(0xFF, 0xCC, 0xCC), align=PP_ALIGN.CENTER)
 
-T(sl, "Prepared by: Senior AI Engineer, Vodacom AI Studio Team",
+T(sl, BRAND["prepared_by"],
   Inches(0.55), H - Inches(0.32), Inches(7), Inches(0.28),
   size=9, color=RGBColor(0xFF, 0xAA, 0xAA), font="Calibri Light")
 
@@ -127,7 +170,7 @@ T(sl, "Prepared by: Senior AI Engineer, Vodacom AI Studio Team",
 sl = new_slide()
 ct = header(sl, "The Opportunity: AI Agents That Can See the World")
 
-T(sl, "AI Studio agents are powerful reasoners — but without live web access and "
+T(sl, f"{BRAND['platform']} agents are powerful reasoners — but without live web access and "
        "internal knowledge, every answer is bounded by training data that is already months old.",
   Inches(0.5), ct, Inches(12.4), Inches(0.55),
   size=14, color=MID)
@@ -138,7 +181,7 @@ cards = [
       "Playwright handles JavaScript-rendered pages correctly.",
       "Tables, code blocks, and headings preserved — minimal information loss.",
       "Configurable resource blocking reduces page weight ~60%."],
-     RED),
+     PRIMARY),
     ("Web Search",
      ["Resolve natural-language queries to ranked URLs.",
       "Supports SearXNG (self-hosted), Brave API, DuckDuckGo.",
@@ -181,10 +224,10 @@ for i, (title, bullets, c) in enumerate(cards):
 # SLIDE 3 — WHY NOT EXTERNAL VENDORS
 # ═══════════════════════════════════════════════════════════════════════════════
 sl = new_slide()
-ct = header(sl, "Why External Vendors Are Not the Answer for Vodacom")
+ct = header(sl, f"Why External Vendors Are Not the Answer for {BRAND['org']}")
 
 issues = [
-    (RED,   "POPIA Section 72 — Cross-Border Transfer",
+    (PRIMARY,   "POPIA Section 72 — Cross-Border Transfer",
      "Every query sent to Tavily (US) or Firecrawl (US) is a cross-border transfer of personal information. "
      "For a regulated SA operator, this requires a binding Section 72 justification that may be "
      "unavailable for all data categories. Self-hosted software on SA infrastructure eliminates this risk entirely."),
@@ -198,7 +241,7 @@ issues = [
      "Self-hosted deployments are fully insulated from vendor decisions."),
     (BLUE,  "No Governance Pack Included",
      "Neither Tavily nor Firecrawl ships a POPIA assessment, data flow inventory, threat model, or runbook. "
-     "Vodacom's security and privacy review process requires all of these artefacts before production approval. "
+     f"{BRAND['org_poss']} security and privacy review process requires all of these artefacts before production approval. "
      "This tool's governance pack is complete and already in the repository — ready for review today."),
 ]
 
@@ -220,8 +263,8 @@ for i, (color, title, body) in enumerate(issues):
 sl = new_slide()
 ct = header(sl, "Introducing: markdown-for-agents-mcp")
 
-T(sl, "A lightweight MCP server exposing web fetch, web search, and (Phase 2) enterprise "
-       "knowledge index as tools your AI Studio agents call via the Model Context Protocol.",
+T(sl, f"A lightweight MCP server exposing web fetch, web search, and (Phase 2) enterprise "
+       f"knowledge index as tools your {BRAND['platform']} agents call via the Model Context Protocol.",
   Inches(0.5), ct, Inches(12.4), Inches(0.55),
   size=14, color=MID)
 
@@ -231,16 +274,16 @@ lw_body  = Inches(4.3)
 cy2 = ct + Inches(0.72)
 
 facts = [
-    ("Protocol",     "MCP (Model Context Protocol) — an emerging standard for agent tool calls, adopted by Anthropic, OpenAI, and major LLM frameworks. AI Studio connects via SSE or stdio."),
+    ("Protocol",     f"MCP (Model Context Protocol) — an emerging standard for agent tool calls, adopted by Anthropic, OpenAI, and major LLM frameworks. {BRAND['platform']} connects via SSE or stdio."),
     ("Dependencies", "7 runtime dependencies. No managed Redis, no RabbitMQ, no PostgreSQL required. Firecrawl self-hosted: 6–7 services. Simpler = fewer failure modes."),
-    ("Licence",      "MIT. No AGPL copyleft, no CLA. Can be modified and embedded in Vodacom's AI platform without restriction. Firecrawl is AGPL-3.0."),
+    ("Licence",      f"MIT. No AGPL copyleft, no CLA. Can be modified and embedded in {BRAND['org_poss']} agent platform without restriction. Firecrawl is AGPL-3.0."),
     ("Renderer",     "Playwright (Chromium) for JavaScript-rendered pages. Handles modern SPAs, SharePoint modern pages, and Confluence macros correctly."),
-    ("Deployment",   "Docker Compose → ECS Fargate (Mode F, AI Studio's existing runtime) → OpenShift (Mode G, $0 marginal infra on existing cluster)."),
+    ("Deployment",   "Docker Compose → ECS Fargate (Mode F, " + BRAND["platform"] + "'s existing runtime) → OpenShift (Mode G, $0 marginal infra on existing cluster)."),
 ]
 
 for i, (label, body) in enumerate(facts):
     fy = cy2 + i * Inches(1.02)
-    R(sl, lx, fy, lw_label, Inches(0.84), RED)
+    R(sl, lx, fy, lw_label, Inches(0.84), PRIMARY)
     T(sl, label, lx + Inches(0.08), fy + Inches(0.2), lw_label - Inches(0.16), Inches(0.46),
       size=12, color=WHITE, bold=True, align=PP_ALIGN.CENTER)
     R(sl, lx + lw_label + Inches(0.06), fy, lw_body, Inches(0.84), WHITE,
@@ -252,10 +295,10 @@ for i, (label, body) in enumerate(facts):
 rx = Inches(7.0)
 rw = Inches(5.8)
 highlights = [
-    ("7",       "npm runtime dependencies\nvs 6–7 deployed services for\nFirecrawl self-hosted",  RED),
+    ("7",       "npm runtime dependencies\nvs 6–7 deployed services for\nFirecrawl self-hosted",  PRIMARY),
     ("MIT",     "open-source licence\nno AGPL copyleft restrictions",       GREEN),
-    ("<5 min",  "to connect AI Studio\nvia MCP",                            BLUE),
-    ("1,237",   "tests passing in CI\nproduction-grade quality",            RED),
+    ("<5 min",  f"to connect {BRAND['platform']}\nvia MCP",                            BLUE),
+    ("1,237",   "tests passing in CI\nproduction-grade quality",            PRIMARY),
 ]
 hw = Inches(2.55)
 hh = Inches(1.35)
@@ -278,7 +321,7 @@ for i, (val, lbl, c) in enumerate(highlights):
 sl = new_slide()
 ct = header(sl, "How It Works: The Rendering Pipeline")
 
-T(sl, "A query from an AI Studio agent becomes LLM-ready Markdown in five deterministic steps — "
+T(sl, f"A query from a {BRAND['platform']} agent becomes LLM-ready Markdown in five deterministic steps — "
        "with a shared URL cache that avoids redundant fetches across agent sessions.",
   Inches(0.5), ct, Inches(12.4), Inches(0.45),
   size=14, color=MID)
@@ -301,13 +344,13 @@ for i, (title, body) in enumerate(steps):
     bx = sx + i * (sw + gap)
     if i < len(steps) - 1:
         T(sl, "→", bx + sw + Inches(0.04), sy + sh / 2 - Inches(0.25), gap, Inches(0.45),
-          size=16, color=RED, bold=True, align=PP_ALIGN.CENTER)
+          size=16, color=PRIMARY, bold=True, align=PP_ALIGN.CENTER)
     shp = sl.shapes.add_shape(1, bx, sy, sw, sh)
     shp.fill.solid(); shp.fill.fore_color.rgb = WHITE
     shp.line.color.rgb = BORDER; shp.line.width = Pt(0.5)
-    R(sl, bx, sy, sw, Inches(0.07), RED)
+    R(sl, bx, sy, sw, Inches(0.07), PRIMARY)
     T(sl, title, bx, sy + Inches(0.08), sw, Inches(0.5),
-      size=13, color=RED, bold=True, align=PP_ALIGN.CENTER)
+      size=13, color=PRIMARY, bold=True, align=PP_ALIGN.CENTER)
     T(sl, body, bx + Inches(0.1), sy + Inches(0.65), sw - Inches(0.2), Inches(1.85),
       size=11, color=MID, align=PP_ALIGN.CENTER)
 
@@ -323,7 +366,7 @@ fw = Inches(2.97)
 for i, (title, body) in enumerate(feats):
     fx = Inches(0.5) + i * (fw + Inches(0.17))
     R(sl, fx, fy, fw, Inches(1.2), LIGHT, border=True, bc=BORDER, bw=0.4)
-    R(sl, fx, fy, Inches(0.08), Inches(1.2), RED)
+    R(sl, fx, fy, Inches(0.08), Inches(1.2), PRIMARY)
     T(sl, title, fx + Inches(0.18), fy + Inches(0.1), fw - Inches(0.26), Inches(0.34),
       size=11, color=DARK, bold=True)
     T(sl, body, fx + Inches(0.18), fy + Inches(0.46), fw - Inches(0.26), Inches(0.68),
@@ -340,7 +383,7 @@ lx = Inches(0.5)
 lw = Inches(6.1)
 points = [
     ("Section 72 — Cross-Border Transfer Eliminated",
-     "Self-hosted on Vodacom's SA infrastructure means no personal information leaves South African borders. "
+     f"Self-hosted on {BRAND['org_poss']} SA infrastructure means no personal information leaves South African borders. "
      "No Section 72 justification is required — this is the cleanest possible POPIA posture, "
      "better than any cloud-managed service including AWS af-south-1 or Azure South Africa North."),
     ("Section 19 — Full Auditability",
@@ -354,7 +397,7 @@ points = [
 ]
 py = ct + Inches(0.1)
 for title, body in points:
-    R(sl, lx, py, Inches(0.1), Inches(1.5), RED)
+    R(sl, lx, py, Inches(0.1), Inches(1.5), PRIMARY)
     T(sl, title, lx + Inches(0.22), py + Inches(0.08), lw - Inches(0.32), Inches(0.4),
       size=13, color=DARK, bold=True)
     T(sl, body, lx + Inches(0.22), py + Inches(0.5), lw - Inches(0.32), Inches(0.94),
@@ -387,9 +430,9 @@ for i, (doc, desc) in enumerate(gov_items):
     ty = tbl_top + i * (tbl_h + Inches(0.03))
     bg = LIGHT if i % 2 == 0 else WHITE
     R(sl, rx, ty, rw, tbl_h, bg)
-    R(sl, rx, ty, Inches(0.06), tbl_h, RED)
+    R(sl, rx, ty, Inches(0.06), tbl_h, PRIMARY)
     T(sl, doc,  rx + Inches(0.12), ty + Inches(0.07), Inches(2.5), Inches(0.3),
-      size=9, color=RED, bold=True, font="Courier New")
+      size=9, color=PRIMARY, bold=True, font="Courier New")
     T(sl, desc, rx + Inches(2.65), ty + Inches(0.07), Inches(2.9), Inches(0.3),
       size=10, color=MID)
 
@@ -426,7 +469,7 @@ for ci, (w, h) in enumerate(zip(col_w, headers)):
     tbl.columns[ci].width = w
     cell = tbl.cell(0, ci)
     cell.text = h
-    cell.fill.solid(); cell.fill.fore_color.rgb = RED
+    cell.fill.solid(); cell.fill.fore_color.rgb = PRIMARY
     p = cell.text_frame.paragraphs[0]
     p.alignment = PP_ALIGN.CENTER
     run = p.runs[0]
@@ -439,19 +482,19 @@ for ri, row in enumerate(rows_d):
         cell = tbl.cell(ri + 1, ci)
         cell.text = val
         is_hl = ri in hl
-        bg = RED_LIGHT if is_hl else (STRIPE if ri % 2 == 0 else WHITE)
+        bg = PRIMARY_TINT if is_hl else (STRIPE if ri % 2 == 0 else WHITE)
         cell.fill.solid(); cell.fill.fore_color.rgb = bg
         p = cell.text_frame.paragraphs[0]
         p.alignment = PP_ALIGN.CENTER if ci > 0 else PP_ALIGN.LEFT
         run = p.runs[0]
         run.font.size = Pt(10); run.font.name = "Calibri"
-        run.font.color.rgb = RED if (is_hl and ci in (0, 3)) else DARK
+        run.font.color.rgb = PRIMARY if (is_hl and ci in (0, 3)) else DARK
         run.font.bold = is_hl and ci == 0
 
 # Callout below table
 cy3 = ct + Inches(4.15)
-R(sl, Inches(0.5), cy3, Inches(12.33), Inches(0.88), RED_LIGHT)
-R(sl, Inches(0.5), cy3, Inches(0.1), Inches(0.88), RED)
+R(sl, Inches(0.5), cy3, Inches(12.33), Inches(0.88), PRIMARY_TINT)
+R(sl, Inches(0.5), cy3, Inches(0.1), Inches(0.88), PRIMARY)
 T(sl, "Mode G ongoing: $100/mo. Firecrawl Standard: $83/mo covers up to 100k pages/month — "
        "Mode G is $17/mo more at this volume. Exceed 100k pages and Firecrawl jumps to Growth ($333/mo), "
        "making Mode G the cheaper option. Vs Glean Enterprise (500 users): ~250× cheaper at any volume.",
@@ -463,12 +506,12 @@ T(sl, "Mode G ongoing: $100/mo. Firecrawl Standard: $83/mo covers up to 100k pag
 # SLIDE 8 — DEPLOYMENT ON EXISTING INFRASTRUCTURE
 # ═══════════════════════════════════════════════════════════════════════════════
 sl = new_slide()
-ct = header(sl, "Runs on Infrastructure Vodacom Already Owns")
+ct = header(sl, f"Runs on Infrastructure {BRAND['org']} Already Owns")
 
 modes = [
     ("Mode F\nECS Fargate",
-     "AI Studio's Existing Runtime",
-     ["AI Studio already runs here — same pipeline",
+     BRAND["platform"] + "'s Existing Runtime",
+     [BRAND["platform"] + " already runs here — same pipeline",
       "Fargate Spot reduces compute cost by ~70%",
       "Right-sized: ~$251/mo infrastructure",
       "Scales to HPA max — set a spend cap",
@@ -482,9 +525,9 @@ modes = [
       "KEDA for autoscaling — no additional cost",
       "Best POPIA posture: fully on-cluster"],
      GREEN, "Recommended"),
-    ("AI Booster+\nIn-house LLM",
+    (BRAND["llm_platform"] + "\nIn-house LLM",
      "Complementary Capability",
-     ["Booster+ handles LLM inference",
+     [BRAND["llm_platform"] + " handles LLM inference",
       "This tool handles web retrieval",
       "MCP bridges both cleanly",
       "No capability overlap",
@@ -519,26 +562,26 @@ for i, (title, subtitle, bullets, c, badge) in enumerate(modes):
 
 R(sl, Inches(0.5), ct + Inches(5.38), Inches(12.33), Inches(0.62), LIGHT)
 R(sl, Inches(0.5), ct + Inches(5.38), Inches(0.1), Inches(0.62), GREEN)
-T(sl, "Mode G recommendation: $0 marginal infra, deployable in days, runs alongside AI Studio "
-       "on the existing OpenShift cluster. No new procurement. No new approval cycle for infrastructure.",
+T(sl, f"Mode G recommendation: $0 marginal infra, deployable in days, runs alongside {BRAND['platform']} "
+       f"on the existing OpenShift cluster. No new procurement. No new approval cycle for {BRAND['org']}.",
   Inches(0.7), ct + Inches(5.45), Inches(12.0), Inches(0.48),
   size=11, color=MID)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SLIDE 9 — AI STUDIO INTEGRATION
+# SLIDE 9 — PLATFORM INTEGRATION
 # ═══════════════════════════════════════════════════════════════════════════════
 sl = new_slide()
-ct = header(sl, "Integration with AI Studio via MCP")
+ct = header(sl, f"Integration with {BRAND['platform']} via MCP")
 
-T(sl, "The Model Context Protocol is an emerging standard for connecting AI agents to external tools. "
-       "AI Studio connects to the MCP server via standard configuration — no bespoke API integration code required.",
+T(sl, f"The Model Context Protocol is an emerging standard for connecting AI agents to external tools. "
+       f"{BRAND['platform']} connects to the MCP server via standard configuration — no bespoke API integration code required.",
   Inches(0.5), ct, Inches(12.4), Inches(0.5),
   size=14, color=MID)
 
 stack = [
-    ("AI Studio Agent",          "LLM reasoning + task execution via AI Booster+",          BLUE),
-    ("MCP Tool Call",            "fetch()  ·  search()  ·  (Phase 2: search_knowledge())",   RED),
+    (BRAND["platform"] + " Agent",  "LLM reasoning + task execution via " + BRAND["llm_platform"],  BLUE),
+    ("MCP Tool Call",            "fetch()  ·  search()  ·  (Phase 2: search_knowledge())",   PRIMARY),
     ("markdown-for-agents-mcp",  "MCP server — tool dispatch · rendering · index queries",  DARK),
     ("Source Connectors",        "SearXNG · Brave API  (Phase 2: SharePoint Graph API · Confluence)",  MID),
     ("Infrastructure",           "OpenShift Mode G  (existing cluster, $0 marginal cost)",  GREEN),
@@ -578,7 +621,7 @@ sl = new_slide()
 ct = header(sl, "Designed for Agentic Systems — Not Individual Sessions")
 
 T(sl, "Claude Code's built-in web tools are designed for one developer in one session. "
-       "AI Studio runs many concurrent agents. The difference is architectural.",
+       f"{BRAND['platform']} runs many concurrent agents. The difference is architectural.",
   Inches(0.5), ct, Inches(12.4), Inches(0.45),
   size=14, color=MID)
 
@@ -610,7 +653,7 @@ for title, body in problems:
 # Right column: the MCP server advantage
 rx = Inches(6.98)
 rw = Inches(5.85)
-R(sl, rx, ly, rw, Inches(0.36), RED)
+R(sl, rx, ly, rw, Inches(0.36), PRIMARY)
 T(sl, "Shared MCP Server  (this tool)",
   rx + Inches(0.15), ly + Inches(0.07), rw - Inches(0.3), Inches(0.25),
   size=11, color=WHITE, bold=True)
@@ -632,8 +675,8 @@ for title, body in advantages:
     py += Inches(0.96)
 
 # Bottom insight
-R(sl, Inches(0.5), ct + Inches(5.35), Inches(12.33), Inches(0.62), RED_LIGHT)
-R(sl, Inches(0.5), ct + Inches(5.35), Inches(0.1), Inches(0.62), RED)
+R(sl, Inches(0.5), ct + Inches(5.35), Inches(12.33), Inches(0.62), PRIMARY_TINT)
+R(sl, Inches(0.5), ct + Inches(5.35), Inches(0.1), Inches(0.62), PRIMARY)
 T(sl, "Claude Code can also be configured to use this MCP server — replacing its built-in WebFetch "
        "with a Playwright-rendered, cache-backed, POPIA-profiled fetch. Developer and production agent "
        "use the same shared infrastructure.",
@@ -686,7 +729,7 @@ for ri, row in enumerate(fetch_rows):
         cell.text = val
         is_header = ri == 0
         if is_header:
-            cell.fill.solid(); cell.fill.fore_color.rgb = RED
+            cell.fill.solid(); cell.fill.fore_color.rgb = PRIMARY
         elif ci == 1:
             cell.fill.solid(); cell.fill.fore_color.rgb = STRIPE if ri % 2 == 0 else WHITE
         else:
@@ -730,7 +773,7 @@ for ri, row in enumerate(search_rows):
         cell.text = val
         is_header = ri == 0
         if is_header:
-            cell.fill.solid(); cell.fill.fore_color.rgb = RED
+            cell.fill.solid(); cell.fill.fore_color.rgb = PRIMARY
         elif ci == 1:
             cell.fill.solid(); cell.fill.fore_color.rgb = STRIPE if ri % 2 == 0 else WHITE
         else:
@@ -765,7 +808,7 @@ T(sl, "An agent calls search_knowledge(\"annual leave policy\") and receives rel
        "documents the querying user is permitted to see.",
   lx, ly + Inches(0.38), lw, Inches(1.3), size=12, color=MID)
 
-T(sl, "Why Vodacom is uniquely positioned:",
+T(sl, f"Why {BRAND['org']} is uniquely positioned:",
   lx, ly + Inches(1.85), lw, Inches(0.35), size=13, color=DARK, bold=True)
 bullets = [
     "OpenShift already running — $0 marginal infra for the knowledge index",
@@ -775,7 +818,7 @@ bullets = [
     "Existing governance pack is the template — minimal new documentation required",
 ]
 for i, b in enumerate(bullets):
-    R(sl, lx, ly + Inches(2.27) + i * Inches(0.57), Inches(0.09), Inches(0.09), RED)
+    R(sl, lx, ly + Inches(2.27) + i * Inches(0.57), Inches(0.09), Inches(0.09), PRIMARY)
     T(sl, b, lx + Inches(0.22), ly + Inches(2.2) + i * Inches(0.57), lw - Inches(0.3), Inches(0.52),
       size=12, color=MID)
 
@@ -812,25 +855,25 @@ for title, items, c in tiers:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SLIDE 13 — WHY THIS IS RIGHT FOR VODACOM
+# SLIDE 13 — WHY THIS IS THE RIGHT CHOICE
 # ═══════════════════════════════════════════════════════════════════════════════
 sl = new_slide()
-ct = header(sl, "Why This Is the Right Choice for Vodacom")
+ct = header(sl, f"Why This Is the Right Choice for {BRAND['org']}")
 
 reasons = [
     ("1", "POPIA by Design",
-     "Self-hosted on Vodacom SA infrastructure. No Section 72 cross-border transfer. Full data flow documentation, "
+     f"Self-hosted on {BRAND['org']} SA infrastructure. No Section 72 cross-border transfer. Full data flow documentation, "
      "POPIA assessment, and threat model already in the repository. No legal risk of the kind "
      "Tavily, Firecrawl, or Glean SaaS introduce."),
     ("2", "Runs on Infrastructure You Already Own",
-     "Mode G on existing OpenShift: $0 marginal infrastructure cost. Mode F on ECS: the same runtime "
-     "AI Studio already uses. No new procurement, no new cloud accounts, no new approval cycles."),
+     f"Mode G on existing OpenShift: $0 marginal infrastructure cost. Mode F on ECS: the same runtime "
+     f"{BRAND['platform']} already uses. No new procurement, no new cloud accounts, no new approval cycles."),
     ("3", "Audit-Ready, Not Audit-Pending",
      "Complete governance pack: POPIA assessment, data flow, threat model, security findings register, runbook, "
      "SLO template, and cost model. A security or privacy review can start today. "
      "Tavily and Firecrawl ship none of this."),
     ("4", "MCP-Native — Standard Protocol",
-     "MCP is the emerging standard for agent tool integration. AI Studio, Claude, and most modern LLM "
+     f"MCP is the emerging standard for agent tool integration. {BRAND['platform']}, Claude, and most modern LLM "
      "frameworks support it natively. No bespoke integration code. "
      "Agents call fetch() or search() directly today; search_knowledge() lands in Phase 2."),
     ("5", "A Platform, Not a Point Solution",
@@ -844,7 +887,7 @@ gap = Inches(0.065)
 ry = ct + Inches(0.1)
 
 for num, title, body in reasons:
-    R(sl, Inches(0.5),  ry, Inches(0.7), rh, RED)
+    R(sl, Inches(0.5),  ry, Inches(0.7), rh, PRIMARY)
     T(sl, num, Inches(0.5), ry + Inches(0.2), Inches(0.7), Inches(0.58),
       size=24, color=WHITE, bold=True, align=PP_ALIGN.CENTER)
     R(sl, Inches(1.22), ry, Inches(11.6), rh, WHITE)
@@ -865,12 +908,12 @@ steps_data = [
     ("Week 1–2",   "Confirm Deployment",
      ["Confirm Mode G (OpenShift) as target",
       "Initiate Microsoft Graph app registration",
-      "Identify first AI Studio agent workload"],
+      "Identify first " + BRAND["platform"] + " agent workload"],
      BLUE),
     ("Week 2–4",   "Deploy Phase 1 MVP",
      ["Deploy MCP server to OpenShift",
       "Connect SearXNG and/or Brave API with DPA",
-      "AI Studio agents using fetch() + search() in staging"],
+      BRAND["platform"] + " agents using fetch() + search() in staging"],
      GREEN),
     ("Week 4–8",   "Internal Connectors",
      ["SharePoint connector (Graph API, delta queries)",
@@ -881,7 +924,7 @@ steps_data = [
      ["Entra ID per-user ACL enforcement",
       "Vector embeddings + hybrid BM25/semantic search",
       "ServiceNow knowledge base connector"],
-     RED),
+     PRIMARY),
 ]
 
 sw2 = Inches(2.97)
@@ -908,9 +951,9 @@ for i, (tf, title, bullets, c) in enumerate(steps_data):
         T(sl, b, bx + Inches(0.4), by2 + Inches(0.1), sw2 - Inches(0.58), Inches(0.9),
           size=11, color=MID)
 
-R(sl, Inches(0.5), sy2 + sh2 + Inches(0.18), Inches(12.33), Inches(0.65), RED_LIGHT)
-R(sl, Inches(0.5), sy2 + sh2 + Inches(0.18), Inches(0.1), Inches(0.65), RED)
-T(sl, "Precondition: identify the specific AI Studio agent workload that is blocked today without web access. "
+R(sl, Inches(0.5), sy2 + sh2 + Inches(0.18), Inches(12.33), Inches(0.65), PRIMARY_TINT)
+R(sl, Inches(0.5), sy2 + sh2 + Inches(0.18), Inches(0.1), Inches(0.65), PRIMARY)
+T(sl, f"Precondition: identify the specific {BRAND['platform']} agent workload that is blocked today without web access. "
        "That workload is the business case. Without a named workload, defer until the use case is concrete.",
   Inches(0.7), sy2 + sh2 + Inches(0.25), Inches(12.0), Inches(0.5),
   size=11, color=DARK)
@@ -929,10 +972,10 @@ def add_notes(slide_index, text):
 
 
 # ── Slide 1: Title ────────────────────────────────────────────────────────────
-add_notes(0, (
+add_notes(0, _b(
     "WHAT TO SAY\n"
     "• Welcome. This presentation introduces a self-hosted web intelligence capability\n"
-    "  built for Vodacom's AI Studio — enabling agents to access live web content and,\n"
+    "  built for your organisation's agent platform — enabling agents to access live web content and,\n"
     "  on the roadmap, internal documents such as SharePoint and Confluence.\n"
     "• I'll cover what the tool does, why external vendors create POPIA exposure,\n"
     "  what it costs, how it deploys, and what the next steps look like.\n"
@@ -958,12 +1001,12 @@ add_notes(0, (
     "   Completing the authorisation requires a live deployment, SLO measurement,\n"
     "   and formal DPO sign-off.\n\n"
     "Q: Who built this and who owns it?\n"
-    "A: Built by the Vodacom AI Studio team. MIT-licensed, meaning Vodacom owns it\n"
+    "A: Built by the the agent platform team. MIT-licensed, meaning your organisation owns it\n"
     "   completely and can modify or redistribute it without any vendor restriction."
 ))
 
 # ── Slide 2: The Opportunity ──────────────────────────────────────────────────
-add_notes(1, (
+add_notes(1, _b(
     "WHAT TO SAY\n"
     "• AI agents are powerful reasoners — but only within the bounds of their training\n"
     "  data. That data has a fixed cutoff, typically 6–12 months before model release.\n"
@@ -999,7 +1042,7 @@ add_notes(1, (
 ))
 
 # ── Slide 3: Why Not External Vendors ─────────────────────────────────────────
-add_notes(2, (
+add_notes(2, _b(
     "WHAT TO SAY\n"
     "• The POPIA argument is structural, not a preference. Under Section 72, sending\n"
     "  document content to a US-hosted service is a cross-border transfer of personal\n"
@@ -1034,24 +1077,24 @@ add_notes(2, (
     "Q: Can't we just sign Tavily's Data Processing Agreement?\n"
     "A: A properly drafted DPA can satisfy Section 72 via the binding-agreement gateway,\n"
     "   provided it offers 'substantially similar' protection to POPIA. Whether the DPA\n"
-    "   Tavily provides meets that standard — and for all data categories Vodacom agents\n"
+    "   Tavily provides meets that standard — and for all data categories your organisation agents\n"
     "   transmit — is the DPO's determination to make, not an engineering decision.\n\n"
     "Q: What about Azure South Africa North?\n"
     "A: Microsoft's SA-region data centres keep storage in SA, but AI model inference\n"
     "   may route through non-SA regions. Self-hosting means no AI processing occurs\n"
     "   externally at all — the retrieval and Markdown conversion happen locally,\n"
-    "   and the LLM inference is AI Booster's responsibility."
+    "   and the LLM inference is In-House LLM's responsibility."
 ))
 
 # ── Slide 4: Introducing the Tool ─────────────────────────────────────────────
-add_notes(3, (
+add_notes(3, _b(
     "WHAT TO SAY\n"
     "• The tool is a single Node.js process that speaks the Model Context Protocol.\n"
     "  It exposes web fetch, web search, and — in Phase 2 — knowledge index queries.\n"
     "• Seven runtime dependencies. No database, no message queue, no separate Redis.\n"
     "  Compare that to Firecrawl's 6–7 deployed services. Simpler means fewer failure\n"
     "  modes and a smaller attack surface.\n"
-    "• MIT licence — Vodacom can fork, modify, and redistribute without any AGPL\n"
+    "• MIT licence — your organisation can fork, modify, and redistribute without any AGPL\n"
     "  obligation. We own this tool completely.\n"
     "• 1,237 tests passing. This is not a prototype. It has production-grade test\n"
     "  coverage including integration tests, security tests, and cost-model guards." + SEP +
@@ -1064,7 +1107,7 @@ add_notes(3, (
     "JavaScript rendering. The tool uses Playwright only for the top tier of its render\n"
     "ladder — Chromium is only instantiated when the heuristic determines the page is\n"
     "JavaScript-heavy. Most pages use the cheaper HTTP tier.\n\n"
-    "The '<5 min to connect AI Studio' claim refers to adding the MCP server URL to\n"
+    "The '<5 min to connect the agent platform' claim refers to adding the MCP server URL to\n"
     "an MCP client's configuration — a one-time step, not ongoing development work.\n\n"
     "Test coverage breakdown: 70 test files, 1,237 tests passed, 51 skipped.\n"
     "Skipped tests require a live browser or specific network conditions. The test\n"
@@ -1077,13 +1120,13 @@ add_notes(3, (
     "   (a live deployment is required). The governance pack provides the framework\n"
     "   for a security review; that review has not yet been formally completed.\n\n"
     "Q: Who maintains this going forward?\n"
-    "A: The AI Studio team. The MIT licence means no vendor dependency. Ongoing\n"
+    "A: The the agent platform team. The MIT licence means no vendor dependency. Ongoing\n"
     "   maintenance is estimated at 0.015–0.05 FTE depending on incident rate and\n"
     "   whether CAB approval is required for each change."
 ))
 
 # ── Slide 5: How It Works ─────────────────────────────────────────────────────
-add_notes(4, (
+add_notes(4, _b(
     "WHAT TO SAY\n"
     "• The pipeline is five steps: agent calls a tool, the server picks a provider,\n"
     "  the page is rendered at the appropriate tier, HTML is converted to Markdown,\n"
@@ -1129,14 +1172,14 @@ add_notes(4, (
 ))
 
 # ── Slide 6: POPIA & Data Sovereignty ─────────────────────────────────────────
-add_notes(5, (
+add_notes(5, _b(
     "WHAT TO SAY\n"
     "• POPIA compliance here is not a checkbox — it's a structural property of the\n"
-    "  architecture. Self-hosted on Vodacom infrastructure means personal information\n"
+    "  architecture. Self-hosted on your organisation infrastructure means personal information\n"
     "  never leaves South African borders. Section 72 never triggers.\n"
     "• Even AWS af-south-1 keeps data in SA for storage, but AI model inference may\n"
     "  route through non-SA regions. With this tool, no AI inference occurs externally\n"
-    "  at all — that is AI Booster's responsibility.\n"
+    "  at all — that is In-House LLM's responsibility.\n"
     "• The governance pack on the right is the most immediately useful artefact for\n"
     "  a security review. Ten documents covering every dimension a reviewer needs.\n"
     "• One note of transparency: PRODUCTION_AUTHORISATION.md currently reflects\n"
@@ -1145,7 +1188,7 @@ add_notes(5, (
     "CONTEXT & DETAIL\n"
     "POPIA Section 19 (Security Safeguards) requires 'appropriate, reasonable technical\n"
     "and organisational measures' to protect personal information. For AI tools:\n"
-    "  • Where does the data go? Self-hosted: stays within Vodacom's network perimeter.\n"
+    "  • Where does the data go? Self-hosted: stays within your organisation's network perimeter.\n"
     "  • Who has access? Only the platform team — no third-party vendor access.\n"
     "  • Is it encrypted in transit? Yes — TLS for all connections.\n"
     "  • Is it logged and auditable? Yes — structured logging, Prometheus metrics.\n"
@@ -1154,8 +1197,8 @@ add_notes(5, (
     "The three engine profiles:\n"
     "  'clean':    No external search providers. Fetches only target URLs the agent\n"
     "              explicitly provides. Outbound requests go to those URLs only.\n"
-    "  'balanced': Adds SearXNG — self-hosted within Vodacom's infrastructure.\n"
-    "              No external search API calls; SearXNG runs on Vodacom infra.\n"
+    "  'balanced': Adds SearXNG — self-hosted within your organisation's infrastructure.\n"
+    "              No external search API calls; SearXNG runs on your organisation infra.\n"
     "  'external': Adds Brave Search API (US-hosted). Requires a Section 72 DPA.\n"
     "              Search queries (not document content) go to Brave." + SEP +
     "ANTICIPATED QUESTIONS\n\n"
@@ -1170,7 +1213,7 @@ add_notes(5, (
 ))
 
 # ── Slide 7: Total Cost of Ownership ──────────────────────────────────────────
-add_notes(6, (
+add_notes(6, _b(
     "WHAT TO SAY\n"
     "• At 100,000 pages per month, Mode G at $100/mo ongoing is $17/mo more than\n"
     "  Firecrawl Standard ($83/mo). State that clearly — it is the honest comparison.\n"
@@ -1217,14 +1260,14 @@ add_notes(6, (
 ))
 
 # ── Slide 8: Deployment ────────────────────────────────────────────────────────
-add_notes(7, (
+add_notes(7, _b(
     "WHAT TO SAY\n"
     "• Three deployment modes are supported today. Mode G on OpenShift is the\n"
     "  recommendation — $0 marginal cost and the best POPIA posture.\n"
     "• Mode F on ECS is the path of least resistance for initial testing — it is the\n"
-    "  same runtime environment AI Studio already uses, right-sized at ~$251/mo.\n"
-    "• AI Booster+ is shown as a complementary capability, not a competing one.\n"
-    "  Booster+ handles LLM inference; this tool handles web retrieval. MCP is the\n"
+    "  same runtime environment the agent platform already uses, right-sized at ~$251/mo.\n"
+    "• In-House LLM is shown as a complementary capability, not a competing one.\n"
+    "  In-House LLM handles LLM inference; this tool handles web retrieval. MCP is the\n"
     "  clean separation between them.\n"
     "• 'Deployable in days' refers to the MCP server itself — web fetch and search.\n"
     "  The full knowledge index (Phase 2) is a 6–8 week project." + SEP +
@@ -1251,23 +1294,23 @@ add_notes(7, (
     "   URL cache, which is acceptable to lose on restart). 2 replicas with a liveness\n"
     "   probe provides effective HA.\n\n"
     "Q: Does deploying on OpenShift require CAB approval per deployment?\n"
-    "A: Depends on Vodacom's change management policy. If the OpenShift cluster has\n"
+    "A: Depends on your organisation's change management policy. If the OpenShift cluster has\n"
     "   a standard deployment pipeline, adding a new workload may qualify as a standard\n"
     "   change. CAB approval per deployment raises the ongoing engineering cost from\n"
     "   0.015 FTE to 0.03–0.05 FTE due to administrative overhead."
 ))
 
-# ── Slide 9: AI Studio Integration ────────────────────────────────────────────
-add_notes(8, (
+# ── Slide 9: Platform Integration ─────────────────────────────────────────────
+add_notes(8, _b(
     "WHAT TO SAY\n"
-    "• The integration model is simple: AI Studio's agent framework makes MCP tool\n"
+    "• The integration model is simple: the agent platform's agent framework makes MCP tool\n"
     "  calls. Those calls go to this server. The server handles all the complexity —\n"
     "  rendering, caching, provider selection — and returns clean Markdown.\n"
     "• From the agent's perspective, this is just calling a function: fetch('https://...')\n"
     "  or search('latest FSCA regulation'). No awareness of Playwright or SearXNG.\n"
     "• The stack shows the current Phase 1 state at the bottom: SearXNG and Brave API\n"
     "  are live. SharePoint and Confluence are Phase 2.\n"
-    "• The AGENT/INFRA labels show the clean separation — AI Studio owns everything\n"
+    "• The AGENT/INFRA labels show the clean separation — the agent platform owns everything\n"
     "  above the MCP server; this tool owns everything below." + SEP +
     "CONTEXT & DETAIL\n"
     "MCP transport options:\n"
@@ -1277,15 +1320,15 @@ add_notes(8, (
     "    via long-lived HTTP connections. Recommended for production server deployments.\n"
     "  • Streamable HTTP (MCP spec 2025-11-25): primary transport for cloud-native\n"
     "    deployments. Supported via the @modelcontextprotocol/sdk package.\n\n"
-    "Why MCP matters for AI Studio specifically: MCP provides a standard interface\n"
-    "that any compliant agent framework can call. If AI Studio switches LLM providers\n"
+    "Why MCP matters for the agent platform specifically: MCP provides a standard interface\n"
+    "that any compliant agent framework can call. If the agent platform switches LLM providers\n"
     "or agent frameworks in the future, MCP-compatible tools migrate without changes.\n\n"
     "Authentication: MCP 2.1 recommends OAuth 2.1 for authenticated tool servers.\n"
-    "For internal deployments within Vodacom's network perimeter, bearer token\n"
-    "authentication is sufficient. The server's auth model should align with AI Studio's\n"
+    "For internal deployments within your organisation's network perimeter, bearer token\n"
+    "authentication is sufficient. The server's auth model should align with the agent platform's\n"
     "existing identity infrastructure." + SEP +
     "ANTICIPATED QUESTIONS\n\n"
-    "Q: Is MCP Anthropic-specific? What if Vodacom changes LLM providers?\n"
+    "Q: Is MCP Anthropic-specific? What if your organisation changes LLM providers?\n"
     "A: MCP was initiated by Anthropic but is an open standard (modelcontextprotocol.io).\n"
     "   It has been adopted by OpenAI, Google, Microsoft, and major LLM frameworks\n"
     "   including LangChain, LlamaIndex, and CrewAI. The protocol is LLM-agnostic.\n\n"
@@ -1296,7 +1339,7 @@ add_notes(8, (
 ))
 
 # ── Slide 10: Designed for Agentic Systems ─────────────────────────────────────
-add_notes(9, (
+add_notes(9, _b(
     "WHAT TO SAY\n"
     "• There is a fundamental architectural difference between tools designed for one\n"
     "  developer in one session and infrastructure designed for many concurrent agents.\n"
@@ -1310,7 +1353,7 @@ add_notes(9, (
     "• The callout at the bottom matters: Claude Code itself can be configured to use\n"
     "  this MCP server — developers and production agents share the same infrastructure." + SEP +
     "CONTEXT & DETAIL\n"
-    "URL cache sharing example in detail: suppose 10 AI Studio agents are simultaneously\n"
+    "URL cache sharing example in detail: suppose 10 the agent platform agents are simultaneously\n"
     "researching the same regulatory document at fsca.co.za.\n\n"
     "Without a shared cache:\n"
     "  • 10 separate HTTP requests to fsca.co.za\n"
@@ -1330,7 +1373,7 @@ add_notes(9, (
     "ANTICIPATED QUESTIONS\n\n"
     "Q: Couldn't we achieve the same result with a shared Claude Code agent?\n"
     "A: Claude Code is designed for interactive single-session use. It does not expose\n"
-    "   a shared service endpoint that multiple AI Studio agents can call concurrently.\n"
+    "   a shared service endpoint that multiple the agent platform agents can call concurrently.\n"
     "   Running 50 Claude Code instances independently would 50× the external request\n"
     "   volume and create 50 separate unaudited egress streams.\n\n"
     "Q: Does the shared cache create a privacy risk across agents?\n"
@@ -1341,7 +1384,7 @@ add_notes(9, (
 ))
 
 # ── Slide 11: Empirical Comparison ────────────────────────────────────────────
-add_notes(10, (
+add_notes(10, _b(
     "WHAT TO SAY\n"
     "• This slide is designed to be read, not presented. Every claim here is verifiable\n"
     "  from the repository source code — file references are in the slide header.\n"
@@ -1388,7 +1431,7 @@ add_notes(10, (
 ))
 
 # ── Slide 12: Enterprise Knowledge Index (Roadmap) ────────────────────────────
-add_notes(11, (
+add_notes(11, _b(
     "WHAT TO SAY\n"
     "• This slide is roadmap, not current capability. Web fetch and search are live\n"
     "  today. The knowledge index requires Phase 2 build work.\n"
@@ -1398,7 +1441,7 @@ add_notes(11, (
     "• The three-phase delivery maps to increasing complexity: Phase 1 is broad-access\n"
     "  content (no ACL, deployable in 6–8 weeks). Phase 2 adds per-user ACL enforcement\n"
     "  — the technically complex part, 8–12 additional weeks.\n"
-    "• Vodacom is well-positioned for this because OpenShift runs, M365 is licensed,\n"
+    "• your organisation is well-positioned for this because OpenShift runs, M365 is licensed,\n"
     "  POPIA blocks the SaaS alternatives, and the governance pack is already written." + SEP +
     "CONTEXT & DETAIL\n"
     "Why a knowledge index rather than live API calls?\n\n"
@@ -1431,8 +1474,8 @@ add_notes(11, (
     "Atlassian Rovo MCP server is cloud-only (Data Center not supported). Community MCP\n"
     "servers for SharePoint use app-level credentials with no per-user ACL enforcement." + SEP +
     "ANTICIPATED QUESTIONS\n\n"
-    "Q: Does Vodacom have M365 licensing?\n"
-    "A: This slide assumes yes — verify before Phase 2 planning. If Vodacom uses a\n"
+    "Q: Does your organisation have M365 licensing?\n"
+    "A: This slide assumes yes — verify before Phase 2 planning. If your organisation uses a\n"
     "   non-Microsoft productivity suite, the highest-value connector would shift\n"
     "   to Confluence or another internal document platform.\n\n"
     "Q: How does the index stay fresh?\n"
@@ -1441,8 +1484,8 @@ add_notes(11, (
     "   near-real-time re-crawl on document change. Maximum staleness window: 1 hour."
 ))
 
-# ── Slide 13: Why This Is Right for Vodacom ───────────────────────────────────
-add_notes(12, (
+# ── Slide 13: Why This Is the Right Choice ─────────────────────────────────────
+add_notes(12, _b(
     "WHAT TO SAY\n"
     "• Five reasons, in order of importance. The order matters.\n"
     "• POPIA first: this is the structural argument. It does not matter how good or\n"
@@ -1490,13 +1533,13 @@ add_notes(12, (
 ))
 
 # ── Slide 14: Next Steps ───────────────────────────────────────────────────────
-add_notes(13, (
+add_notes(13, _b(
     "WHAT TO SAY\n"
     "• Four time-boxed steps. The first two are for this room to decide; the last two\n"
     "  follow automatically if the first two are approved.\n"
     "• Week 1–2 has three items: confirm OpenShift as the deployment target, initiate\n"
     "  the Microsoft Graph app registration, and — most importantly — identify the\n"
-    "  specific AI Studio agent workload this will serve first.\n"
+    "  specific the agent platform agent workload this will serve first.\n"
     "• The third item is the most important on the entire slide. Without a named\n"
     "  workload and a team that will integrate it, there is no concrete business case.\n"
     "  Building infrastructure ahead of demand is the most common failure mode in\n"
@@ -1511,7 +1554,7 @@ add_notes(13, (
     "These require a Global Administrator or Application Administrator to grant consent\n"
     "in the Azure portal. This is a governance step, not a technical one. It should be\n"
     "initiated immediately — it may take days to weeks to obtain approval depending on\n"
-    "Vodacom's change management process.\n\n"
+    "your organisation's change management process.\n\n"
     "What makes a good first agent workload:\n"
     "  1. The agent currently gives incorrect or outdated answers because it cannot\n"
     "     access a specific external source.\n"
@@ -1529,7 +1572,7 @@ add_notes(13, (
     "    for competitor research." + SEP +
     "ANTICIPATED QUESTIONS\n\n"
     "Q: Who needs to be in the room for Week 1–2 decisions?\n"
-    "A: (1) AI Studio team lead — confirm deployment target. (2) M365/Azure AD\n"
+    "A: (1) the agent platform team lead — confirm deployment target. (2) M365/Azure AD\n"
     "   administrator — initiate the Graph app registration. (3) Product owner of the\n"
     "   first agent workload — confirm integration intent. DPO should be notified for\n"
     "   awareness; formal DPO sign-off is needed for Phase 2, not Phase 1.\n\n"
@@ -1551,7 +1594,7 @@ add_notes(13, (
 ROOT = Path(__file__).parent.parent
 out_dir = ROOT / "docs" / "marketing"
 out_dir.mkdir(parents=True, exist_ok=True)
-out_path = out_dir / "vodacom-ai-studio-web-intelligence.pptx"
+out_path = out_dir / (BRAND["out_stem"] + ".pptx")
 prs.save(str(out_path))
 print(f"Saved: {out_path}")
 print(f"Slides: {len(prs.slides)}")
