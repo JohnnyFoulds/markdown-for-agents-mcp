@@ -27,3 +27,6 @@ npm-debug.log*
 
 # Security scan reports (generated artifacts — contain raw CVE and secret data)
 security-reports/
+
+# Generated presentation decks (built from profile; never commit the binary)
+docs/marketing/*.pptx
