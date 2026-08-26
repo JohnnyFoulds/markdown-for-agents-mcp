@@ -49,7 +49,7 @@ const TIMEOUT_MS  = parseInt(args.timeout, 10);
 const AUTH_TOKEN  = args.token;
 
 // ── Query corpus ──────────────────────────────────────────────────────────────
-// 30 realistic queries representative of Vodacom department-level usage.
+// 30 realistic queries representative of enterprise department-level usage.
 
 const CORPUS = [
   'kubernetes pod resource limits best practices',

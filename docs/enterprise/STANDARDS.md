@@ -66,7 +66,7 @@ These are followed by convention and CI enforcement, not by RFC number.
 | Conventional Commits | PR title lint, `CHANGELOG.md` |
 | Semantic Versioning | `package.json`, `CHANGELOG.md` |
 | Keep a Changelog | `CHANGELOG.md` |
-| `aib-genai-standards` | `src/` via `process/spec-driven-development.md` §5–6 (RED before GREEN) |
+| Your organisation's internal engineering standards | `src/` via `process/spec-driven-development.md` §5–6 (RED before GREEN) |
 
 ---
 

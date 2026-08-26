@@ -19,7 +19,7 @@
 **Expires:**          — (12 months from date of authorisation, or on any trigger in §6)
 **Document version:** 1.0
 **Act:**              Protection of Personal Information Act 4 of 2013 (POPIA), South Africa
-**Scope:**            MCP server and worker as deployed via `deploy/k8s/` in the Vodacom environment
+**Scope:**            MCP server and worker as deployed via `deploy/k8s/` in the reference deployment
 
 ---
 

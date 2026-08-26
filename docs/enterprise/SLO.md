@@ -103,7 +103,7 @@ Cache hit rate (this run): TBD% (TBD hits / TBD total)
 | Engine profile | TBD (clean / full) |
 | Paid providers active | TBD |
 | Concurrency | TBD |
-| Query corpus | 30 × Vodacom-representative queries (`scripts/load-test.mjs` corpus) |
+| Query corpus | 30 × representative queries (`scripts/load-test.mjs` corpus) |
 | Run date | TBD |
 
 ## Honest ceilings
@@ -136,4 +136,4 @@ These limitations are structural and will not be resolved by tuning:
 6. **Relevance ceiling vs Tavily.** `bge-reranker-base` is trained on MS MARCO; Tavily's
    scorer is trained on proprietary click data. The gap narrows on unambiguous queries
    and widens on ambiguous or domain-specific ones. Closing it requires fine-tuning on
-   Vodacom's own query traffic — a separate ML programme.
+   the deploying organisation's own query traffic — a separate ML programme.

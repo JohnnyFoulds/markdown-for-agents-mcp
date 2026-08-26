@@ -7,7 +7,7 @@
 
 ---
 
-## Would an enterprise like Vodacom use this?
+## Would a large enterprise use this?
 
 It depends on which team is asking and what they are comparing it to.
 
@@ -121,7 +121,7 @@ between a draft and a contract.
 
 ```sh
 node scripts/load-test.mjs \
-  --base https://mcp.internal.vodacom.co.za \
+  --base https://mcp.internal.example.com \
   --concurrency 10 \
   --queries 100 \
   --depths fast,basic,advanced
@@ -135,13 +135,13 @@ a real person's name.
 
 **3. Legal sign-off on POPIA.**
 The conditions register in `docs/enterprise/PRODUCTION_AUTHORISATION.md §3` is the
-minimum legal review required before query data from Vodacom users flows through this
+minimum legal review required before query data from users flows through this
 system. The assessment (`POPIA_ASSESSMENT.md`) is written; the authorisation document
 routes each obligation to a named signatory. It needs signatures, not more analysis.
 
-**4. Run a relevance demo on Vodacom-domain queries.**
+**4. Run a relevance demo on representative queries.**
 Show `advanced` returning the correct result for three to five real queries —
-roaming policy, network coverage, a product FAQ, a regulatory document. Record
+factual questions, product FAQs, or regulatory documents. Record
 `basic` vs `advanced` on the same query so the reranker's value is visible.
 `rerank_duration_seconds` should be populated in `/metrics` after the demo.
 

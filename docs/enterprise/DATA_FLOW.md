@@ -106,7 +106,7 @@ client) is routed through the proxy. When `SOCKS5_LISTEN_MODE=intercept`, the pr
 performs TLS interception — all fetched content (including page content and query
 strings) is decrypted and processed by the proxy vendor. This makes the proxy vendor
 an **operator processing decrypted content** (POPIA s20/s21 and s72). This obligation
-must be assessed against Vodacom's vendor agreements.
+must be assessed against the deploying organisation's vendor agreements.
 
 Note: `SOCKS5_LISTEN_MODE=intercept` currently causes `process.exit(1)` at startup
 and is not a deployable configuration.

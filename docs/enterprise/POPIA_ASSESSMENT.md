@@ -8,7 +8,7 @@
 
 **Act:** Protection of Personal Information Act 4 of 2013 (POPIA), South Africa
 **Date of assessment:** 2026-08-25 (updated for Phases 1–7)
-**Scope:** MCP server and worker as deployed via `deploy/k8s/` in the Vodacom environment
+**Scope:** MCP server and worker as deployed via `deploy/k8s/` in the reference deployment
 
 ---
 
@@ -50,7 +50,7 @@ Free-text names, addresses, and employee numbers (e.g. "John Smith employee numb
 
 ## 2. Lawful basis for processing (POPIA s11)
 
-**Legitimate interests of the responsible party (Vodacom)** — POPIA s11(1)(f):
+**Legitimate interests of the responsible party (the deploying organisation)** — POPIA s11(1)(f):
 providing an internal AI search capability to improve employee productivity. Processing
 is proportionate: query text is used to execute the search and then discarded or
 swept by the retention mechanism.
@@ -82,7 +82,7 @@ gauge is alertable as "no sweep in 2 h" and constitutes evidence the sweep runs.
 | Data | Retention period | Status |
 |---|---|---|
 | Search result cache | `SEARCH_CACHE_TTL_MS` (default: 1 h) | ✓ TTL-bounded |
-| Application logs | Per Vodacom log retention policy | External — not set by this system |
+| Application logs | Per the deploying organisation's log retention policy | External — not set by this system |
 | Crawl job spec | `CRAWL_RETENTION_MS` (default: 7 days) | ✓ Swept — Phase 2 |
 | Crawl page content | `CRAWL_RETENTION_MS` (default: 7 days) | ✓ Swept — Phase 2 |
 | Crawl queue records | `CRAWL_RETENTION_MS` (default: 7 days) | ✓ Swept — Phase 2 |
@@ -193,7 +193,7 @@ and `LOG_FORMAT`. Fields: `requestId`, `tool`, `timestamp`, `outcome`, `piiClass
 | SOCKS5/HTTP proxy | Vendor-defined | All HTTP traffic | Vendor agreement required | Only when `SOCKS5_UPSTREAM_URL` or `HTTP_PROXY_URL` set |
 
 **Assessment:** Transfer to countries without adequate POPIA-equivalent protection
-(including the US) requires one of the lawful bases in POPIA s72(1). Vodacom's legal
+(including the US) requires one of the lawful bases in POPIA s72(1). The deploying organisation's legal
 team must confirm the applicable basis for each active provider before production
 deployment in a regulated context.
 
@@ -225,7 +225,7 @@ not a rewrite.
 
 | Party | Role | Obligation |
 |---|---|---|
-| Vodacom | Responsible party | Defines purpose, controls deployment |
+| The deploying organisation | Responsible party | Defines purpose, controls deployment |
 | Brave / Serper | Operator (when keys set) | Processes query strings per API agreement |
 | DuckDuckGo | Operator (when `SEARCH_ENABLE_DUCKDUCKGO=true`) | No DPA — set `false` in production if unresolved |
 | SearXNG upstream engines | Sub-operator | Query forwarded by SearXNG; consent via engine ToS |

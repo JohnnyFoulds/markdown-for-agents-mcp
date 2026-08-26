@@ -32,7 +32,7 @@ still applies).
 
 > **⚠ WARNING: This profile includes engines that PROHIBIT automated access.**
 > Do not enable `SEARXNG_ENGINE_PROFILE=full` without explicit legal sign-off from
-> Vodacom Legal. The risk is service suspension, IP blocking, or legal action from the
+> the deploying organisation's legal team. The risk is service suspension, IP blocking, or legal action from the
 > affected engine operators.
 
 This profile adds the following engines to the `clean` set:
