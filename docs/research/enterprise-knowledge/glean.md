@@ -21,7 +21,7 @@
 12. [IDE Integrations](#12-ide-integrations)
 13. [Glean vs. Competitors](#13-glean-vs-competitors)
 14. [Top 5 Patterns We Must Implement in Phase 2](#14-top-5-patterns-we-must-implement-in-phase-2)
-15. [Glean vs. Building Ourselves: Honest Assessment for Vodacom Scale](#15-glean-vs-building-ourselves-honest-assessment-for-vodacom-scale)
+15. [Glean vs. Building Ourselves: Honest Assessment for Large-Enterprise Scale](#15-glean-vs-building-ourselves-honest-assessment-for-large-enterprise-scale)
 16. [What to Skip](#16-what-to-skip)
 17. [Implementation Roadmap](#17-implementation-roadmap)
 
@@ -46,7 +46,7 @@ Glean is the enterprise AI search market leader as of mid-2026: ~$300M ARR, $7.2
 - Deployment is multi-week to multi-month — no instant setup
 - No open-source code — you are buying a black box
 
-**For us:** Glean is the gold standard for Phase 2 design reference. We do not want to build Glean. We want to build the open, self-hosted, MIT-licensed equivalent that a company like Vodacom can run in their own infrastructure, paying no per-seat tax, while getting the same core patterns.
+**For us:** Glean is the gold standard for Phase 2 design reference. We do not want to build Glean. We want to build the open, self-hosted, MIT-licensed equivalent that any enterprise can run in their own infrastructure, paying no per-seat tax, while getting the same core patterns.
 
 ---
 
@@ -1260,7 +1260,7 @@ BYOC is required for FedRAMP, HIPAA, PCI-DSS, or data sovereignty mandates that 
 
 Glean's "customer-hosted" is not open-source self-hosting. The software is still Glean's proprietary code, deployed by Glean into the customer's cloud environment. The customer gets data sovereignty but not code access.
 
-This is the key gap we fill: **markdown-for-agents-mcp is MIT-licensed, open-source, and truly self-hosted**. Vodacom (or any organization) gets:
+This is the key gap we fill: **markdown-for-agents-mcp is MIT-licensed, open-source, and truly self-hosted**. Any enterprise gets:
 - Full source code access
 - No per-seat fees
 - No FlexCredit meters
@@ -1325,7 +1325,7 @@ The battle is **ecosystem breadth vs. stack depth**.
 | Governance | Full Glean admin console | Microsoft Purview integration |
 | Weak at | Microsoft-specific depth (Teams, Excel, Word native AI) | Non-Microsoft connectors |
 
-**For Vodacom:** If they are standardized on Microsoft 365, Copilot is the path of least resistance for M365 content. But Vodacom likely also has Confluence (Atlassian), Jira, Salesforce, and custom systems — this is where Glean or our MCP server adds value beyond what M365 Copilot can reach.
+**For the deploying organisation:** If it is standardized on Microsoft 365, Copilot is the path of least resistance for M365 content. But the enterprise likely also has Confluence (Atlassian), Jira, Salesforce, and custom systems — this is where Glean or our MCP server adds value beyond what M365 Copilot can reach.
 
 ### 13.3 Glean vs. Onyx
 
@@ -1613,11 +1613,11 @@ export async function handleKnowledgeChat(
 
 ---
 
-## 15. Glean vs. Building Ourselves: Honest Assessment for Vodacom Scale
+## 15. Glean vs. Building Ourselves: Honest Assessment for Large-Enterprise Scale
 
-### 15.1 What Glean Costs at Vodacom Scale
+### 15.1 What Glean Costs at Large-Enterprise Scale
 
-Vodacom has ~5,000 internal knowledge workers (rough estimate for engineering, IT, product, finance, legal). At Glean's pricing:
+Assume 3,000–6,000 internal knowledge workers across engineering, IT, product, finance, and legal. At Glean's pricing:
 
 | Scenario | Seats | Seat cost (est. $45/user/mo) | Annual seat spend |
 |---|---|---|---|
@@ -1625,9 +1625,9 @@ Vodacom has ~5,000 internal knowledge workers (rough estimate for engineering, I
 | Full knowledge-worker rollout | 5,000 | $45 | $2,700,000/year |
 | Agents + premium models (heavy use) | 5,000 + FlexCredits | $45 + variable | $3,000,000–$5,000,000+/year |
 
-These are estimates. Actual Glean contracts would be negotiated lower at Vodacom scale, but the floor for 5,000 seats is unlikely to be below $1.5M/year.
+These are estimates. Actual Glean contracts would be negotiated lower at this scale, but the floor for 5,000 seats is unlikely to be below $1.5M/year.
 
-### 15.2 What We Cost at Vodacom Scale
+### 15.2 What We Cost at Large-Enterprise Scale
 
 Our MCP server (markdown-for-agents-mcp + Phase 2 enterprise knowledge):
 
@@ -1672,7 +1672,7 @@ Our MCP server (markdown-for-agents-mcp + Phase 2 enterprise knowledge):
 | < 5 connector environment | Overkill | Right-sized |
 | Hack-friendly / extend yourself | No | Yes |
 
-### 15.5 Decision Framework for Vodacom
+### 15.5 Decision Framework for a POPIA-Strict SA Enterprise
 
 Build with markdown-for-agents-mcp Phase 2 if:
 - Primary knowledge sources are SharePoint + Confluence (true for most M365 orgs)
