@@ -8,7 +8,7 @@
 
 No single product does what this one does — and that is not a gap in the research; it is the finding.
 
-The market splits cleanly across two layers: *web fetch/search* tools that give AI agents internet access, and *enterprise knowledge index* tools that give AI agents access to internal corporate knowledge. Every major player serves one or the other. This project addresses both in a unified MCP server — web intelligence today, knowledge index in Phase 2 — and does so as a self-hosted, MIT-licensed, 7-dependency service deployable inside the Vodacom infrastructure perimeter.
+The market splits cleanly across two layers: *web fetch/search* tools that give AI agents internet access, and *enterprise knowledge index* tools that give AI agents access to internal corporate knowledge. Every major player serves one or the other. This project addresses both in a unified MCP server — web intelligence today, knowledge index in Phase 2 — and does so as a self-hosted, MIT-licensed, 7-dependency service deployable inside the operator's infrastructure perimeter.
 
 The closest competitors each solve part of this picture:
 
@@ -65,7 +65,7 @@ These tools give AI agents access to internal corporate documents.
 
 **Why enterprises buy it:** Fragmented SaaS knowledge, permission-sensitive content, employees needing one answer layer across Slack, Drive, Confluence, Jira, Salesforce. The developer platform lets Claude Code, Cursor, and other MCP hosts call Glean as a grounding source.
 
-**The blocker for Vodacom:** Glean is cloud SaaS only — no self-hosted deployment option exists. Enterprise contracts start at ~$60 000/year (100 seats minimum at ~$50–75/user/month). At 500 users this is R14–17 million/year at current exchange rates. There is no SA data residency commitment — Glean's infrastructure is US/EU. POPIA Section 72's cross-border transfer prohibition makes this a legal risk for any workload involving personal information, which inside a telco includes most of them.
+**The blocker for a POPIA-strict SA enterprise:** Glean is cloud SaaS only — no self-hosted deployment option exists. Enterprise contracts start at ~$60 000/year (100 seats minimum at ~$50–75/user/month). At 500 users this is R14–17 million/year at current exchange rates. There is no SA data residency commitment — Glean's infrastructure is US/EU. POPIA Section 72's cross-border transfer prohibition makes this a legal risk for any workload involving personal information, which in a consumer-facing enterprise includes most of them.
 
 **Bottom line:** Best-in-class for knowledge search, unusable for POPIA-strict deployments, and priced for organisations where $300k+/year is a rounding error.
 
@@ -90,7 +90,7 @@ These tools give AI agents access to internal corporate documents.
 - Not a self-hosted MCP server — it is a Microsoft-managed SaaS product with an MCP connector.
 - Cost: ~$30/user/month Copilot add-on on top of existing M365 E3/E5 licensing.
 
-**Strategic implication for this project:** Microsoft is the only vendor that credibly competes on SA data residency for enterprise knowledge. If Vodacom's agent platform is deeply embedded in Azure / M365, the Microsoft path is the honest alternative to evaluate. If it is on OpenShift/AWS, or if the agents need SharePoint+Confluence+web in a unified interface, Microsoft's solution does not close the gap.
+**Strategic implication for this project:** Microsoft is the only vendor that credibly competes on SA data residency for enterprise knowledge. If the operator's agent platform is deeply embedded in Azure / M365, the Microsoft path is the honest alternative to evaluate. If it is on OpenShift/AWS, or if the agents need SharePoint+Confluence+web in a unified interface, Microsoft's solution does not close the gap.
 
 ---
 
@@ -122,7 +122,7 @@ It ships a web fetch + enterprise knowledge + MCP server all in one. That is the
 | Governance pack | Enterprise Edition (paid) | POPIA_ASSESSMENT, THREAT_MODEL, DATA_FLOW, PRODUCTION_AUTHORISATION |
 | Cost floor | $48–74/mo VM + 16 GB RAM | $48–74/mo VM + 2 GB RAM |
 
-**Bottom line:** Onyx is a complete enterprise application. This project is infrastructure. The right mental model is not "Onyx vs. this" but "Onyx is what you deploy when you need a user-facing enterprise search application; this is what you deploy when your agent platform needs a tool to call". They serve different roles in the stack. A Vodacom agent platform could plausibly use *both* — Onyx as the knowledge application for users, and this as the MCP tool for agents running on the platform.
+**Bottom line:** Onyx is a complete enterprise application. This project is infrastructure. The right mental model is not "Onyx vs. this" but "Onyx is what you deploy when you need a user-facing enterprise search application; this is what you deploy when your agent platform needs a tool to call". They serve different roles in the stack. An enterprise agent platform could plausibly use *both* — Onyx as the knowledge application for users, and this as the MCP tool for agents running on the platform.
 
 ---
 
@@ -200,13 +200,13 @@ This project ships documented security, privacy, threat model, and production au
 ## Where Competitors Win (Honest Assessment)
 
 ### Microsoft 365 Copilot wins if:
-- Vodacom's agent platform is built on Azure/M365.
+- The operator's agent platform is built on Azure/M365.
 - The workload requires only SharePoint + OneDrive + Teams + Outlook (no Confluence, no public web, no external connectors).
 - The "Copilot Studio + BYO Azure OpenAI SA North" pattern has been validated with the InfoSec and Legal teams.
 - At ~$30/user/month at scale, cost per user is reasonable for large M365 footprints.
 
 ### Glean wins if:
-- Vodacom can accept US/EU data processing (i.e., the personal information concern is manageable via DPA, or the workload avoids s.26 special personal information).
+- The operator can accept US/EU data processing (i.e., the personal information concern is manageable via DPA, or the workload avoids s.26 special personal information).
 - 275 connectors, enterprise governance, and managed SaaS operations are worth $300k+/year.
 - The enterprise knowledge search surface needs to be user-facing (people searching, not agents calling).
 
@@ -241,21 +241,21 @@ This project ships documented security, privacy, threat model, and production au
 
 ## Strategic Recommendations
 
-### For the 1:1 with Schalk
+### Strategic anchor: lead with the knowledge index
 
 The enterprise knowledge index is the right conversation anchor. The market research confirms:
 
 1. **Nothing self-hosted achieves the full combination.** Self-hosted + MCP-native + multi-source (SharePoint + Confluence + web) + per-user ACL + POPIA residency + MIT licence + sub-4-service footprint is unoccupied.
 
-2. **Microsoft is the only competitor with SA inference.** If Vodacom is deep in Azure/M365, this is worth explicitly scoping. The question is: does the agent platform call an MCP tool, or does it use Copilot Studio? These are different architectural choices.
+2. **Microsoft is the only competitor with SA inference.** If the operator is deep in Azure/M365, this is worth explicitly scoping. The question is: does the agent platform call an MCP tool, or does it use Copilot Studio? These are different architectural choices.
 
 3. **Onyx is the credible open-source alternative** — but it is an *application*, not *infrastructure*. If the platform team wants a user-facing enterprise search tool alongside the agent infrastructure, Onyx is worth evaluating in parallel rather than instead.
 
 4. **Phase 2 is the differentiator** — the web fetch/search layer is real value today, but the enterprise knowledge index is what makes this system unique in the market. The `search_knowledge()` tool call, backed by a BM25+vector index with Entra ID ACL enforcement, is something no other self-hosted MCP server offers.
 
-### For the Week 1–2 decisions (from the deck)
+### For the Week 1–2 decisions
 
-The competitive research reinforces both blocked decisions from Slide 14:
+The competitive research reinforces two early architectural decisions:
 
 - **Confirm OpenShift as deployment target**: OpenShift is the right platform for the 3-service footprint. Onyx would need a 16 GB VM; this needs 2–4 GB. The smaller footprint makes the change-approval path shorter.
 - **Initiate the Microsoft Graph app registration**: The Entra ID delegated permission model (required for per-user ACL enforcement in Phase 2) is the same model Microsoft uses for its own official SharePoint connector. Starting the app registration now unblocks the path to Phase 2 without committing to its full scope.

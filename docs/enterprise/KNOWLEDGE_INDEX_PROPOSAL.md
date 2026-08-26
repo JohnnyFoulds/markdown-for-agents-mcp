@@ -543,7 +543,7 @@ No per-user licensing. Full POPIA data sovereignty.
 
 The build case is strongest when: (a) document volume is medium-to-large (above ~50k
 documents), (b) POPIA posture rules out SaaS, and (c) the organisation already runs
-OpenShift. All three conditions are likely true for the target buyer.
+OpenShift. All three conditions are common for POPIA-strict SA enterprises.
 
 ---
 
