@@ -1518,7 +1518,7 @@ interface ExaProviderConfig {
 
 ### Phase 2 Enterprise Knowledge Index
 
-Exa's Highlights model is the clearest external proof-of-concept for the enterprise knowledge index's core value proposition: **dense, query-relevant extraction beats full-document retrieval**. The SimpleQA benchmark (500 chars highlights = 8000 chars full text accuracy) is a strong data point for pitching the enterprise index to Schalk.
+Exa's Highlights model is the clearest external proof-of-concept for the enterprise knowledge index's core value proposition: **dense, query-relevant extraction beats full-document retrieval**. The SimpleQA benchmark (500 chars highlights = 8000 chars full text accuracy) is a strong data point for pitching the enterprise index to stakeholders.
 
 For the SharePoint/Confluence connector:
 - Chunk documents at section boundaries (not fixed token windows)

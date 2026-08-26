@@ -330,7 +330,7 @@ function hubSpotArticleToMarkdown(article: any): string {
 
 ### 2.9 ACL Model
 
-HubSpot does not have per-document ACL enforcement comparable to SharePoint/Confluence. Access control is at the portal level — if the private app token has access, everything in the portal is accessible. For Vodacom enterprise use, this means:
+HubSpot does not have per-document ACL enforcement comparable to SharePoint/Confluence. Access control is at the portal level — if the private app token has access, everything in the portal is accessible. For enterprise use, this means:
 
 - Index per-portal (one token per HubSpot instance/division)
 - No per-user read restriction enforcement at the document level
@@ -661,7 +661,7 @@ Linear has no per-document ACL comparable to SharePoint. Access is workspace-sco
 
 - API key: accesses the workspace of the user who created it
 - OAuth: delegates the user's access (team membership determines what they see)
-- For Vodacom enterprise: use OAuth to respect team-level access restrictions, or use API key with a service account that only has access to the required teams
+- For enterprise use: use OAuth to respect team-level access restrictions, or use API key with a service account that only has access to the required teams
 
 ### 3.9 Limitations and Gotchas
 
@@ -682,7 +682,7 @@ Linear has no per-document ACL comparable to SharePoint. Access is workspace-sco
 
 Microsoft Teams has 120M+ users. All integration goes through the Microsoft Graph API — there is no native Teams-specific webhook system. This is the same Graph API used for SharePoint, OneDrive, Outlook, and the rest of M365.
 
-**Key insight for markdown-for-agents-mcp:** Teams channel messages, meeting transcripts, and channel files are extremely high-value knowledge sources for Vodacom enterprise. The Teams connector overlaps significantly with SharePoint (files shared in Teams are stored in SharePoint), but channel messages and meeting transcripts are unique.
+**Key insight for markdown-for-agents-mcp:** Teams channel messages, meeting transcripts, and channel files are extremely high-value knowledge sources for enterprise deployments. The Teams connector overlaps significantly with SharePoint (files shared in Teams are stored in SharePoint), but channel messages and meeting transcripts are unique.
 
 Source: `https://syncrivo.ai/en/blog/microsoft-teams-graph-api-deep-dive-interoperability`
 
@@ -1060,7 +1060,7 @@ Teams uses the same Entra ID / Azure AD identity model as SharePoint. The `trans
 | Notification URL must be HTTPS + publicly reachable | MCP server behind NAT cannot receive push | Use polling + delta queries for knowledge index use case |
 | Transcript access tenant-gated (July 2026) | Silently returns 403 if admin hasn't enabled | Check capability before indexing; fail gracefully |
 | HTML message bodies | Raw HTML in `body.content` | Parse with NodeHtmlMarkdown before indexing |
-| Chat (1:1) messages require `Chat.Read.All` | High-sensitivity scope, likely rejected by Vodacom IT | Scope to channel messages only initially |
+| Chat (1:1) messages require `Chat.Read.All` | High-sensitivity scope, likely rejected by enterprise IT | Scope to channel messages only initially |
 | Large attachments in SharePoint | File content lives in SharePoint, not Teams | Reuse SharePoint connector to fetch file content |
 | Teams names not globally unique | Two teams can have the same display name | Always use `teamId` as primary key, not display name |
 
@@ -1362,7 +1362,7 @@ async function* paginateIntercom<T>(
 
 ### 5.8 ACL Model
 
-No per-document ACL. Access is workspace-scoped via the OAuth token. For Vodacom enterprise use:
+No per-document ACL. Access is workspace-scoped via the OAuth token. For enterprise use:
 
 - One Intercom workspace per customer/division
 - Index the whole workspace with service account token
@@ -1387,7 +1387,7 @@ No per-document ACL. Access is workspace-scoped via the OAuth token. For Vodacom
 
 ### 6.1 Overview
 
-Dropbox Business is a file storage platform with strong adoption in smaller enterprises and creative agencies. For Vodacom enterprise, it is lower priority than Box (more common in large SA enterprises), but the API is clean and well-documented.
+Dropbox Business is a file storage platform with strong adoption in smaller enterprises and creative agencies. For SA enterprise, it is lower priority than Box (more common in large SA enterprises), but the API is clean and well-documented.
 
 **API version:** v2
 **Base URL:** `https://api.dropboxapi.com/2/` (API calls) + `https://content.dropboxapi.com/2/` (file downloads)
@@ -1613,7 +1613,7 @@ For enterprise: use the Team Namespace API to access shared business folders. In
 
 ### 7.1 Overview
 
-Box is the enterprise document management platform most common in large regulated enterprises (financial services, healthcare, legal). It has a more sophisticated permission model than Dropbox and supports metadata templates, classification, and compliance features. For Vodacom enterprise, Box has higher priority than Dropbox.
+Box is the enterprise document management platform most common in large regulated enterprises (financial services, healthcare, legal). It has a more sophisticated permission model than Dropbox and supports metadata templates, classification, and compliance features. For SA enterprise, Box has higher priority than Dropbox.
 
 **API version:** 2.0 + 2025.0 + 2026.0 (versioned endpoints)
 **Base URL:** `https://api.box.com/2.0`
@@ -2274,7 +2274,7 @@ For the MCP server: use per-user OAuth tokens (each user's token only sees files
 
 ## 10. Priority Ranking Table
 
-Rankings based on Vodacom enterprise context:
+Rankings based on large SA enterprise context:
 - **Enterprise value:** how commonly this connector is in use at large SA telco/financial enterprises
 - **Knowledge density:** how much actionable knowledge the connector contains per unit of effort
 - **Implementation effort:** relative to the SharePoint connector baseline (= 5)
@@ -2297,19 +2297,19 @@ Rankings based on Vodacom enterprise context:
 
 - **Teams** ranks first because it reuses the exact same Graph API auth as SharePoint, channel messages contain high-value institutional knowledge (decisions, discussions, announcements), and meeting transcripts are uniquely valuable. Implementation is mostly code reuse from the SharePoint connector.
 
-- **OneDrive** ranks second because it is literally the same Graph API as SharePoint, pointed at `/users/{userId}/drive` instead of `/sites/{siteId}`. For Vodacom employees who store work documents in OneDrive Personal (Business), this is essential coverage. Estimated ~20% of the work of the SharePoint connector.
+- **OneDrive** ranks second because it is literally the same Graph API as SharePoint, pointed at `/users/{userId}/drive` instead of `/sites/{siteId}`. For employees who store work documents in OneDrive Personal (Business), this is essential coverage. Estimated ~20% of the work of the SharePoint connector.
 
 - **Box** ranks third because large South African enterprises (banks, telecoms, mining) use Box extensively. The JWT auth is the main additional complexity. Box has superior metadata and ACL features compared to Dropbox.
 
-- **Intercom** ranks fourth because Vodacom has support operations. Closed support conversations are a gold mine of solved-problem knowledge. Articles are clean, directly convertible to markdown. The no-refresh-token OAuth quirk is the main gotcha.
+- **Intercom** ranks fourth because the enterprise has support operations. Closed support conversations are a gold mine of solved-problem knowledge. Articles are clean, directly convertible to markdown. The no-refresh-token OAuth quirk is the main gotcha.
 
-- **HubSpot** ranks fifth because Vodacom's commercial teams use CRM extensively. Deal notes, ticket content, and KB articles contain relationship context. Medium implementation effort.
+- **HubSpot** ranks fifth because commercial teams use CRM extensively. Deal notes, ticket content, and KB articles contain relationship context. Medium implementation effort.
 
 - **Linear** ranks sixth because software engineering teams use it heavily. Issues + project descriptions are clean markdown. Excellent TypeScript SDK. Limited to engineering orgs.
 
 - **Dropbox** ranks seventh. Lower enterprise penetration in SA at the target scale. Dropbox Paper's native markdown export is a nice feature, but overall enterprise value is lower.
 
-- **Figma** ranks last. Useful for design teams, but low knowledge density compared to the effort. Most value is in comments rather than file structure. Narrow audience in a Vodacom context.
+- **Figma** ranks last. Useful for design teams, but low knowledge density compared to the effort. Most value is in comments rather than file structure. Narrow audience in most enterprise contexts.
 
 ---
 
@@ -2432,7 +2432,7 @@ class MicrosoftGraphAuth implements ConnectorAuth {
 
 ### Priority 5: HubSpot
 
-**Why fifth:** CRM context enriches agent responses about deals, accounts, and support tickets. Useful if Vodacom's internal teams use HubSpot for customer-facing operations.
+**Why fifth:** CRM context enriches agent responses about deals, accounts, and support tickets. Useful if the organisation's internal teams use HubSpot for customer-facing operations.
 
 **Estimated effort:** 2-3 sprints
 **Auth:** Simple Private App token or OAuth
@@ -2440,8 +2440,8 @@ class MicrosoftGraphAuth implements ConnectorAuth {
 
 **Skip for now (or build only if customer-requested):**
 - **Linear** — high quality API but narrow audience (engineering teams only); build on demand
-- **Dropbox** — low enterprise penetration at Vodacom scale; build on demand
-- **Figma** — niche value; build only if Vodacom has a large design org using Figma and requesting it
+- **Dropbox** — low enterprise penetration at this scale; build on demand
+- **Figma** — niche value; build only if the organisation has a large design org using Figma and requesting it
 
 ---
 
@@ -2724,8 +2724,8 @@ async function canUserAccessDocument(
 | **Intercom** | Build in Phase 3 | Support knowledge is underserved; articles are clean |
 | **HubSpot** | Build in Phase 3 | CRM context enriches agent responses; simple auth |
 | **Linear** | Build on demand | Excellent API but narrow audience; low priority unless customers request |
-| **Dropbox** | Build on demand | Niche at Vodacom scale; Paper markdown export is nice but insufficient justification |
-| **Figma** | Build on demand | Lowest ROI; only if Vodacom design org specifically requests it |
+| **Dropbox** | Build on demand | Niche at this scale; Paper markdown export is nice but insufficient justification |
+| **Figma** | Build on demand | Lowest ROI; only if the design org specifically requests it |
 
 **Bottom line for Phase 2 planning:** OneDrive and Teams are essentially included in the SharePoint connector investment. Box is the first new connector worth dedicated sprint allocation. Intercom and HubSpot come after in Phase 3. Linear, Dropbox, and Figma are request-driven.
 

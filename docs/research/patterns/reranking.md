@@ -19,7 +19,7 @@
 10. [Latency Benchmarks and Budgets](#10-latency-benchmarks-and-budgets)
 11. [BEIR Benchmark: What the Numbers Mean](#11-beir-benchmark-what-the-numbers-mean)
 12. [Current RERANK_BACKEND: What We Have and Gaps](#12-current-rerank_backend-what-we-have-and-gaps)
-13. [Phase 2 Recommendation: Vodacom-Scale Strategy](#13-phase-2-recommendation-vodacom-scale-strategy)
+13. [Phase 2 Recommendation: Large-Enterprise Scale Strategy](#13-phase-2-recommendation-large-enterprise-scale-strategy)
 14. [Complete TypeScript Implementation Patterns](#14-complete-typescript-implementation-patterns)
 15. [When Not to Rerank](#15-when-not-to-rerank)
 16. [Failure Modes and Gotchas](#16-failure-modes-and-gotchas)
@@ -292,11 +292,11 @@ curl https://api.cohere.com/v2/rerank \
   -H "Content-Type: application/json" \
   -d '{
     "model": "rerank-v3.5",
-    "query": "What is Vodacom'\''s data bundle pricing?",
+    "query": "What is Acme Telecom'\''s data bundle pricing?",
     "documents": [
-      "Vodacom offers monthly data bundles starting from R15 for 50MB...",
-      "MTN prepaid data pricing for South Africa...",
-      "Vodacom Smart data bundles allow rollover of unused data..."
+      "Acme Telecom offers monthly data bundles starting from R15 for 50MB...",
+      "Zenith Mobile prepaid data pricing for South Africa...",
+      "Acme Telecom Smart data bundles allow rollover of unused data..."
     ],
     "top_n": 2
   }'
@@ -328,7 +328,7 @@ Source: [docs.4allapi.com/en/rerank/cohere-rerank/](https://docs.4allapi.com/en/
 | Rerank v4.0 Pro/Fast | See [cohere.com/pricing](https://cohere.com/pricing) |
 | Free tier | 100 API calls/min, 1,000/month |
 
-At $2/1M tokens, reranking 100 documents of 512 tokens each = 51,200 tokens = ~$0.10 per 1,000 queries. At Vodacom scale (say 100k queries/day), that is ~$10/day or ~$300/month. That is viable for a Phase 2 pilot but warrants a self-hosted fallback for steady-state production.
+At $2/1M tokens, reranking 100 documents of 512 tokens each = 51,200 tokens = ~$0.10 per 1,000 queries. At large-enterprise scale (say 100k queries/day), that is ~$10/day or ~$300/month. That is viable for a Phase 2 pilot but warrants a self-hosted fallback for steady-state production.
 
 Source: [pecollective.com/tools/cohere-pricing/](https://pecollective.com/tools/cohere-pricing/)
 
@@ -399,7 +399,7 @@ Use Cohere when:
 - Query volume is moderate (<100k/day) and per-query cost is acceptable.
 
 Use self-hosted when:
-- Data residency requirements prohibit sending document content to a third-party API. At Vodacom, POPIA makes this a real consideration — any document text sent to Cohere leaves your perimeter.
+- Data residency requirements prohibit sending document content to a third-party API. For a POPIA-strict SA enterprise, this is a real consideration — any document text sent to Cohere leaves your perimeter.
 - Volume exceeds ~1M queries/day (self-hosted economics break even at approximately 1M queries/day per the presenc.ai survey).
 - You need consistent latency without API cold-start variance.
 
@@ -464,7 +464,7 @@ rag.index(
 )
 
 # Query
-results = rag.search(query="What does Vodacom charge for data?", k=10)
+results = rag.search(query="What does Acme Telecom charge for data?", k=10)
 # Returns: [{"score": 23.4, "content": "...", ...}, ...]
 
 # Load existing index in production
@@ -475,7 +475,7 @@ rag = RAGPretrainedModel.from_index(".ragatouille/colbert/indexes/my-rag-index")
 
 **Verdict: Not yet.** ColBERT is excellent for single-stage retrieval where you want bi-encoder speed with near-cross-encoder quality. But it requires Python (RAGatouille/PyLate), a separate vector store understanding multi-vector storage (Qdrant 1.10+, Weaviate v1.27+), and the PLAID indexing infrastructure.
 
-For Phase 2, the two-stage pipeline (dense retrieval → cross-encoder rerank) is simpler, well-tested, and already 80% of the way to ColBERT quality. Add ColBERT in Phase 3 if benchmarks on the actual Vodacom corpus show retrieval recall as the bottleneck.
+For Phase 2, the two-stage pipeline (dense retrieval → cross-encoder rerank) is simpler, well-tested, and already 80% of the way to ColBERT quality. Add ColBERT in Phase 3 if benchmarks on the actual corpus show retrieval recall as the bottleneck.
 
 Source: [fareedkhan-dev.github.io/rag-cookbook-2026/recipes/04-retrieval/colbert-late-interaction/](https://fareedkhan-dev.github.io/rag-cookbook-2026/recipes/04-retrieval/colbert-late-interaction/)
 
@@ -514,11 +514,11 @@ ranker = Ranker(max_length=128)
 # Or best quality model (~34MB)
 ranker = Ranker(model_name="ms-marco-MiniLM-L-12-v2", cache_dir="/opt")
 
-query = "How do I reset my Vodacom password?"
+query = "How do I reset my Acme Telecom password?"
 passages = [
-    {"id": 1, "text": "To reset your password visit vodacom.co.za/reset...", "meta": {}},
-    {"id": 2, "text": "Contact Vodacom support on 082 111...", "meta": {}},
-    {"id": 3, "text": "Vodacom data bundles start from R15...", "meta": {}},
+    {"id": 1, "text": "To reset your password visit acme.example/reset...", "meta": {}},
+    {"id": 2, "text": "Contact Acme Telecom support on +27 82 000 0000...", "meta": {}},
+    {"id": 3, "text": "Acme Telecom data bundles start from R15...", "meta": {}},
 ]
 
 request = RerankRequest(query=query, passages=passages)
@@ -739,7 +739,7 @@ MS MARCO performance (e.g., MRR@10 39.0 for MiniLM-L6-v2) measures performance o
 
 ### Does BEIR matter for our workload?
 
-BEIR is a useful signal but it tests on public datasets. For the Phase 2 knowledge index (SharePoint + Confluence from Vodacom), performance on BEIR is only a proxy. The correct evaluation:
+BEIR is a useful signal but it tests on public datasets. For the Phase 2 knowledge index (SharePoint + Confluence from the deploying organisation), performance on BEIR is only a proxy. The correct evaluation:
 
 1. Sample 200–500 real employee queries from existing search logs.
 2. Annotate relevance against retrieved chunks (can be done with an LLM judge).
@@ -857,11 +857,11 @@ export class CohereReranker implements Reranker {
 
 ---
 
-## 13. Phase 2 Recommendation: Vodacom-Scale Strategy
+## 13. Phase 2 Recommendation: Large-Enterprise Scale Strategy
 
 ### Scale parameters
 
-Vodacom has ~20,000 employees. Assume Phase 2 knowledge index serves:
+Assume a large enterprise of 15,000–25,000 employees. Assume Phase 2 knowledge index serves:
 - 5,000 daily active users
 - 10 searches per user per day
 - 50,000 queries/day at peak
@@ -895,7 +895,7 @@ LLM generation (top-10 chunks as context)
 ### Model recommendation
 
 **Primary:** `BAAI/bge-reranker-v2-m3`
-- MIT license — no legal restrictions at Vodacom.
+- MIT license — no proprietary restrictions.
 - 0.6B params — deployable on a T4 or A10G GPU pod, or CPU for lower volume.
 - 71.5 BEIR avg nDCG@10 — competitive with Cohere Rerank 3 at zero per-query cost.
 - Multilingual — covers Afrikaans and other SA languages in addition to English.
@@ -920,7 +920,7 @@ vector search (top-100) → ACL filter (keep permitted) → rerank (top-10) → 
 
 If ACL filtering reduces the candidate set to fewer than 10, rerank the remaining set and return all of them (no padding with zero-permission docs).
 
-### When reranking adds meaningful lift at Vodacom scale
+### When reranking adds meaningful lift at large-enterprise scale
 
 Reranking adds the most lift when:
 - Queries mix keyword and semantic intent: "reset password policy PDF" combines exact-match ("reset password") with semantic ("policy", "PDF").
@@ -1288,7 +1288,7 @@ The `RERANK_DTYPE: z.string().default('q8')` allows `q8` (int8 quantised) and `f
 
 6. **Extend `RERANK_BACKEND` to support a 4-value enum**: `none | local | tei | cohere`. Add `RERANK_TOP_N` config key (default 10).
 
-7. **Evaluate on a domain-specific test set** — sample 200+ real Vodacom employee queries, annotate, compute nDCG@10. Do not assume BEIR scores predict performance on the actual corpus.
+7. **Evaluate on a domain-specific test set** — sample 200+ real employee queries, annotate, compute nDCG@10. Do not assume BEIR scores predict performance on the actual corpus.
 
 8. **Add score caching** (Pattern 5) for the TEI backend. With Redis, cache `(query_hash, doc_id) → score` at TTL 1 hour. Expect 20–30% hit rate on support bots.
 

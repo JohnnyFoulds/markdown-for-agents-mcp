@@ -2,7 +2,7 @@
 
 **Research area:** Phase 2 knowledge index — embedding model selection, self-hosted deployment, multilingual support  
 **Project context:** markdown-for-agents-mcp Phase 2 enterprise knowledge index with SharePoint + Confluence connectors and per-user Entra ID ACL enforcement  
-**Target deployment:** Vodacom SA enterprise — predominantly English enterprise content with Afrikaans, isiZulu, and isiXhosa requirements  
+**Target deployment:** South African enterprise — predominantly English enterprise content with Afrikaans, isiZulu, and isiXhosa requirements  
 **Research date:** 2026-08-26  
 
 **Sources:** MTEB Leaderboard (huggingface.co/spaces/mteb/leaderboard), Ollama library (ollama.com/library), Cohere docs (docs.cohere.com/docs/embeddings), HuggingFace TEI docs, model cards for BGE-M3, nomic-embed-text-v1.5, mxbai-embed-large-v1, multilingual-e5-large-instruct, gte-Qwen2-7B-instruct, snowflake-arctic-embed-l-v2.0, Jina embeddings
@@ -25,7 +25,7 @@
 12. [Embedding API Abstraction Layer](#12-embedding-api-abstraction-layer)
 13. [Background Worker Architecture](#13-background-worker-architecture)
 14. [Failure Modes and Edge Cases](#14-failure-modes-and-edge-cases)
-15. [Recommended Model Stack for Vodacom SA](#15-recommended-model-stack-for-vodacom-sa)
+15. [Recommended Model Stack for SA Deployments](#15-recommended-model-stack-for-sa-deployments)
 16. [What to Build vs What to Skip](#16-what-to-build-vs-what-to-skip)
 
 ---
@@ -47,7 +47,7 @@ Confluence pages ──► chunk ──► embed(chunk) ──► store in pgvec
 
 - **Dimensions** determine pgvector index size and query latency. 768-dim vs 3072-dim is a 4x storage difference and ~2-3x query speed difference at scale.
 - **Max token context** determines chunking strategy. A 512-token limit forces aggressive chunking; 8192 tokens lets you embed entire wiki pages as single vectors.
-- **Multilingual quality** is non-negotiable for Vodacom SA. A model that handles English well but fails on Afrikaans intranet content poisons retrieval for Afrikaans-speaking staff.
+- **Multilingual quality** is non-negotiable for SA deployments. A model that handles English well but fails on Afrikaans intranet content poisons retrieval for Afrikaans-speaking staff.
 - **Query vs document asymmetry**: all production-grade embedding models require different prompts/modes for queries vs stored documents. Getting this wrong degrades NDCG@10 by 10-20%.
 - **ACL safety**: embeddings are computed at ingest time. If you re-embed when ACL changes, you add operational complexity. Choose a model stable enough that you won't re-embed your entire corpus every six months.
 
@@ -93,7 +93,7 @@ MTEB (Massive Text Embedding Benchmark) is the authoritative benchmark. The lead
 
 BEIR measures retrieval on English domain-specific corpora (COVID papers, finance, legal). This directly maps to enterprise SharePoint content. MIRACL tests multilingual retrieval. CLEF tests multi-domain European language content.
 
-For the Vodacom SA knowledge index, you need a model that scores well on BOTH BEIR and MIRACL — which currently only Snowflake Arctic Embed L v2.0 achieves in a single deployable open-weight package.
+For the SA enterprise knowledge index, you need a model that scores well on BOTH BEIR and MIRACL — which currently only Snowflake Arctic Embed L v2.0 achieves in a single deployable open-weight package.
 
 ---
 
@@ -161,7 +161,7 @@ Best for: Ollama on developer laptops, rapid prototyping, edge scenarios.
 
 ### South Africa's language landscape for enterprise
 
-South Africa has 11 official languages. For Vodacom SA enterprise content, the realistic distribution is:
+South Africa has 11 official languages. For SA enterprise content, the realistic distribution is:
 
 - **English**: ~70-80% of formal enterprise documents (Confluence wiki, SharePoint intranets, policies)
 - **Afrikaans**: ~15-20% of documents (heavily represented in compliance, HR, legacy content)
@@ -230,7 +230,7 @@ function detectLanguage(text: string): { language: string; confidence: number } 
 
 ### Afrikaans-specific gotcha
 
-Afrikaans shares vocabulary with Dutch. If your XLM-RoBERTa-based model was trained with Dutch as a high-resource language, Afrikaans text may get embeddings heavily influenced by Dutch semantics. For enterprise HR/compliance content this is generally fine. For domain-specific Afrikaans legal terminology, fine-tuning on a Vodacom-specific corpus would be necessary — but that is out of scope for Phase 2.
+Afrikaans shares vocabulary with Dutch. If your XLM-RoBERTa-based model was trained with Dutch as a high-resource language, Afrikaans text may get embeddings heavily influenced by Dutch semantics. For enterprise HR/compliance content this is generally fine. For domain-specific Afrikaans legal terminology, fine-tuning on an organisation-specific corpus would be necessary — but that is out of scope for Phase 2.
 
 ---
 
@@ -293,7 +293,7 @@ async function embedBatch(texts: string[], batchSize = 100): Promise<number[][]>
 }
 ```
 
-**Cost analysis for Vodacom SA:**
+**Cost analysis for an SA deployment:**
 
 Assuming a 50,000-document Confluence + SharePoint corpus:
 - Average document chunk: 400 tokens
@@ -302,7 +302,7 @@ Assuming a 50,000-document Confluence + SharePoint corpus:
 - Re-indexing every 6 months: $5.20/year
 - Query volume: 10,000 queries/day × 100 tokens × 365 = 365M tokens/year = **$47.45/year**
 
-Conclusion: OpenAI embeddings are cheap enough at Vodacom enterprise scale. The cost argument for self-hosting is weak unless the corpus is >1B tokens.
+Conclusion: OpenAI embeddings are cheap enough at large-enterprise scale. The cost argument for self-hosting is weak unless the corpus is >1B tokens.
 
 **OpenAI multilingual limitation:** text-embedding-3 models have no explicit multilingual training disclosure. They perform well on major European languages but have no documented support for isiZulu or isiXhosa. Do not use OpenAI embeddings if you need Zulu/Xhosa retrieval quality guarantees.
 
@@ -419,7 +419,7 @@ const embeddings: number[][] = data.map((d: any) => d.embedding);
 - The LoRA adapter mechanism adds inference complexity if you switch tasks mid-stream
 - Rate limits are strict at free tier (100 RPM / 100K TPM)
 
-**Recommendation:** Jina v5-text is worth evaluating specifically for its 32K context, which could replace chunking entirely for SharePoint Wiki pages. The practical test: embed a full 15,000-token Vodacom intranet page as a single vector and compare retrieval quality vs. the same page chunked at 512 tokens.
+**Recommendation:** Jina v5-text is worth evaluating specifically for its 32K context, which could replace chunking entirely for SharePoint Wiki pages. The practical test: embed a full 15,000-token enterprise intranet page as a single vector and compare retrieval quality vs. the same page chunked at 512 tokens.
 
 ---
 
@@ -706,7 +706,7 @@ For a 50,000-chunk corpus:
 
 ### Air-gapped enterprise deployment
 
-Vodacom SA enterprise environments often restrict internet access from production. TEI supports this:
+SA enterprise environments often restrict internet access from production. TEI supports this:
 
 ```bash
 # Pre-download model weights on a machine with internet access
@@ -1057,7 +1057,7 @@ CREATE INDEX idx_chunks_groups ON document_chunks USING GIN (allowed_groups);
 
 ## 10. Dimensionality and Storage Analysis
 
-### Storage cost at Vodacom enterprise scale
+### Storage cost at large-enterprise scale
 
 Assumptions: 50,000 SharePoint/Confluence chunks, growing to 500,000 over 2 years.
 
@@ -1074,7 +1074,7 @@ Assumptions: 50,000 SharePoint/Confluence chunks, growing to 500,000 over 2 year
 
 **Conclusion:** At 500K chunks (reasonable for a medium enterprise), even float32 at 1024 dimensions is only 1.96 GB of raw vector data. The index overhead is ~40% on top. Total pgvector footprint: ~3 GB. This is not a storage problem at this scale.
 
-The case for binary embeddings at Vodacom scale is about **query latency**, not storage costs. Binary ANN with Hamming distance is ~10-30x faster than float32 cosine ANN at the same recall.
+The case for binary embeddings at large-enterprise scale is about **query latency**, not storage costs. Binary ANN with Hamming distance is ~10-30x faster than float32 cosine ANN at the same recall.
 
 ### Matryoshka Representation Learning (MRL) — when to use it
 
@@ -1709,7 +1709,7 @@ function validateEmbeddingOutput(embedding: number[]): void {
 
 ---
 
-## 15. Recommended Model Stack for Vodacom SA
+## 15. Recommended Model Stack for SA Deployments
 
 ### The recommendation: tiered by deployment context
 
@@ -1757,7 +1757,7 @@ EMBEDDING_DIMENSIONS=1024
 | Params | 568M | 568M |
 | South African languages | Better (more multilingual data) | Good (74 languages via XLM-R) |
 
-**For Vodacom SA: use BGE-M3.** The hybrid dense+sparse retrieval is the decisive factor. When an Afrikaans employee searches for "verlofaansoek prosedures" (leave application procedures), the sparse retrieval path will match on the exact Afrikaans terms even if the dense embedding is imperfect. This graceful degradation on low-resource languages is exactly what you need.
+**For SA deployments: use BGE-M3.** The hybrid dense+sparse retrieval is the decisive factor. When an Afrikaans employee searches for "verlofaansoek prosedures" (leave application procedures), the sparse retrieval path will match on the exact Afrikaans terms even if the dense embedding is imperfect. This graceful degradation on low-resource languages is exactly what you need.
 
 #### Production — Maximum retrieval quality, cloud-based
 
@@ -1769,7 +1769,7 @@ EMBEDDING_DIMENSIONS=1024
 
 Cohere embed-v4.0 with `input_type` differentiation. Use this if:
 - Data residency allows sending document content to Cohere's API
-- Cost is not a concern ($0.10/1M tokens at Vodacom's scale is minimal)
+- Cost is not a concern ($0.10/1M tokens at large-enterprise scale is minimal)
 - You want explicit multilingual coverage commitments from a vendor
 
 #### Phase 2 recommended production stack
@@ -1849,14 +1849,14 @@ The 5.3-point MTEB gain over mxbai-embed-large does not justify 14GB GPU VRAM, 1
 **Jina v5-text for production**
 Jina's 32K context is interesting for the "no chunking" strategy, but their API pricing model (token top-ups, no SLA) is not suitable for enterprise production. The open-weight model (677M) has no mature production serving story yet. Evaluate in 6 months.
 
-**Fine-tuning embedding models on Vodacom content**
+**Fine-tuning embedding models on domain-specific content**
 Domain-specific fine-tuning would improve retrieval quality by 2-5 NDCG points. However, it requires labeled query-document pairs (typically 5,000-50,000 examples), a fine-tuning pipeline, and model versioning. This is a Phase 3 activity.
 
 **Sentence-level chunking with dependency parsing**
 Some implementations use NLP sentence boundary detection for smarter chunking. In practice, the quality gain vs. fixed-size chunking is marginal for enterprise document retrieval. The complexity is not worth it.
 
 **Managed vector databases (Pinecone, Weaviate cloud)**
-Adding a managed vector database adds cost, latency, and a data egress risk for enterprise content that cannot leave the organization's infrastructure. pgvector on existing PostgreSQL is the right choice for Vodacom's data governance requirements.
+Adding a managed vector database adds cost, latency, and a data egress risk for enterprise content that cannot leave the organization's infrastructure. pgvector on existing PostgreSQL is the right choice for strict data governance requirements.
 
 ---
 
