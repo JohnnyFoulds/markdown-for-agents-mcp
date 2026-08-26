@@ -1406,7 +1406,7 @@ During login, claims from the IdP are captured and stored in Redis (TTL 30 days)
 
 ### 14.3 Entra ID Integration Pattern
 
-For Vodacom/enterprise deployments, the OIDC flow against Entra ID is:
+For enterprise deployments, the OIDC flow against Entra ID is:
 
 1. User hits `/api/auth/oidc/azure-ad/authorize`
 2. Onyx generates PKCE state, redirects to Entra ID login
@@ -1621,7 +1621,7 @@ Onyx is open source and well-maintained. Do not rebuild:
 
 1. PostgreSQL schema (document_chunks + connector_sync_state + user_group_memberships)
 2. Generic connector base class in TypeScript (CheckpointedConnector interface)
-3. SharePoint connector (highest priority for Vodacom)
+3. SharePoint connector (highest priority for enterprise deployments)
 4. Entra ID group resolver + ACL cache
 5. Hybrid search (RRF over pgvector + tsvector)
 6. `search_knowledge_base` MCP tool with ACL enforcement

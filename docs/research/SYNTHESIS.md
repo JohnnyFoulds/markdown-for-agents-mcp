@@ -227,8 +227,8 @@ From `microsoft-graph.md` Section 8.7: `reauthorizationRequired` and `subscripti
 
 | Priority | Connector | Auth Method | Sync Type | ACL Enforcement | Complexity | Use Case Priority |
 |---|---|---|---|---|---|---|
-| **P0** | SharePoint | Certificate (for ACL) or OBO (for search) | CheckpointedConnector (delta token) | Entra transitiveMemberOf + Graph permissions API | L | Vodacom primary |
-| **P0** | Confluence | OAuth2 or API token | Poll (30min) | Confluence groups → Entra email mapping | M | Vodacom primary |
+| **P0** | SharePoint | Certificate (for ACL) or OBO (for search) | CheckpointedConnector (delta token) | Entra transitiveMemberOf + Graph permissions API | L | Reference deployment primary |
+| **P0** | Confluence | OAuth2 or API token | Poll (30min) | Confluence groups → Entra email mapping | M | Reference deployment primary |
 | **P1** | Microsoft Teams | Azure app registration | Poll / webhook | Entra groups (native M365) | M | M365 shops |
 | **P1** | Notion | OAuth2 | Poll | None (public/private only) | S | Tech companies |
 | **P2** | GitHub | PAT or GitHub App | CheckpointedConnector | Repository visibility + team membership | M | Engineering teams |
@@ -311,7 +311,7 @@ Do NOT use 3072-d (text-embedding-3-large) by default — the storage cost and q
 
 **Key insight from `onyx.md` §16.1:** OpenSearch coupling is deep. Switching from OpenSearch to another backend requires rewriting the entire retrieval layer. Onyx migrated FROM Vespa TO OpenSearch and it was a significant undertaking. **Choose your search backend once and commit.**
 
-For Phase 2 at Vodacom scale (SharePoint + Confluence, estimated 500K–2M indexed chunks): pgvector with HNSW index is adequate. HNSW at this scale has ~10ms query latency for vector search, which is acceptable.
+For Phase 2 at large-enterprise scale (SharePoint + Confluence, estimated 500K–2M indexed chunks): pgvector with HNSW index is adequate. HNSW at this scale has ~10ms query latency for vector search, which is acceptable.
 
 Switch to Qdrant when: query latency is measurably problematic AND the corpus exceeds 5M chunks AND the operational team has capacity to run a second service.
 
@@ -387,7 +387,7 @@ Airweave has the best MCP architecture but no per-user ACL. Onyx has per-user AC
 
 Glean stores data on GCP/AWS. Microsoft M365 Copilot stores data in Microsoft's cloud (even if in South African data centres, it is subject to US CLOUD Act). Airweave cloud is US-hosted.
 
-**The opportunity:** A completely self-hosted, POPIA-clean enterprise knowledge index that can run in a South African data centre, on Vodacom's own infrastructure, with no data leaving the country. No competitor sells this as a first-class capability. We do not sell anything — we provide the MIT-licensed code and the customer runs it.
+**The opportunity:** A completely self-hosted, POPIA-clean enterprise knowledge index that can run in a South African data centre, on the deploying organisation's own infrastructure, with no data leaving the country. No competitor sells this as a first-class capability. We do not sell anything — we provide the MIT-licensed code and the customer runs it.
 
 ### White Space #3: Hybrid Web + Enterprise in One MCP Tool Call
 
@@ -449,11 +449,11 @@ From `airweave.md` §7.6: "There is limited observability into which source caus
 
 Agents can query this resource before deciding whether to use enterprise knowledge or fall back to web search. No competitor exposes this pattern.
 
-### White Space #7: Zero-Config Vodacom-Specific Quick-Start
+### White Space #7: Zero-Config Enterprise Quick-Start
 
 Every competitor's documentation assumes a generic enterprise. No one ships a quick-start guide pre-configured for the M365 + SharePoint + Confluence + Entra ID stack that dominates South African telecoms and financial services.
 
-**The opportunity:** A `QUICKSTART_VODACOM.md` (or any similar corporate profile) that documents exactly the app registration steps, permission grants, connector configuration, and test queries needed to get from zero to searching SharePoint and Confluence in under 2 hours. This is not technical work — it is documentation work. But for enterprise sales, it is worth more than most features.
+**The opportunity:** A `QUICKSTART_ENTERPRISE.md` (or any similar corporate profile) that documents exactly the app registration steps, permission grants, connector configuration, and test queries needed to get from zero to searching SharePoint and Confluence in under 2 hours. This is not technical work — it is documentation work. But for enterprise sales, it is worth more than most features.
 
 ---
 
